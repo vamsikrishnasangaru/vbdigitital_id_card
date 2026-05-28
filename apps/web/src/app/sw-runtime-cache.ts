@@ -13,8 +13,6 @@ import {
 } from "serwist";
 
 const PAGES_CACHE_NAME = {
-  rscPrefetch: "pages-rsc-prefetch",
-  rsc: "pages-rsc",
   html: "pages",
 };
 
@@ -198,34 +196,17 @@ export const runtimeCaching: RuntimeCaching[] = [
       networkTimeoutSeconds: 3,
     }),
   },
+  /**
+   * App Router RSC flights must not be cached by the SW — NetworkFirst causes
+   * "FetchEvent … network error / promise rejected" on client navigation.
+   */
   {
-    matcher: ({ request, url: { pathname }, sameOrigin }) =>
-      request.headers.get("RSC") === "1" &&
-      request.headers.get("Next-Router-Prefetch") === "1" &&
-      sameOrigin &&
-      !pathname.startsWith("/api/"),
-    handler: new NetworkFirst({
-      cacheName: PAGES_CACHE_NAME.rscPrefetch,
-      plugins: [
-        new ExpirationPlugin({
-          maxEntries: 32,
-          maxAgeSeconds: 1440 * 60,
-        }),
-      ],
-    }),
-  },
-  {
-    matcher: ({ request, url: { pathname }, sameOrigin }) =>
-      request.headers.get("RSC") === "1" && sameOrigin && !pathname.startsWith("/api/"),
-    handler: new NetworkFirst({
-      cacheName: PAGES_CACHE_NAME.rsc,
-      plugins: [
-        new ExpirationPlugin({
-          maxEntries: 32,
-          maxAgeSeconds: 1440 * 60,
-        }),
-      ],
-    }),
+    matcher: ({ request, url, sameOrigin }) => {
+      if (!sameOrigin || url.pathname.startsWith("/api/")) return false;
+      if (url.searchParams.has("_rsc")) return true;
+      return request.headers.get("RSC") === "1";
+    },
+    handler: new NetworkOnly(),
   },
   {
     matcher: ({ request, url: { pathname }, sameOrigin }) =>
@@ -243,8 +224,8 @@ export const runtimeCaching: RuntimeCaching[] = [
     }),
   },
   {
-    matcher: ({ url: { pathname }, sameOrigin }) =>
-      sameOrigin && !pathname.startsWith("/api/"),
+    matcher: ({ url, sameOrigin }) =>
+      sameOrigin && !url.pathname.startsWith("/api/") && !url.searchParams.has("_rsc"),
     handler: new NetworkFirst({
       cacheName: "others",
       plugins: [
@@ -253,6 +234,7 @@ export const runtimeCaching: RuntimeCaching[] = [
           maxAgeSeconds: 1440 * 60,
         }),
       ],
+      networkTimeoutSeconds: 5,
     }),
   },
   {
