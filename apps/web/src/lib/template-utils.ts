@@ -21,20 +21,20 @@ export function normalizeFrontConfig(config: unknown): DesignerElement[] {
   })();
 
   // Keep only objects that look like designer elements.
-  return raw
-    .filter((el): el is Record<string, unknown> => typeof el === 'object' && el !== null)
-    .filter((el): el is DesignerElement => {
-      const id = el.id;
-      const type = el.type;
-      const x = el.x;
-      const y = el.y;
-      return (
-        typeof id === 'string' &&
-        typeof type === 'string' &&
-        typeof x === 'number' &&
-        typeof y === 'number'
-      );
-    });
+  const out: DesignerElement[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const el = item as Record<string, unknown>;
+    if (
+      typeof el.id === 'string' &&
+      typeof el.type === 'string' &&
+      typeof el.x === 'number' &&
+      typeof el.y === 'number'
+    ) {
+      out.push(el as unknown as DesignerElement);
+    }
+  }
+  return out;
 }
 
 export async function uploadTemplateBackground(file: File): Promise<string> {
