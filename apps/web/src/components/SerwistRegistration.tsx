@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 
 const swDisabled = process.env.NEXT_PUBLIC_DISABLE_SW === 'true';
 const isDev = process.env.NODE_ENV === 'development';
-const SW_MIGRATION_KEY = 'vb-sw-migration-v2';
+const SW_MIGRATION_KEY = 'vb-sw-migration-v3';
 const SERWIST_SW_PATH = '/sw.js';
 
 /** Serwist dev bundles are classic scripts; module registration fails silently. */

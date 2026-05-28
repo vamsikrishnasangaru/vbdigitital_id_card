@@ -1,4 +1,5 @@
 import { runtimeCaching } from "./sw-runtime-cache";
+import { passthroughFetch, shouldBypassServiceWorker } from "./sw-bypass";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { Serwist } from "serwist";
 
@@ -27,6 +28,14 @@ const serwist = new Serwist({
       },
     ],
   },
+});
+
+/** Handle App Router flights before Serwist (avoids `no-response` on 502 / offline). */
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (!shouldBypassServiceWorker(request, url)) return;
+  event.respondWith(passthroughFetch(request));
 });
 
 serwist.addEventListeners();

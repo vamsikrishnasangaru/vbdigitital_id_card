@@ -12,10 +12,6 @@ import {
   type RuntimeCaching,
 } from "serwist";
 
-const PAGES_CACHE_NAME = {
-  html: "pages",
-};
-
 export const runtimeCaching: RuntimeCaching[] = [
   {
     matcher: /^https:\/\/fonts\.(?:gstatic)\.com\/.*/i,
@@ -196,47 +192,6 @@ export const runtimeCaching: RuntimeCaching[] = [
       networkTimeoutSeconds: 3,
     }),
   },
-  /**
-   * App Router RSC flights must not be cached by the SW — NetworkFirst causes
-   * "FetchEvent … network error / promise rejected" on client navigation.
-   */
-  {
-    matcher: ({ request, url, sameOrigin }) => {
-      if (!sameOrigin || url.pathname.startsWith("/api/")) return false;
-      if (url.searchParams.has("_rsc")) return true;
-      return request.headers.get("RSC") === "1";
-    },
-    handler: new NetworkOnly(),
-  },
-  {
-    matcher: ({ request, url: { pathname }, sameOrigin }) =>
-      request.headers.get("Content-Type")?.includes("text/html") &&
-      sameOrigin &&
-      !pathname.startsWith("/api/"),
-    handler: new NetworkFirst({
-      cacheName: PAGES_CACHE_NAME.html,
-      plugins: [
-        new ExpirationPlugin({
-          maxEntries: 32,
-          maxAgeSeconds: 1440 * 60,
-        }),
-      ],
-    }),
-  },
-  {
-    matcher: ({ url, sameOrigin }) =>
-      sameOrigin && !url.pathname.startsWith("/api/") && !url.searchParams.has("_rsc"),
-    handler: new NetworkFirst({
-      cacheName: "others",
-      plugins: [
-        new ExpirationPlugin({
-          maxEntries: 32,
-          maxAgeSeconds: 1440 * 60,
-        }),
-      ],
-      networkTimeoutSeconds: 5,
-    }),
-  },
   {
     matcher: ({ sameOrigin }) => !sameOrigin,
     handler: new NetworkFirst({
@@ -249,10 +204,5 @@ export const runtimeCaching: RuntimeCaching[] = [
       ],
       networkTimeoutSeconds: 10,
     }),
-  },
-  {
-    matcher: /.*/i,
-    method: "GET",
-    handler: new NetworkOnly(),
   },
 ];
