@@ -29,7 +29,11 @@ export interface OfflineTeacherRecord {
 }
 
 interface TeachersListResponse {
-  data: OfflineTeacherRecord[];
+  /**
+   * Server responses may contain `_offline: false | undefined` and are not guaranteed
+   * to include offline-only fields. We accept them and normalize on write.
+   */
+  data: Array<OfflineTeacherRecord | (Omit<OfflineTeacherRecord, '_offline' | '_pendingSync'> & { _offline?: boolean })>;
   meta: { total: number; page?: number; limit?: number; totalPages?: number };
   _offline?: boolean;
 }
@@ -165,7 +169,10 @@ export const offlineTeachers = {
   cacheTeachersList(schoolId: string, response: TeachersListResponse) {
     const map = getCachedBySchool();
     const existing = map[schoolId] || [];
-    const serverList = response.data || [];
+    const serverList = (response.data || []).map((t) => ({
+      ...(t as OfflineTeacherRecord),
+      _offline: t._offline ? true : undefined,
+    })) as OfflineTeacherRecord[];
     const serverIds = new Set(serverList.map((t) => t.id));
     const offlineOnly = existing.filter((t) => t._offline && !serverIds.has(t.id));
     const pendingOnly = listPendingTeachers().filter(
