@@ -456,22 +456,25 @@ export function IdCardDesigner({
     );
   };
 
-  const constrainTransformBox = (oldBox: Konva.RectConfig, newBox: Konva.RectConfig) => {
-    const nw = newBox.width ?? 0;
-    const nh = newBox.height ?? 0;
-    if (nw < 20 || nh < 12) return oldBox;
+  const constrainTransformBox = (oldBox: unknown, newBox: unknown): unknown => {
+    const oldRect = oldBox as Konva.RectConfig;
+    const newRect = newBox as Konva.RectConfig;
+
+    const nw = newRect.width ?? 0;
+    const nh = newRect.height ?? 0;
+    if (nw < 20 || nh < 12) return oldRect;
     const width = Math.min(nw, CARD_WIDTH);
     const height = Math.min(nh, CARD_HEIGHT);
-    const x = Math.max(0, Math.min(CARD_WIDTH - width, newBox.x ?? 0));
-    const y = Math.max(0, Math.min(CARD_HEIGHT - height, newBox.y ?? 0));
+    const x = Math.max(0, Math.min(CARD_WIDTH - width, newRect.x ?? 0));
+    const y = Math.max(0, Math.min(CARD_HEIGHT - height, newRect.y ?? 0));
     return {
-      ...newBox,
+      ...newRect,
       x,
       y,
       width: Math.min(width, CARD_WIDTH - x),
       height: Math.min(height, CARD_HEIGHT - y),
-      rotation: newBox.rotation ?? 0,
-    };
+      rotation: newRect.rotation ?? 0,
+    } satisfies Konva.RectConfig;
   };
 
   const handleTransformEnd = (id: string, node: Konva.Node) => {
