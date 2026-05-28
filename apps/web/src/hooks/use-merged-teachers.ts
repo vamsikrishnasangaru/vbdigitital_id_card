@@ -4,7 +4,12 @@ import { useMemo } from 'react';
 import { offlineTeachers, type OfflineTeacherRecord } from '@/lib/offline-teachers';
 
 export function useMergedTeachers(
-  serverList: OfflineTeacherRecord[] | undefined,
+  serverList:
+    | Array<
+        | OfflineTeacherRecord
+        | (Omit<OfflineTeacherRecord, '_offline' | '_pendingSync'> & { _offline?: boolean })
+      >
+    | undefined,
   schoolId: string,
   filters: {
     search?: string;

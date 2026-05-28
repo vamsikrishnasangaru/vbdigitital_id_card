@@ -207,17 +207,24 @@ export const offlineTeachers = {
   },
 
   mergeTeachersIntoList(
-    serverList: OfflineTeacherRecord[],
+    serverList: Array<
+      | OfflineTeacherRecord
+      | (Omit<OfflineTeacherRecord, '_offline' | '_pendingSync'> & { _offline?: boolean })
+    >,
     schoolId: string,
     params?: Record<string, string | number | undefined>,
   ): OfflineTeacherRecord[] {
+    const normalizedServerList = (serverList || []).map((t) => ({
+      ...(t as OfflineTeacherRecord),
+      _offline: t._offline ? true : undefined,
+    })) as OfflineTeacherRecord[];
     const deleted = new Set(listDeletedTeacherIds());
     const pending = listPendingTeachers().filter(
       (t) => t.schoolId === schoolId && !deleted.has(t.id) && teacherMatchesFilters(t, params),
     );
-    const serverIds = new Set(serverList.map((t) => t.id));
+    const serverIds = new Set(normalizedServerList.map((t) => t.id));
     const extra = pending.filter((t) => !serverIds.has(t.id));
-    const visible = serverList
+    const visible = normalizedServerList
       .filter((t) => !deleted.has(t.id))
       .map((t) => applyPatchToTeacher(t));
     return [...extra, ...visible];
