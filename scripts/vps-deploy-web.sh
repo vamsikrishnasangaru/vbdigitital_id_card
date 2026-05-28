@@ -30,8 +30,12 @@ cp -r public "$STANDALONE/public"
 rm -rf "$STANDALONE/.next/static"
 cp -r .next/static "$STANDALONE/.next/static"
 
+# One vb-web only — kill stale listeners and duplicate PM2 entries.
 pm2 delete vb-web 2>/dev/null || true
-PORT="$PORT" HOSTNAME="$HOSTNAME" pm2 start server.js --name vb-web --cwd "$STANDALONE"
+fuser -k "${PORT}/tcp" 2>/dev/null || true
+sleep 2
+
+pm2 start "$APP_ROOT/ecosystem.config.cjs" --only vb-web --update-env
 pm2 save
 
 sleep 2
