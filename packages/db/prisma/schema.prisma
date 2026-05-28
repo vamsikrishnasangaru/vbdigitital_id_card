@@ -1,0 +1,392 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model School {
+  id            String         @id @default(uuid())
+  name          String
+  code          String         @unique
+  email         String?
+  phone         String?
+  address       String?
+  city          String?
+  state         String?
+  pincode       String?
+  logoUrl       String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+  auditLogs     AuditLog[]
+  classes       Class[]
+  deliveries    Delivery[]
+  driveFiles    DriveFile[]
+  notifications Notification[]
+  orders        Order[]
+  printBatches  PrintBatch[]
+  students      Student[]
+  templates     Template[]
+  users         User[]
+
+  @@index([isActive])
+  @@index([code])
+}
+
+model User {
+  id                 String              @id @default(uuid())
+  schoolId           String?
+  email              String              @unique
+  passwordHash       String
+  firstName          String
+  lastName           String
+  phone              String?
+  avatarUrl          String?
+  role               UserRole            @default(TEACHER)
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  sessions           Session[]
+  teacherAssignments TeacherAssignment[]
+  school             School?             @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@index([role])
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  deviceInfo   String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model Class {
+  id                 String              @id @default(uuid())
+  schoolId           String
+  name               String
+  sortOrder          Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+  school             School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  sections           Section[]
+  students           Student[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+}
+
+model Section {
+  id                 String              @id @default(uuid())
+  classId            String
+  name               String
+  sortOrder          Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+  class              Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  students           Student[]
+  teacherAssignments TeacherAssignment[]
+
+  @@unique([classId, name])
+  @@index([classId])
+}
+
+model TeacherAssignment {
+  id        String   @id @default(uuid())
+  userId    String
+  classId   String
+  sectionId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section   Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId, sectionId])
+  @@index([userId])
+  @@index([classId])
+}
+
+model Student {
+  id               String        @id @default(uuid())
+  schoolId         String
+  classId          String
+  sectionId        String
+  admissionNumber  String
+  rollNumber       String?
+  firstName        String
+  lastName         String
+  dateOfBirth      DateTime?
+  bloodGroup       String?
+  photoUrl         String?
+  parentName       String?
+  parentPhone      String?
+  emergencyContact String?
+  address          String?
+  transportDetails String?
+  status           StudentStatus @default(DRAFT)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deletedAt        DateTime?
+  submittedAt      DateTime?
+  approvedAt       DateTime?
+  approvedBy       String?
+  idCards          IdCard[]
+  class            Class         @relation(fields: [classId], references: [id])
+  school           School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  section          Section       @relation(fields: [sectionId], references: [id])
+
+  @@unique([schoolId, admissionNumber])
+  @@index([schoolId])
+  @@index([classId])
+  @@index([sectionId])
+  @@index([status])
+  @@index([schoolId, classId, sectionId])
+}
+
+model Template {
+  id          String      @id @default(uuid())
+  schoolId    String?
+  code        String?
+  name        String
+  description String?
+  frontConfig Json
+  backConfig  Json?
+  frontBgUrl  String?
+  backBgUrl   String?
+  isDefault   Boolean     @default(false)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+  orientation Orientation @default(HORIZONTAL)
+  idCards     IdCard[]
+  school      School?     @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@index([isActive])
+}
+
+model IdCard {
+  id            String       @id @default(uuid())
+  studentId     String
+  templateId    String?
+  orderId       String?
+  status        IdCardStatus @default(PENDING)
+  qrCodeData    String?
+  barcodeData   String?
+  frontImageUrl String?
+  backImageUrl  String?
+  pdfUrl        String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  order         Order?       @relation(fields: [orderId], references: [id])
+  student       Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  template      Template?    @relation(fields: [templateId], references: [id])
+
+  @@index([studentId])
+  @@index([orderId])
+  @@index([status])
+}
+
+model Order {
+  id           String       @id @default(uuid())
+  schoolId     String
+  orderNumber  String       @unique
+  status       OrderStatus  @default(DRAFT)
+  totalCards   Int          @default(0)
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+  submittedAt  DateTime?
+  approvedAt   DateTime?
+  approvedBy   String?
+  deliveries   Delivery[]
+  idCards      IdCard[]
+  school       School       @relation(fields: [schoolId], references: [id])
+  printBatches PrintBatch[]
+
+  @@index([schoolId])
+  @@index([status])
+  @@index([orderNumber])
+}
+
+model PrintBatch {
+  id          String         @id @default(uuid())
+  schoolId    String
+  orderId     String?
+  batchNumber String         @unique
+  status      PrintJobStatus @default(QUEUED)
+  totalCards  Int            @default(0)
+  pdfUrl      String?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  order       Order?         @relation(fields: [orderId], references: [id])
+  school      School         @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@index([status])
+}
+
+model Delivery {
+  id             String         @id @default(uuid())
+  schoolId       String
+  orderId        String?
+  trackingNumber String?
+  courierName    String?
+  status         DeliveryStatus @default(PACKED)
+  totalCards     Int            @default(0)
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  packedAt       DateTime?
+  dispatchedAt   DateTime?
+  deliveredAt    DateTime?
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  order          Order?         @relation(fields: [orderId], references: [id])
+  school         School         @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@index([status])
+  @@index([trackingNumber])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String?
+  schoolId  String?
+  type      NotificationType @default(SYSTEM)
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  actionUrl String?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  readAt    DateTime?
+  school    School?          @relation(fields: [schoolId], references: [id])
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([schoolId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  schoolId   String?
+  action     String
+  resource   String
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  school     School?  @relation(fields: [schoolId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([schoolId])
+  @@index([resource])
+  @@index([createdAt])
+}
+
+model DriveFile {
+  id           String   @id @default(uuid())
+  schoolId     String
+  driveId      String
+  fileName     String
+  mimeType     String
+  folderPath   String
+  webViewLink  String?
+  downloadLink String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  school       School   @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@index([driveId])
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+}
+
+enum StudentStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum IdCardStatus {
+  PENDING
+  APPROVED
+  DESIGNING
+  PRINTING
+  PRINTED
+  DISPATCHED
+  DELIVERED
+}
+
+enum PrintJobStatus {
+  QUEUED
+  PRINTING
+  COMPLETED
+  FAILED
+}
+
+enum DeliveryStatus {
+  PACKED
+  DISPATCHED
+  IN_TRANSIT
+  DELIVERED
+}
+
+enum OrderStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum NotificationType {
+  APPROVAL
+  WORKFLOW
+  SYSTEM
+  DELIVERY
+  PRINTING
+}
+
+enum Orientation {
+  HORIZONTAL
+  VERTICAL
+}
