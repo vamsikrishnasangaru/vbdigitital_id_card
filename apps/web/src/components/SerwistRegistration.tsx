@@ -119,31 +119,33 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
 
       if (cancelled) return;
 
-      // Warm route HTML (and let the SW cache /_next/static chunks loaded by the page).
-      let warmTimer: ReturnType<typeof setTimeout> | null = null;
-      warmPath = () => {
-        if (!navigator.onLine) return;
-        const path = window.location.pathname;
-        if (warmTimer) clearTimeout(warmTimer);
-        warmTimer = setTimeout(() => {
-          void fetch(path, {
-            credentials: 'include',
-            headers: { Accept: 'text/html,application/xhtml+xml' },
-          }).catch(() => undefined);
-        }, isDev ? 800 : 500);
-      };
+      // Dev-only: warming every navigation duplicates requests and slows the app.
+      if (isDev) {
+        let warmTimer: ReturnType<typeof setTimeout> | null = null;
+        warmPath = () => {
+          if (!navigator.onLine) return;
+          const path = window.location.pathname;
+          if (warmTimer) clearTimeout(warmTimer);
+          warmTimer = setTimeout(() => {
+            void fetch(path, {
+              credentials: 'include',
+              headers: { Accept: 'text/html,application/xhtml+xml' },
+            }).catch(() => undefined);
+          }, 800);
+        };
 
-      warmPath();
+        warmPath();
 
-      history.pushState = (...args) => {
-        pushState(...args);
-        warmPath?.();
-      };
-      history.replaceState = (...args) => {
-        replaceState(...args);
-        warmPath?.();
-      };
-      window.addEventListener('popstate', warmPath);
+        history.pushState = (...args) => {
+          pushState(...args);
+          warmPath?.();
+        };
+        history.replaceState = (...args) => {
+          replaceState(...args);
+          warmPath?.();
+        };
+        window.addEventListener('popstate', warmPath);
+      }
 
       registration.addEventListener('updatefound', () => {
         const worker = registration.installing;

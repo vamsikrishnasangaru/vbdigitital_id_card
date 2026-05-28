@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react';
 function OfflineSyncListener({ queryClient }: { queryClient: QueryClient }) {
   useEffect(() => {
     const onSyncComplete = () => {
-      void queryClient.invalidateQueries();
+      void queryClient.invalidateQueries({ refetchType: 'active' });
     };
     window.addEventListener('vb-offline-sync-complete', onSyncComplete);
     return () => window.removeEventListener('vb-offline-sync-complete', onSyncComplete);
@@ -32,7 +32,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
             staleTime: 1000 * 60 * 5,
             gcTime: 1000 * 60 * 60 * 24 * 7,
             networkMode: 'offlineFirst',
-            refetchOnReconnect: 'always',
+            refetchOnWindowFocus: false,
+            refetchOnReconnect: true,
+            refetchOnMount: true,
             retry: (failureCount, error) => {
               if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
               if (isNetworkError(error)) return failureCount < 1;

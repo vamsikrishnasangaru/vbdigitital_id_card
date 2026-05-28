@@ -196,7 +196,18 @@ html:not(.dark) .panel-toolbar {
     0 4px 12px oklch(0.25 0.04 260 / 0.05);
 }
 
+select {
+  color-scheme: light dark;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
 select option {
   background-color: var(--popover);
   color: var(--popover-foreground);
+}
+
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }

@@ -183,7 +183,7 @@ export default function ClassesPage() {
       offlineClasses.cacheTeachers(effectiveSchoolId, list);
       return list;
     },
-    enabled: !!effectiveSchoolId,
+    enabled: !!effectiveSchoolId && !!showAssign,
   });
 
   const filteredClasses = useMemo(() => {

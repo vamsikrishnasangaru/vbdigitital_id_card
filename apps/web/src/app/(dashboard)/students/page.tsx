@@ -219,19 +219,23 @@ export default function StudentsPage() {
     enabled: !!effectiveSchoolId,
   });
 
-  const { data: modalClasses = [] } = useQuery({
-    queryKey: ['classes', form.schoolId, 'enroll-modal'],
+  const enrollSchoolId = showCreate ? (form.schoolId || effectiveSchoolId) : '';
+  const { data: enrollClassesFetched = [], isFetching: loadingEnrollClasses } = useQuery({
+    queryKey: ['classes', enrollSchoolId],
     queryFn: async () => {
-      if (!form.schoolId) return [];
-      const { data } = await api.get(`/classes/school/${form.schoolId}`);
+      const { data } = await api.get(`/classes/school/${enrollSchoolId}`);
       const list = data || [];
-      offlineStore.cacheClasses(form.schoolId, list);
+      offlineStore.cacheClasses(enrollSchoolId, list);
       return list;
     },
-    enabled: showCreate && !!form.schoolId,
+    enabled: showCreate && !!enrollSchoolId,
+    staleTime: 1000 * 60 * 10,
   });
 
-  const enrollClasses = isSuperAdmin && showCreate ? modalClasses : classes;
+  const enrollClasses =
+    showCreate && enrollSchoolId === effectiveSchoolId && classes.length > 0
+      ? classes
+      : enrollClassesFetched;
 
   const { data: templates = [] } = useQuery({
     queryKey: ['templates', effectiveSchoolId],
@@ -545,6 +549,18 @@ export default function StudentsPage() {
             setPhoto(null);
             setPhotoPreview(null);
             setSections([]);
+            const prefetchSchoolId = isSuperAdmin ? form.schoolId || effectiveSchoolId : effectiveSchoolId;
+            if (prefetchSchoolId) {
+              void queryClient.prefetchQuery({
+                queryKey: ['classes', prefetchSchoolId],
+                queryFn: async () => {
+                  const { data } = await api.get(`/classes/school/${prefetchSchoolId}`);
+                  const list = data || [];
+                  offlineStore.cacheClasses(prefetchSchoolId, list);
+                  return list;
+                },
+              });
+            }
             setShowCreate(true);
           }} className="group relative flex items-center justify-center gap-2 px-6 py-3.5 bg-primary text-primary-foreground rounded-2xl text-sm font-black shadow-xl shadow-primary/20 hover:shadow-primary/40 active:scale-95 transition-all overflow-hidden w-full sm:w-auto">
             <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
@@ -1208,7 +1224,7 @@ export default function StudentsPage() {
       {showCreate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={() => setShowCreate(false)} />
-          <div className="relative bg-card border border-border w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+          <div className="relative bg-card border border-border w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] flex flex-col animate-in zoom-in-95 duration-300 min-h-0">
             {/* Modal Header */}
             <div className="p-8 border-b border-border flex justify-between items-center bg-muted/50 sticky top-0 z-20">
               <div className="flex items-center gap-4">
@@ -1296,7 +1312,9 @@ export default function StudentsPage() {
                         required
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
                       >
-                        <option value="">Select class</option>
+                        <option value="">
+                          {loadingEnrollClasses ? 'Loading classes…' : 'Select class'}
+                        </option>
                         {enrollClasses.map((c: { id: string; name: string }) => (
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}

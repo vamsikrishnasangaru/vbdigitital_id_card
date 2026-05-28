@@ -11,6 +11,8 @@ async function bootstrap() {
 
   // Increase body parser limits for large template configs
   const { json, urlencoded } = require('express');
+  const compression = require('compression');
+  app.use(compression());
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 

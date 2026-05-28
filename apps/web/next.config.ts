@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { randomUUID } from "node:crypto";
 import withSerwistInit from "@serwist/next";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -10,15 +9,23 @@ const withSerwist = withSerwistInit({
   swDest: "public/sw.js",
   /** Dev uses public/vb-offline-sw.js; do not rebuild or serve Serwist during next dev. */
   disable: isDevelopment || swDisabled,
+  /** Stable revision per deploy — avoids invalidating the entire SW cache on every build. */
   additionalPrecacheEntries: isDevelopment
     ? []
-    : [
-        { url: "/~offline", revision: randomUUID() },
-        { url: "/", revision: randomUUID() },
-        { url: "/students", revision: randomUUID() },
-        { url: "/classes", revision: randomUUID() },
-        { url: "/teachers", revision: randomUUID() },
-      ],
+    : (() => {
+        const revision =
+          process.env.RELEASE_REVISION ||
+          process.env.GITHUB_SHA ||
+          process.env.VERCEL_GIT_COMMIT_SHA ||
+          "1";
+        return [
+          { url: "/~offline", revision },
+          { url: "/", revision },
+          { url: "/students", revision },
+          { url: "/classes", revision },
+          { url: "/teachers", revision },
+        ];
+      })(),
 });
 
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace(/\/$/, '');
@@ -31,7 +38,12 @@ const nextConfig: NextConfig = {
      * Reduces bundle size by transforming imports for large libraries.
      * (Safe: does not change runtime behavior.)
      */
-    optimizePackageImports: ['lucide-react', 'date-fns'],
+    optimizePackageImports: [
+      'lucide-react',
+      'date-fns',
+      '@tanstack/react-query',
+      'sonner',
+    ],
   },
   async redirects() {
     return [

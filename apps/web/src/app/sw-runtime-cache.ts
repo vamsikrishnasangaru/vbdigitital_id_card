@@ -189,12 +189,13 @@ export const runtimeCaching: RuntimeCaching[] = [
       cacheName: "apis",
       plugins: [
         new ExpirationPlugin({
-          maxEntries: 16,
-          maxAgeSeconds: 1440 * 60,
+          maxEntries: 32,
+          maxAgeSeconds: 300,
           maxAgeFrom: "last-used",
         }),
       ],
-      networkTimeoutSeconds: 10,
+      /** Fail fast to cache so the UI does not hang on slow VPS links. */
+      networkTimeoutSeconds: 3,
     }),
   },
   {
