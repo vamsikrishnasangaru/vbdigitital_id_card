@@ -50,6 +50,8 @@ import { DesignerRestrictedWatermark, useRestrictedPreviewGuards } from './Desig
 import { useAuthStore } from '@/stores/auth-store';
 import { isRestrictedIdCardPreviewRole } from '@/lib/role-preview-access';
 
+type TransformerBox = { x: number; y: number; width: number; height: number; rotation: number };
+
 function DesignerCanvasGrid({ cardWidth, cardHeight }: { cardWidth: number; cardHeight: number }) {
   const { showGrid, guides, gridStep } = useDesignerSnap();
   return (
@@ -456,25 +458,22 @@ export function IdCardDesigner({
     );
   };
 
-  const constrainTransformBox = (oldBox: unknown, newBox: unknown): unknown => {
-    const oldRect = oldBox as Konva.RectConfig;
-    const newRect = newBox as Konva.RectConfig;
-
-    const nw = newRect.width ?? 0;
-    const nh = newRect.height ?? 0;
-    if (nw < 20 || nh < 12) return oldRect;
+  const constrainTransformBox = (oldBox: TransformerBox, newBox: TransformerBox): TransformerBox => {
+    const nw = newBox.width ?? 0;
+    const nh = newBox.height ?? 0;
+    if (nw < 20 || nh < 12) return oldBox;
     const width = Math.min(nw, CARD_WIDTH);
     const height = Math.min(nh, CARD_HEIGHT);
-    const x = Math.max(0, Math.min(CARD_WIDTH - width, newRect.x ?? 0));
-    const y = Math.max(0, Math.min(CARD_HEIGHT - height, newRect.y ?? 0));
+    const x = Math.max(0, Math.min(CARD_WIDTH - width, newBox.x ?? 0));
+    const y = Math.max(0, Math.min(CARD_HEIGHT - height, newBox.y ?? 0));
     return {
-      ...newRect,
+      ...newBox,
       x,
       y,
       width: Math.min(width, CARD_WIDTH - x),
       height: Math.min(height, CARD_HEIGHT - y),
-      rotation: newRect.rotation ?? 0,
-    } satisfies Konva.RectConfig;
+      rotation: newBox.rotation ?? 0,
+    };
   };
 
   const handleTransformEnd = (id: string, node: Konva.Node) => {
@@ -895,7 +894,7 @@ type DesignerEditorShellProps = {
   updatePosition: (id: string, x: number, y: number) => void;
   handleTransformEnd: (id: string, node: Konva.Node) => void;
   transformerRef: React.RefObject<Konva.Transformer | null>;
-  constrainTransformBox: (oldBox: unknown, newBox: unknown) => unknown;
+  constrainTransformBox: (oldBox: TransformerBox, newBox: TransformerBox) => TransformerBox;
   selected: DesignerElement | null;
   updateElement: (id: string, patch: Partial<DesignerElement>, recordHistory?: boolean) => void;
   deleteSelected: () => void;
