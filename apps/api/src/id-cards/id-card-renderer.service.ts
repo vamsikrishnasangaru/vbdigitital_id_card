@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as puppeteer from 'puppeteer';
+import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-launch';
 
 @Injectable()
 export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
@@ -13,10 +14,29 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    this.browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    await this.ensureBrowser();
+  }
+
+  private async ensureBrowser(): Promise<void> {
+    if (this.browser) return;
+
+    const launchOptions = getPuppeteerLaunchOptions();
+    const chromePath = launchOptions.executablePath ?? resolveChromeExecutable();
+    this.logger.log(
+      chromePath
+        ? `Launching Puppeteer with ${chromePath}`
+        : 'Launching Puppeteer with bundled Chrome (run: pnpm exec puppeteer browsers install chrome)',
+    );
+
+    try {
+      this.browser = await puppeteer.launch(launchOptions);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Puppeteer failed: ${message}. On VPS: apt install chromium-browser, or set PUPPETEER_EXECUTABLE_PATH in .env, or run "cd apps/api && pnpm exec puppeteer browsers install chrome".`,
+      );
+      throw error;
+    }
   }
 
   async onModuleDestroy() {
@@ -45,7 +65,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async capturePdf(url: string, options: Record<string, unknown>): Promise<Buffer> {
-    if (!this.browser) await this.onModuleInit();
+    if (!this.browser) await this.ensureBrowser();
     const page = await this.browser!.newPage();
 
     try {

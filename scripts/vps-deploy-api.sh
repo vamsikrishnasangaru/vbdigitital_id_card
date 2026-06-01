@@ -31,6 +31,8 @@ fi
 
 pnpm --filter @repo/db run generate
 
+bash "$APP_ROOT/scripts/vps-install-chrome.sh"
+
 cd "$API_DIR"
 pnpm run build
 
