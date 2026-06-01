@@ -521,7 +521,7 @@ function stripLegacyStudentPhotoBorder(el: DesignerElement): DesignerElement {
     c.startsWith('#dc') ||
     c.startsWith('#b91') ||
     c.startsWith('#f00');
-  if (!isRedFrame && el.imageUrl) return el;
+  if (!isRedFrame) return el;
   const { borderWidth: _bw, borderColor: _bc, borderStyle: _bs, ...rest } = el;
   return rest as DesignerElement;
 }
@@ -560,6 +560,10 @@ export function sanitizeElement(el: DesignerElement, orientation: 'HORIZONTAL' |
   }
 
   if (next.type === 'text' && next.borderColor?.trim() && getEffectiveBorderWidth(next) !== (next.borderWidth ?? 0)) {
+    next = { ...next, borderWidth: getEffectiveBorderWidth(next) };
+  }
+
+  if (isMediaElement(next) && next.borderColor?.trim() && getEffectiveBorderWidth(next) !== (next.borderWidth ?? 0)) {
     next = { ...next, borderWidth: getEffectiveBorderWidth(next) };
   }
 

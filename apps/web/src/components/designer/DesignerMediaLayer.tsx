@@ -87,7 +87,7 @@ export function DesignerMediaLayer({
   const [image, status] = useCorsImage(imageUrl || '');
   const imageRef = useRef<Konva.Image>(null);
   const isStudentPhoto = el.type === 'photo' || el.fieldType === 'studentPhoto';
-  const borderW = isStudentPhoto ? 0 : getEffectiveBorderWidth(el) * ppiRatio;
+  const borderW = getEffectiveBorderWidth(el) * ppiRatio;
   const shape = (el.photoShape || 'rectangle') as PhotoShape;
   const cornerRadius = (el.cornerRadius ?? 8) * ppiRatio;
   const adjust = el.colorAdjust || {};
@@ -186,7 +186,7 @@ export function DesignerMediaLayer({
         />
       )}
 
-      {!imageUrl && !selected && isStudentPhoto && (
+      {!imageUrl && !selected && isStudentPhoto && borderW === 0 && (
         <ShapeOutline
           shape={shape}
           w={w}
