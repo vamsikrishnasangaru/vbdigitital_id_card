@@ -8,17 +8,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { useState, useEffect } from 'react';
-function OfflineSyncListener({ queryClient }: { queryClient: QueryClient }) {
-  useEffect(() => {
-    const onSyncComplete = () => {
-      void queryClient.invalidateQueries({ refetchType: 'active' });
-    };
-    window.addEventListener('vb-offline-sync-complete', onSyncComplete);
-    return () => window.removeEventListener('vb-offline-sync-complete', onSyncComplete);
-  }, [queryClient]);
-  return null;
-}
-
 function isNetworkError(error: unknown): boolean {
   const err = error as { response?: unknown; code?: string };
   return !err.response || err.code === 'ERR_NETWORK';
@@ -78,9 +67,19 @@ export function Providers({ children }: { children: React.ReactNode }) {
       {mounted && persister ? (
         <PersistQueryClientProvider
           client={queryClient}
-          persistOptions={{ persister, maxAge: 1000 * 60 * 60 * 24 * 7 }}
+          persistOptions={{
+            persister,
+            maxAge: 1000 * 60 * 60 * 24,
+            dehydrateOptions: {
+              shouldDehydrateQuery: (query) => {
+                if (query.state.status !== 'success') return false;
+                const root = query.queryKey[0];
+                if (root === 'templates') return false;
+                return true;
+              },
+            },
+          }}
         >
-          <OfflineSyncListener queryClient={queryClient} />
           <OfflineSyncProvider>{children}</OfflineSyncProvider>
         </PersistQueryClientProvider>
       ) : (

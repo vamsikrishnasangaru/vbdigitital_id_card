@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -23,6 +24,8 @@ export type OfflineSyncState = {
 
 const OfflineSyncContext = createContext<OfflineSyncState | null>(null);
 
+const REFRESH_INTERVAL_MS = 60_000;
+
 function useOfflineSyncInternal(): OfflineSyncState {
   const queryClient = useQueryClient();
   const [isOffline, setIsOffline] = useState(false);
@@ -30,6 +33,7 @@ function useOfflineSyncInternal(): OfflineSyncState {
   const [offlineStudentCount, setOfflineStudentCount] = useState(0);
   const [offlineClassCount, setOfflineClassCount] = useState(0);
   const [offlineTeacherCount, setOfflineTeacherCount] = useState(0);
+  const invalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refreshCounts = useCallback(async () => {
     setPendingCount(await syncEngine.getQueueLength());
@@ -38,14 +42,22 @@ function useOfflineSyncInternal(): OfflineSyncState {
     setOfflineTeacherCount(offlineStore.getPendingTeacherCount());
   }, []);
 
-  const invalidateAll = useCallback(() => {
+  const invalidateActiveLists = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['students'], refetchType: 'active' });
     void queryClient.invalidateQueries({ queryKey: ['templates'], refetchType: 'active' });
     void queryClient.invalidateQueries({ queryKey: ['classes'], refetchType: 'active' });
-    void queryClient.invalidateQueries({ queryKey: ['assignments'], refetchType: 'active' });
+    void queryClient.invalidateQueries({ queryKey: ['teachers'], refetchType: 'active' });
     void queryClient.invalidateQueries({ queryKey: ['teachers-minimal'], refetchType: 'active' });
     void queryClient.invalidateQueries({ queryKey: ['students-batch'], refetchType: 'active' });
   }, [queryClient]);
+
+  const scheduleInvalidate = useCallback(() => {
+    if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+    invalidateTimerRef.current = setTimeout(() => {
+      invalidateTimerRef.current = null;
+      invalidateActiveLists();
+    }, 400);
+  }, [invalidateActiveLists]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -64,22 +76,23 @@ function useOfflineSyncInternal(): OfflineSyncState {
     window.addEventListener('vb-sync-queue-changed', refreshCounts);
     const onDataChanged = () => {
       void refreshCounts();
-      invalidateAll();
+      scheduleInvalidate();
     };
     window.addEventListener('vb-offline-data-changed', onDataChanged);
-    window.addEventListener('vb-offline-sync-complete', invalidateAll);
+    window.addEventListener('vb-offline-sync-complete', scheduleInvalidate);
 
-    const interval = window.setInterval(refreshCounts, 8000);
+    const interval = window.setInterval(refreshCounts, REFRESH_INTERVAL_MS);
 
     return () => {
       window.removeEventListener('online', syncOnline);
       window.removeEventListener('offline', syncOnline);
       window.removeEventListener('vb-sync-queue-changed', refreshCounts);
       window.removeEventListener('vb-offline-data-changed', onDataChanged);
-      window.removeEventListener('vb-offline-sync-complete', invalidateAll);
+      window.removeEventListener('vb-offline-sync-complete', scheduleInvalidate);
       window.clearInterval(interval);
+      if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
     };
-  }, [refreshCounts, invalidateAll]);
+  }, [refreshCounts, scheduleInvalidate]);
 
   return {
     isOffline,

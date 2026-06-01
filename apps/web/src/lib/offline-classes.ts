@@ -55,11 +55,13 @@ function readLocal<T>(key: string, fallback: T): T {
   return safeParse(localStorage.getItem(key), fallback);
 }
 
-function writeLocal(key: string, value: unknown) {
+function writeLocal(key: string, value: unknown, options?: { notify?: boolean }) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    window.dispatchEvent(new CustomEvent('vb-offline-data-changed'));
+    if (options?.notify !== false) {
+      window.dispatchEvent(new CustomEvent('vb-offline-data-changed'));
+    }
   } catch (e) {
     console.warn('offline-classes: write failed', key, e);
   }
@@ -104,8 +106,8 @@ function getClassesMap(): Record<string, OfflineClass[]> {
   return readLocal<Record<string, OfflineClass[]>>(KEYS.classesBySchool, {});
 }
 
-function saveClassesMap(map: Record<string, OfflineClass[]>) {
-  writeLocal(KEYS.classesBySchool, map);
+function saveClassesMap(map: Record<string, OfflineClass[]>, notify = true) {
+  writeLocal(KEYS.classesBySchool, map, { notify });
 }
 
 function getSchoolClasses(schoolId: string): OfflineClass[] {
@@ -200,7 +202,7 @@ export const offlineClasses = {
     });
 
     map[schoolId] = [...offlineOnlyClasses, ...mergedServer];
-    saveClassesMap(map);
+    saveClassesMap(map, false);
   },
 
   cacheAssignments(schoolId: string, serverAssignments: unknown[]) {
@@ -213,7 +215,7 @@ export const offlineClasses = {
     const serverIds = new Set(serverList.map((a) => a.id));
     const offlineOnly = existing.filter((a) => a._offline && !serverIds.has(a.id));
     map[schoolId] = [...serverList, ...offlineOnly];
-    writeLocal(KEYS.assignmentsBySchool, map);
+    writeLocal(KEYS.assignmentsBySchool, map, { notify: false });
   },
 
   getAssignments(schoolId: string): OfflineTeacherAssignment[] | null {
@@ -229,7 +231,7 @@ export const offlineClasses = {
   cacheTeachers(schoolId: string, teachers: unknown[]) {
     const map = readLocal<Record<string, OfflineTeacherMinimal[]>>(KEYS.teachersBySchool, {});
     map[schoolId] = teachers as OfflineTeacherMinimal[];
-    writeLocal(KEYS.teachersBySchool, map);
+    writeLocal(KEYS.teachersBySchool, map, { notify: false });
   },
 
   getTeachers(schoolId: string): OfflineTeacherMinimal[] | null {

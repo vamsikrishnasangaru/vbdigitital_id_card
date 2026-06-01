@@ -32,7 +32,6 @@ export function getCachedClassesForSchool(schoolId: string): ClassPickerOption[]
 export async function fetchClassesPicker(schoolId: string): Promise<ClassPickerOption[]> {
   const { data } = await api.get(`/classes/school/${schoolId}/picker`);
   const list = (data || []) as ClassPickerOption[];
-  offlineStore.cacheClasses(schoolId, list);
   offlineClasses.cacheClasses(schoolId, list);
   return list;
 }

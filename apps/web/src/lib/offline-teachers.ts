@@ -52,11 +52,13 @@ function readLocal<T>(key: string, fallback: T): T {
   return safeParse(localStorage.getItem(key), fallback);
 }
 
-function writeLocal(key: string, value: unknown) {
+function writeLocal(key: string, value: unknown, options?: { notify?: boolean }) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    window.dispatchEvent(new CustomEvent('vb-offline-data-changed'));
+    if (options?.notify !== false) {
+      window.dispatchEvent(new CustomEvent('vb-offline-data-changed'));
+    }
   } catch (e) {
     console.warn('offline-teachers: write failed', key, e);
   }
@@ -130,11 +132,11 @@ function getCachedBySchool(): Record<string, OfflineTeacherRecord[]> {
   return readLocal<Record<string, OfflineTeacherRecord[]>>(KEYS.teachersFullBySchool, {});
 }
 
-function saveCachedBySchool(map: Record<string, OfflineTeacherRecord[]>) {
-  writeLocal(KEYS.teachersFullBySchool, map);
+function saveCachedBySchool(map: Record<string, OfflineTeacherRecord[]>, notify = true) {
+  writeLocal(KEYS.teachersFullBySchool, map, { notify });
 }
 
-function syncMinimalPicker(schoolId: string, teachers: OfflineTeacherRecord[]) {
+function syncMinimalPicker(schoolId: string, teachers: OfflineTeacherRecord[], notify = true) {
   const map = readLocal<Record<string, { id: string; firstName: string; lastName: string; email: string; schoolId?: string }[]>>(
     KEYS.teachersBySchool,
     {},
@@ -146,7 +148,7 @@ function syncMinimalPicker(schoolId: string, teachers: OfflineTeacherRecord[]) {
     email: t.email,
     schoolId: t.schoolId,
   }));
-  writeLocal(KEYS.teachersBySchool, map);
+  writeLocal(KEYS.teachersBySchool, map, { notify });
 }
 
 function teacherMatchesFilters(
@@ -180,8 +182,8 @@ export const offlineTeachers = {
     );
     const merged = applyPatches([...pendingOnly, ...offlineOnly, ...serverList]);
     map[schoolId] = merged;
-    saveCachedBySchool(map);
-    syncMinimalPicker(schoolId, filterDeleted(merged));
+    saveCachedBySchool(map, false);
+    syncMinimalPicker(schoolId, filterDeleted(merged), false);
   },
 
   getTeachersResponse(

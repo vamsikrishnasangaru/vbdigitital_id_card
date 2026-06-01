@@ -56,11 +56,13 @@ function readLocal<T>(key: string, fallback: T): T {
   return safeParse(localStorage.getItem(key), fallback);
 }
 
-function writeLocal(key: string, value: unknown) {
+function writeLocal(key: string, value: unknown, options?: { notify?: boolean }) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
-    window.dispatchEvent(new CustomEvent('vb-offline-data-changed'));
+    if (options?.notify !== false) {
+      window.dispatchEvent(new CustomEvent('vb-offline-data-changed'));
+    }
   } catch (e) {
     console.warn('offline-store: failed to write', key, e);
   }
@@ -188,7 +190,7 @@ export const offlineStore = {
   cacheTemplates(schoolId: string, templates: unknown[]) {
     const map = readLocal<Record<string, unknown[]>>(OFFLINE_STORAGE_KEYS.templatesBySchool, {});
     map[schoolId] = templates;
-    writeLocal(OFFLINE_STORAGE_KEYS.templatesBySchool, map);
+    writeLocal(OFFLINE_STORAGE_KEYS.templatesBySchool, map, { notify: false });
   },
 
   getTemplates(schoolId: string): unknown[] | null {
@@ -199,7 +201,7 @@ export const offlineStore = {
   cacheClasses(schoolId: string, classes: unknown[]) {
     const map = readLocal<Record<string, unknown[]>>(OFFLINE_STORAGE_KEYS.classesBySchool, {});
     map[schoolId] = classes;
-    writeLocal(OFFLINE_STORAGE_KEYS.classesBySchool, map);
+    writeLocal(OFFLINE_STORAGE_KEYS.classesBySchool, map, { notify: false });
   },
 
   getClasses(schoolId: string): unknown[] | null {
@@ -208,7 +210,7 @@ export const offlineStore = {
   },
 
   cacheSchools(schools: unknown[]) {
-    writeLocal(OFFLINE_STORAGE_KEYS.schools, schools);
+    writeLocal(OFFLINE_STORAGE_KEYS.schools, schools, { notify: false });
   },
 
   getSchools(): unknown[] | null {
