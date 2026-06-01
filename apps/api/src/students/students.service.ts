@@ -136,10 +136,52 @@ export class StudentsService {
 
   async update(id: string, data: any) {
     await this.findOne(id);
+    const {
+      photo,
+      dateOfBirth,
+      bloodGroup,
+      emergencyContact,
+      transportDetails,
+      parentName,
+      parentPhone,
+      address,
+      firstName,
+      lastName,
+      rollNumber,
+      schoolId,
+      classId,
+      sectionId,
+      photoUrl,
+      ...rest
+    } = data;
+
+    const payload: Record<string, unknown> = { ...rest };
+
+    if (schoolId !== undefined) payload.schoolId = schoolId;
+    if (classId !== undefined) payload.classId = classId;
+    if (sectionId !== undefined) payload.sectionId = sectionId;
+    if (firstName !== undefined) payload.firstName = String(firstName).trim();
+    if (lastName !== undefined) payload.lastName = String(lastName).trim();
+    if (rollNumber !== undefined) payload.rollNumber = String(rollNumber).trim();
+    if (parentName !== undefined) payload.parentName = parentName ? String(parentName).trim() : null;
+    if (parentPhone !== undefined) payload.parentPhone = parentPhone ? String(parentPhone).trim() : null;
+    if (address !== undefined) payload.address = address ? String(address).trim() : null;
+    if (bloodGroup !== undefined) payload.bloodGroup = bloodGroup ? String(bloodGroup).trim() : null;
+    if (emergencyContact !== undefined) {
+      payload.emergencyContact = emergencyContact ? String(emergencyContact).trim() : null;
+    }
+    if (transportDetails !== undefined) {
+      payload.transportDetails = transportDetails ? String(transportDetails).trim() : null;
+    }
+    if (photoUrl !== undefined) payload.photoUrl = photoUrl;
+    if (dateOfBirth !== undefined) {
+      payload.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    }
+
     return this.prisma.student.update({
       where: { id },
-      data,
-      include: { class: true, section: true },
+      data: payload,
+      include: { class: true, section: true, school: true },
     });
   }
 

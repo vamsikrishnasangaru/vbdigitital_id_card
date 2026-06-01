@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   Plus, Search, Users, Loader2, Check, X,
   Eye, Trash2, Download, GraduationCap, Phone,
-  CreditCard, Building2, Layers,
+  CreditCard, Building2, Layers, Pencil,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn, resolveMediaUrl } from '@/lib/utils';
@@ -84,6 +84,7 @@ export default function StudentsPage() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
   const [showCreate, setShowCreate] = useState(false);
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [sections, setSections] = useState<any[]>([]);
   const [form, setForm] = useState<any>({
     schoolId: '',
@@ -315,6 +316,109 @@ export default function StudentsPage() {
   const isFilterPending =
     search.trim() !== deferredSearch || templateCode.trim() !== deferredTemplateCode;
 
+  const resetEnrollForm = () => {
+    setEditingStudentId(null);
+    setPhoto(null);
+    setPhotoPreview(null);
+    setForm({
+      schoolId: effectiveSchoolId || '',
+      classId: '',
+      sectionId: '',
+      firstName: '',
+      lastName: '',
+      rollNumber: '',
+      admissionNumber: '',
+      parentName: '',
+      parentPhone: '',
+      bloodGroup: '',
+      address: '',
+      dateOfBirth: '',
+      emergencyContact: '',
+      transportDetails: '',
+    });
+    setSections([]);
+  };
+
+  const closeEnrollModal = () => {
+    setShowCreate(false);
+    resetEnrollForm();
+  };
+
+  const openCreateStudent = async () => {
+    resetEnrollForm();
+    const schoolId = effectiveSchoolId || '';
+    setForm((prev) => ({ ...prev, schoolId }));
+    const primary = isTeacher && teacherAssignments[0] ? teacherAssignments[0] : null;
+    if (primary && schoolId) {
+      const cached = getCachedClassesForSchool(schoolId) ?? classes;
+      const cls = cached.find((c) => c.id === primary.class.id);
+      setSections(cls?.sections || []);
+      setForm((prev) => ({
+        ...prev,
+        schoolId,
+        classId: primary.class.id,
+        sectionId: primary.section.id,
+      }));
+    }
+    if (schoolId) {
+      await queryClient.ensureQueryData({
+        queryKey: classesQueryKey(schoolId),
+        queryFn: () => fetchClassesPicker(schoolId),
+        staleTime: classesQueryStaleTime(),
+      });
+    }
+    setShowCreate(true);
+  };
+
+  const openEditStudent = (student: {
+    id: string;
+    schoolId?: string;
+    classId?: string;
+    sectionId?: string;
+    class?: { id: string; name?: string; sections?: { id: string; name: string }[] };
+    section?: { id: string; name?: string };
+    firstName?: string;
+    lastName?: string;
+    rollNumber?: string | null;
+    admissionNumber?: string;
+    parentName?: string | null;
+    parentPhone?: string | null;
+    bloodGroup?: string | null;
+    address?: string | null;
+    dateOfBirth?: string | null;
+    emergencyContact?: string | null;
+    transportDetails?: string | null;
+    photoUrl?: string | null;
+  }) => {
+    const schoolId = student.schoolId || effectiveSchoolId || '';
+    const classId = student.classId || student.class?.id || '';
+    const sectionId = student.sectionId || student.section?.id || '';
+    const cls = classes.find((c: { id: string }) => c.id === classId);
+
+    setEditingStudentId(student.id);
+    setForm({
+      schoolId,
+      classId,
+      sectionId,
+      firstName: student.firstName || '',
+      lastName: student.lastName || '',
+      rollNumber: student.rollNumber || '',
+      admissionNumber: student.admissionNumber || '',
+      parentName: student.parentName || '',
+      parentPhone: student.parentPhone || '',
+      bloodGroup: student.bloodGroup || '',
+      address: student.address || '',
+      dateOfBirth: student.dateOfBirth ? String(student.dateOfBirth).slice(0, 10) : '',
+      emergencyContact: student.emergencyContact || '',
+      transportDetails: student.transportDetails || '',
+    });
+    setPhoto(null);
+    setPhotoPreview(student.photoUrl ? studentPhotoSrc(student.photoUrl) : null);
+    setSections(cls?.sections || student.class?.sections || []);
+    setViewStudent(null);
+    setShowCreate(true);
+  };
+
   // Mutations
   const createMutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -328,31 +432,30 @@ export default function StudentsPage() {
       } else {
         toast.success('Student record created successfully');
       }
-      setShowCreate(false);
-      setPhoto(null);
-      setPhotoPreview(null);
-      setForm({
-        schoolId: effectiveSchoolId || '',
-        classId: '',
-        sectionId: '',
-        firstName: '',
-        lastName: '',
-        rollNumber: '',
-        admissionNumber: '',
-        parentName: '',
-        parentPhone: '',
-        bloodGroup: '',
-        address: '',
-        dateOfBirth: '',
-        emergencyContact: '',
-        transportDetails: '',
-      });
-      setSections([]);
+      closeEnrollModal();
       queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Failed to create student');
     }
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: Record<string, unknown>;
+    }) => api.put(`/students/${id}`, payload),
+    onSuccess: () => {
+      toast.success('Student updated successfully');
+      closeEnrollModal();
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to update student');
+    },
   });
 
   const statusMutation = useMutation({
@@ -491,13 +594,48 @@ export default function StudentsPage() {
     setPhotoPreview(previewUrl);
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const schoolId = isSuperAdmin ? form.schoolId : effectiveSchoolId;
     if (!schoolId) {
       toast.error('Select a school first');
       return;
     }
+
+    if (editingStudentId) {
+      let photoUrl: string | undefined;
+      if (photo) {
+        const uploadData = new FormData();
+        uploadData.append('file', photo);
+        const { data } = await api.post<{ url: string }>(
+          `/uploads?dir=schools/${schoolId}/students`,
+          uploadData,
+        );
+        photoUrl = data.url;
+      }
+
+      updateMutation.mutate({
+        id: editingStudentId,
+        payload: {
+          schoolId,
+          classId: form.classId,
+          sectionId: form.sectionId,
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim(),
+          rollNumber: form.rollNumber.trim(),
+          parentName: form.parentName.trim(),
+          parentPhone: form.parentPhone.trim(),
+          address: form.address.trim(),
+          bloodGroup: form.bloodGroup?.trim() || null,
+          dateOfBirth: form.dateOfBirth || null,
+          emergencyContact: form.emergencyContact?.trim() || null,
+          transportDetails: form.transportDetails?.trim() || null,
+          ...(photoUrl ? { photoUrl } : {}),
+        },
+      });
+      return;
+    }
+
     const formData = new FormData();
     formData.append('schoolId', schoolId);
     formData.append('classId', form.classId);
@@ -594,45 +732,11 @@ export default function StudentsPage() {
           >
             <Download className="h-4 w-4 shrink-0" /> Export CSV
           </button>
-          <button onClick={() => {
-            void (async () => {
-              const primary = isTeacher && teacherAssignments[0] ? teacherAssignments[0] : null;
-              const schoolId = effectiveSchoolId || '';
-              setForm({
-                schoolId,
-                classId: primary?.class.id || '',
-                sectionId: primary?.section.id || '',
-                firstName: '',
-                lastName: '',
-                rollNumber: '',
-                admissionNumber: '',
-                parentName: '',
-                parentPhone: '',
-                bloodGroup: '',
-                address: '',
-                dateOfBirth: '',
-                emergencyContact: '',
-                transportDetails: '',
-              });
-              setPhoto(null);
-              setPhotoPreview(null);
-              if (primary && schoolId) {
-                const cached = getCachedClassesForSchool(schoolId) ?? classes;
-                const cls = cached.find((c) => c.id === primary.class.id);
-                setSections(cls?.sections || []);
-              } else {
-                setSections([]);
-              }
-              if (schoolId) {
-                await queryClient.ensureQueryData({
-                  queryKey: classesQueryKey(schoolId),
-                  queryFn: () => fetchClassesPicker(schoolId),
-                  staleTime: classesQueryStaleTime(),
-                });
-              }
-              setShowCreate(true);
-            })();
-          }} className="group relative flex items-center justify-center gap-2 px-6 py-3.5 bg-primary text-primary-foreground rounded-2xl text-sm font-black shadow-xl shadow-primary/20 hover:shadow-primary/40 active:scale-95 transition-all overflow-hidden w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => void openCreateStudent()}
+            className="group relative flex items-center justify-center gap-2 px-6 py-3.5 bg-primary text-primary-foreground rounded-2xl text-sm font-black shadow-xl shadow-primary/20 hover:shadow-primary/40 active:scale-95 transition-all overflow-hidden w-full sm:w-auto"
+          >
             <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
             <Plus className="h-5 w-5" /> Enroll Student
           </button>
@@ -1259,6 +1363,14 @@ export default function StudentsPage() {
               </button>
               <button
                 type="button"
+                onClick={() => openEditStudent(viewStudent)}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-card border border-border hover:bg-muted transition-colors flex items-center gap-2"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </button>
+              <button
+                type="button"
                 onClick={() => openCardPreview(viewStudent)}
                 disabled={!selectedTemplateId}
                 className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
@@ -1298,7 +1410,7 @@ export default function StudentsPage() {
       {/* Enrollment Modal (Full Screen Glassmorphism) */}
       {showCreate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={() => setShowCreate(false)} />
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={closeEnrollModal} />
           <div className="relative bg-card border border-border w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] flex flex-col animate-in zoom-in-95 duration-300 min-h-0">
             {/* Modal Header */}
             <div className="p-8 border-b border-border flex justify-between items-center bg-muted/50 sticky top-0 z-20">
@@ -1307,17 +1419,23 @@ export default function StudentsPage() {
                   <Users className="h-7 w-7 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-black text-foreground">Add New Student</h3>
-                  <p className="text-muted-foreground text-sm font-medium">Enter the student details below to add them to the system.</p>
+                  <h3 className="text-2xl font-black text-foreground">
+                    {editingStudentId ? 'Edit Student' : 'Add New Student'}
+                  </h3>
+                  <p className="text-muted-foreground text-sm font-medium">
+                    {editingStudentId
+                      ? 'Update the student details below and save your changes.'
+                      : 'Enter the student details below to add them to the system.'}
+                  </p>
                 </div>
               </div>
-              <button onClick={() => setShowCreate(false)} className="p-3 hover:bg-muted rounded-2xl transition-colors">
+              <button type="button" onClick={closeEnrollModal} className="p-3 hover:bg-muted rounded-2xl transition-colors">
                 <X className="h-6 w-6 text-muted-foreground" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleCreate} className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 custom-scrollbar">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                 {/* Visual Identity Section */}
                 <div className="lg:col-span-4 space-y-6">
@@ -1557,23 +1675,23 @@ export default function StudentsPage() {
                   <div className="flex justify-end gap-4 pt-6">
                     <button 
                       type="button" 
-                      onClick={() => setShowCreate(false)} 
+                      onClick={closeEnrollModal} 
                       className="px-8 py-4 text-sm font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
                     >
                       Dismiss
                     </button>
                     <button 
                       type="submit" 
-                      disabled={createMutation.isPending} 
+                      disabled={createMutation.isPending || updateMutation.isPending} 
                       className="px-10 py-4 bg-primary text-primary-foreground rounded-2xl text-sm font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:shadow-primary/40 active:scale-95 disabled:opacity-50 flex items-center gap-3 transition-all"
                     >
-                      {createMutation.isPending ? (
+                      {(createMutation.isPending || updateMutation.isPending) ? (
                         <>
                           <Loader2 className="h-5 w-5 animate-spin" />
-                          ADDING...
+                          {editingStudentId ? 'SAVING...' : 'ADDING...'}
                         </>
                       ) : (
-                        'ADD STUDENT'
+                        editingStudentId ? 'SAVE CHANGES' : 'ADD STUDENT'
                       )}
                     </button>
                   </div>
