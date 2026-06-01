@@ -662,7 +662,7 @@ export function IdCardDesigner({
         className="bg-white overflow-hidden"
         style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
       >
-        <Stage width={CARD_WIDTH} height={CARD_HEIGHT} ref={stageRef}>
+        <Stage width={CARD_WIDTH} height={CARD_HEIGHT} pixelRatio={2} ref={stageRef}>
           <Layer clipX={0} clipY={0} clipWidth={CARD_WIDTH} clipHeight={CARD_HEIGHT}>
             {parsedBg.mode === 'solid' && (
               <Rect width={CARD_WIDTH} height={CARD_HEIGHT} fill={parsedBg.solidColor || '#1e40af'} />

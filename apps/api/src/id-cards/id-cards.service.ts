@@ -76,6 +76,7 @@ export class IdCardsService {
           templateId,
           studentId,
           renderToken,
+          template.orientation as Orientation,
         );
         files.push({
           name: `${idCardFileBaseName(student)}.png`,
