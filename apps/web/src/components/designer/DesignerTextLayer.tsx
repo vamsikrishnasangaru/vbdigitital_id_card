@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { Group, Text, Rect } from 'react-konva';
 import Konva from 'konva';
 import type { DesignerElement } from '@/lib/designer-utils';
-import { getKonvaFontStyle } from '@/lib/designer-utils';
+import { getDashPattern, getKonvaFontStyle } from '@/lib/designer-utils';
 import { useLayerSnapDrag } from './useLayerSnapDrag';
 
 interface DesignerTextLayerProps {
@@ -43,6 +43,7 @@ export function DesignerTextLayer({
   const hasBoxWidth = el.width != null && el.width > 0;
   const previewFontSize = el.fontSize ?? PREVIEW_FONT_SIZE;
   const frameSize = frameSizeRef.current;
+  const borderW = (el.borderWidth ?? 0) * ppiRatio;
 
   const { groupRef, dragBoundFunc, onDragStart, onDragEnd: onDragEndKonva } = useLayerSnapDrag(
     el,
@@ -86,6 +87,18 @@ export function DesignerTextLayer({
           listening={false}
         />
       )}
+      {borderW > 0 && (
+        <Rect
+          x={0}
+          y={0}
+          width={frameSize.width}
+          height={frameSize.height}
+          stroke={el.borderColor || '#000000'}
+          strokeWidth={borderW}
+          dash={getDashPattern(el.borderStyle, borderW)}
+          listening={false}
+        />
+      )}
       <Text
         ref={textRef}
         text={text}
@@ -95,8 +108,8 @@ export function DesignerTextLayer({
         fontStyle={getKonvaFontStyle(el)}
         textDecoration={el.textDecoration || ''}
         fill={el.fill ?? PREVIEW_FILL}
-        stroke={el.strokeWidth && el.stroke ? el.stroke : undefined}
-        strokeWidth={el.strokeWidth ? el.strokeWidth * ppiRatio : 0}
+        stroke={(el.strokeWidth ?? 0) > 0 && el.stroke ? el.stroke : undefined}
+        strokeWidth={(el.strokeWidth ?? 0) > 0 ? (el.strokeWidth ?? 1) * ppiRatio : 0}
       />
     </Group>
   );

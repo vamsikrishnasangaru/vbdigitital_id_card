@@ -236,6 +236,28 @@ function PositionControls({
   );
 }
 
+function colorPatchWithBorder(
+  color: string | undefined,
+  currentWidth?: number,
+): Partial<DesignerElement> {
+  if (!color) return { borderColor: color };
+  return {
+    borderColor: color,
+    ...(!(currentWidth != null && currentWidth > 0) ? { borderWidth: 1 } : {}),
+  };
+}
+
+function colorPatchWithStroke(
+  color: string | undefined,
+  currentWidth?: number,
+): Partial<DesignerElement> {
+  if (!color) return { stroke: color };
+  return {
+    stroke: color,
+    ...(!(currentWidth != null && currentWidth > 0) ? { strokeWidth: 1 } : {}),
+  };
+}
+
 function ColorRow({
   label,
   value,
@@ -359,7 +381,11 @@ export function DesignerPropertiesPanel({
             </Select>
           </div>
           <ColorRow label="Text color" value={selected.fill ?? ''} onChange={(v) => onUpdate({ fill: v })} />
-          <ColorRow label="Text stroke" value={selected.stroke ?? ''} onChange={(v) => onUpdate({ stroke: v })} />
+          <ColorRow
+            label="Text stroke"
+            value={selected.stroke ?? ''}
+            onChange={(v) => onUpdate(colorPatchWithStroke(v, selected.strokeWidth))}
+          />
           <div className="space-y-1.5">
             <Label>Text box width (px)</Label>
             <p className="text-[9px] text-white/25">Optional — set to wrap long text; leave empty for auto width</p>
@@ -383,6 +409,38 @@ export function DesignerPropertiesPanel({
               value={numInputValue(selected.strokeWidth)}
               onChange={(e) => onUpdate({ strokeWidth: parseNumInput(e.target.value) })}
             />
+          </div>
+          <ColorRow
+            label="Border color"
+            value={selected.borderColor ?? ''}
+            onChange={(v) => onUpdate(colorPatchWithBorder(v, selected.borderWidth))}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label>Border width</Label>
+              <Input
+                type="number"
+                min={0}
+                max={20}
+                placeholder="0"
+                value={numInputValue(selected.borderWidth)}
+                onChange={(e) => onUpdate({ borderWidth: parseNumInput(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Border style</Label>
+              <Select
+                value={selected.borderStyle ?? ''}
+                onChange={(e) =>
+                  onUpdate({ borderStyle: (e.target.value || undefined) as DesignerElement['borderStyle'] })
+                }
+              >
+                <option value="" className="bg-zinc-900">Default</option>
+                {BORDER_STYLES.map((b) => (
+                  <option key={b.id} value={b.id} className="bg-zinc-900">{b.label}</option>
+                ))}
+              </Select>
+            </div>
           </div>
         </>
       )}
@@ -452,7 +510,11 @@ export function DesignerPropertiesPanel({
               Center on card
             </button>
           )}
-          <ColorRow label="Border color" value={selected.borderColor ?? ''} onChange={(v) => onUpdate({ borderColor: v })} />
+          <ColorRow
+            label="Border color"
+            value={selected.borderColor ?? ''}
+            onChange={(v) => onUpdate(colorPatchWithBorder(v, selected.borderWidth))}
+          />
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
               <Label>Border width</Label>
