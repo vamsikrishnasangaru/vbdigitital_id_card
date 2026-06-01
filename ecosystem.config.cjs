@@ -17,6 +17,7 @@ module.exports = {
       cwd: '/var/www/id-app/apps/api',
       script: 'dist/main.js',
       interpreter: 'node',
+      env_file: '/var/www/id-app/apps/api/.env',
       env: {
         NODE_ENV: 'production',
         PORT: '4000',
