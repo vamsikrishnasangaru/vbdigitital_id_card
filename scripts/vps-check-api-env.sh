@@ -37,6 +37,13 @@ else
   ok=false
 fi
 
+if [[ -n "${GOOGLE_DRIVE_ROOT_FOLDER_ID:-}" ]] || [[ -n "${GOOGLE_DRIVE_SHARED_DRIVE_ID:-}" ]]; then
+  echo "OK   Drive upload target configured (root folder or shared drive)"
+else
+  echo "FAIL Set GOOGLE_DRIVE_ROOT_FOLDER_ID (folder shared with service account) or GOOGLE_DRIVE_SHARED_DRIVE_ID"
+  ok=false
+fi
+
 if [[ "$ok" == true ]]; then
   echo "=== All checks passed ==="
   exit 0

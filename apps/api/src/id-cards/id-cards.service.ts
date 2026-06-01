@@ -95,7 +95,7 @@ export class IdCardsService {
               fileName,
               'application/pdf',
               pdfBuffer,
-              ['VB Digital ID Cards', schoolName, className, sectionName],
+              [schoolName, className, sectionName],
             );
           } catch (driveErr: any) {
             this.logger.warn(`Drive upload failed for ${fileName}: ${driveErr.message}`);

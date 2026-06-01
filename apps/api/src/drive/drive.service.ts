@@ -4,11 +4,19 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { google, drive_v3 } from 'googleapis';
 import { Readable } from 'stream';
 
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 @Injectable()
 export class DriveService implements OnModuleInit {
   private readonly logger = new Logger(DriveService.name);
   private drive: drive_v3.Drive;
   private isConfigured = false;
+  /** Folder in a user’s Drive shared with the service account (Editor). */
+  private rootFolderId: string | undefined;
+  /** Google Workspace shared drive ID (alternative to root folder). */
+  private sharedDriveId: string | undefined;
 
   isDriveEnabled(): boolean {
     return this.isConfigured;
@@ -77,8 +85,19 @@ export class DriveService implements OnModuleInit {
       });
 
       this.drive = google.drive({ version: 'v3', auth });
+      this.rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim() || undefined;
+      this.sharedDriveId = process.env.GOOGLE_DRIVE_SHARED_DRIVE_ID?.trim() || undefined;
       this.isConfigured = true;
       this.logger.log(`Google Drive client initialized (${credentials.client_email}).`);
+      if (this.rootFolderId) {
+        this.logger.log(`Drive upload root folder: ${this.rootFolderId}`);
+      } else if (this.sharedDriveId) {
+        this.logger.log(`Drive upload shared drive: ${this.sharedDriveId}`);
+      } else {
+        this.logger.warn(
+          'Set GOOGLE_DRIVE_ROOT_FOLDER_ID (folder in your Drive shared with the service account) or GOOGLE_DRIVE_SHARED_DRIVE_ID. Service accounts cannot store files in their own Drive.',
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to load Google Drive credentials: ${message}`);
@@ -93,10 +112,15 @@ export class DriveService implements OnModuleInit {
     fileName: string,
     mimeType: string,
     fileBuffer: Buffer,
-    folderHierarchy: string[] // e.g., ["VB Digital ID Cards", "School Name", "Class", "Section", "Student Name"]
+    folderHierarchy: string[] // e.g., ["School Name", "Class", "Section"] under configured root
   ): Promise<string> {
     if (!this.isConfigured) {
       throw new Error(`Skipping upload of ${fileName} — Google Drive not configured.`);
+    }
+    if (!this.rootFolderId && !this.sharedDriveId) {
+      throw new Error(
+        'Configure GOOGLE_DRIVE_ROOT_FOLDER_ID (share a folder with the service account) or GOOGLE_DRIVE_SHARED_DRIVE_ID.',
+      );
     }
 
     try {
@@ -117,6 +141,7 @@ export class DriveService implements OnModuleInit {
           body: stream,
         },
         fields: 'id, webViewLink',
+        supportsAllDrives: true,
       });
 
       this.logger.log(`Uploaded ${fileName} to Drive. File ID: ${response.data.id}`);
@@ -130,8 +155,19 @@ export class DriveService implements OnModuleInit {
   /**
    * Creates or resolves a nested folder structure returning the leaf folder ID.
    */
+  private driveListParams(extra: drive_v3.Params$Resource$Files$List = {}) {
+    return {
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      ...(this.sharedDriveId
+        ? { corpora: 'drive' as const, driveId: this.sharedDriveId }
+        : {}),
+      ...extra,
+    };
+  }
+
   private async resolveFolderHierarchy(folders: string[]): Promise<string | null> {
-    let currentParentId: string | undefined = undefined; // Undefined means "root"
+    let currentParentId: string | undefined = this.rootFolderId ?? this.sharedDriveId;
 
     for (const folderName of folders) {
       const result = await this.getOrCreateFolder(folderName, currentParentId);
@@ -143,18 +179,26 @@ export class DriveService implements OnModuleInit {
   }
 
   private async getOrCreateFolder(folderName: string, parentId?: string): Promise<string | null> {
+    if (!parentId) {
+      this.logger.error('Cannot create Drive folder without a parent (configure GOOGLE_DRIVE_ROOT_FOLDER_ID).');
+      return null;
+    }
+
+    const safeName = escapeDriveQueryValue(folderName);
     const query = [
       `mimeType='application/vnd.google-apps.folder'`,
-      `name='${folderName}'`,
+      `name='${safeName}'`,
       `trashed=false`,
-      parentId ? `'${parentId}' in parents` : `'root' in parents`
+      `'${parentId}' in parents`,
     ].join(' and ');
 
-    const res = await this.drive.files.list({
-      q: query,
-      spaces: 'drive',
-      fields: 'files(id, name)',
-    });
+    const res = await this.drive.files.list(
+      this.driveListParams({
+        q: query,
+        fields: 'files(id, name)',
+        pageSize: 1,
+      }),
+    );
 
     if (res.data.files && res.data.files.length > 0) {
       return res.data.files[0].id || null;
@@ -165,9 +209,10 @@ export class DriveService implements OnModuleInit {
       requestBody: {
         name: folderName,
         mimeType: 'application/vnd.google-apps.folder',
-        parents: parentId ? [parentId] : undefined,
+        parents: [parentId],
       },
       fields: 'id',
+      supportsAllDrives: true,
     });
     return createRes.data.id || null;
   }
@@ -177,8 +222,8 @@ export class DriveService implements OnModuleInit {
 
     try {
       const response = await this.drive.files.get(
-        { fileId, alt: 'media' },
-        { responseType: 'arraybuffer' }
+        { fileId, alt: 'media', supportsAllDrives: true },
+        { responseType: 'arraybuffer' },
       );
       return Buffer.from(response.data as ArrayBuffer);
     } catch (error) {
