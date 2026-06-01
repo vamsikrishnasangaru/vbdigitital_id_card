@@ -1,3 +1,4 @@
+import { parseBackground } from '@/lib/background-utils';
 import { resolveMediaUrl } from '@/lib/utils';
 
 export const DESIGN_PPI = 96;
@@ -580,6 +581,29 @@ export function getElementImageUrl(
     if (options?.usePlaceholder) return DESIGNER_PHOTO_PLACEHOLDER;
   }
   return '';
+}
+
+/** All image URLs needed for a headless card render (background + media slots). */
+export function collectRenderImageUrls(
+  bgUrl: string,
+  elements: DesignerElement[],
+  student: Record<string, unknown> | null | undefined,
+  options?: { usePlaceholder?: boolean },
+): string[] {
+  const parsedBg = parseBackground(bgUrl);
+  const urls: string[] = [];
+
+  if (parsedBg.mode === 'image' && parsedBg.imageUrl) {
+    urls.push(resolveMediaUrl(parsedBg.imageUrl));
+  }
+
+  for (const el of elements) {
+    if (!isMediaElement(el)) continue;
+    const url = getElementImageUrl(el, student, options);
+    if (url && !url.startsWith('data:')) urls.push(url);
+  }
+
+  return [...new Set(urls.filter(Boolean))];
 }
 
 export function isMediaElement(el: DesignerElement): boolean {

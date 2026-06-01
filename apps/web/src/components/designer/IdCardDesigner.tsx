@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Stage, Layer, Image, Text, Rect, Transformer } from 'react-konva';
 import Konva from 'konva';
 import { useCorsImage } from '@/hooks/useCorsImage';
+import { usePreloadImages } from '@/hooks/use-preload-images';
 import { toast } from 'sonner';
 import {
   type DesignerElement,
@@ -14,6 +15,7 @@ import {
   getElementImageUrl,
   getElementSize,
   isMediaElement,
+  collectRenderImageUrls,
   isShapeElement,
   sanitizeElement,
   clampCrop,
@@ -194,6 +196,15 @@ export function IdCardDesigner({
   const cropElement = elements.find((el) => el.id === cropElementId);
   const mediaOptions = { usePlaceholder: !isRenderMode || previewMode };
   const cropImageUrl = cropElement ? getElementImageUrl(cropElement, previewStudent, mediaOptions) : '';
+
+  const renderImageUrls = useMemo(
+    () =>
+      isRenderMode
+        ? collectRenderImageUrls(activeBgUrl, elements, previewStudent, mediaOptions)
+        : [],
+    [isRenderMode, activeBgUrl, elements, previewStudent, mediaOptions, historyVersion],
+  );
+  const preloadStatus = usePreloadImages(renderImageUrls);
 
   useEffect(() => {
     if (selectedId && transformerRef.current && stageRef.current) {
@@ -641,12 +652,17 @@ export function IdCardDesigner({
 
   useEffect(() => {
     if (!isRenderMode || !onRenderReady) return;
-    if (parsedBg.mode === 'image' && imageSrc && bgStatus === 'loading') return;
-    const timer = setTimeout(() => onRenderReady(), 800);
+    if (preloadStatus === 'loading') return;
+    if (parsedBg.mode === 'image' && imageSrc) {
+      if (bgStatus === 'loading') return;
+      if (bgStatus === 'loaded' && !backgroundImage) return;
+    }
+    const timer = setTimeout(() => onRenderReady(), 500);
     return () => clearTimeout(timer);
   }, [
     isRenderMode,
     onRenderReady,
+    preloadStatus,
     parsedBg.mode,
     imageSrc,
     bgStatus,
@@ -656,14 +672,27 @@ export function IdCardDesigner({
   ]);
 
   if (isRenderMode) {
+    if (preloadStatus === 'loading') {
+      return (
+        <div
+          id="id-card-canvas"
+          data-render-images-ready="false"
+          className="bg-white"
+          style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
+        />
+      );
+    }
+
   return (
       <div
         id="id-card-canvas"
+        data-render-images-ready="true"
         className="bg-white overflow-hidden"
         style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
       >
         <Stage width={CARD_WIDTH} height={CARD_HEIGHT} pixelRatio={2} ref={stageRef}>
           <Layer clipX={0} clipY={0} clipWidth={CARD_WIDTH} clipHeight={CARD_HEIGHT}>
+            <Rect width={CARD_WIDTH} height={CARD_HEIGHT} fill="#ffffff" />
             {parsedBg.mode === 'solid' && (
               <Rect width={CARD_WIDTH} height={CARD_HEIGHT} fill={parsedBg.solidColor || '#1e40af'} />
             )}

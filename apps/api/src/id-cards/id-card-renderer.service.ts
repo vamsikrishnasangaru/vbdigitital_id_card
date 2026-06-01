@@ -74,6 +74,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
   private async waitForRenderReady(page: Page): Promise<void> {
     await page.waitForSelector('[data-render-status="ready"]', { timeout: 90000 });
+    await page.waitForSelector('#id-card-canvas[data-render-images-ready="true"]', { timeout: 90000 });
     await page.waitForSelector('#id-card-canvas canvas', { timeout: 30000 });
 
     await page.evaluate(async () => {
@@ -99,7 +100,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       await document.fonts?.ready;
     });
 
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 800));
   }
 
   private async capturePdf(url: string, options: Record<string, unknown>): Promise<Buffer> {

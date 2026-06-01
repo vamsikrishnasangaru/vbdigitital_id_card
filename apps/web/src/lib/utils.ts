@@ -57,6 +57,13 @@ export function resolveMediaUrl(url?: string | null): string {
   if (url.startsWith('http')) {
     const fromRemote = proxiedUploadUrl(url);
     if (fromRemote) return fromRemote;
+    try {
+      const parsed = new URL(url);
+      const pathProxied = proxiedUploadUrl(`${parsed.pathname}${parsed.search}`);
+      if (pathProxied) return pathProxied;
+    } catch {
+      /* ignore malformed URLs */
+    }
     return url;
   }
 
