@@ -16,7 +16,7 @@ const allRoutes = [
   { label: 'Teachers', icon: GraduationCap, href: '/teachers', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
   { label: 'Classes', icon: BookOpen, href: '/classes', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
   { label: 'Students', icon: Users, href: '/students', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
-  { label: 'Generate Cards', icon: CreditCard, href: '/id-cards', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
+  { label: 'Generate Cards', icon: CreditCard, href: '/id-cards', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'], previewLabel: 'Preview Cards' },
   { label: 'Orders', icon: ShoppingCart, href: '/orders', roles: ['SUPER_ADMIN'] },
   { label: 'Printing', icon: Printer, href: '/print', roles: ['SUPER_ADMIN'] },
   { label: 'Shipping', icon: Package, href: '/deliveries', roles: ['SUPER_ADMIN'] },
@@ -67,6 +67,12 @@ export function Sidebar({ onClose }: SidebarProps) {
       <nav className="flex-1 overflow-y-auto px-3 py-6 space-y-1 relative z-10 no-scrollbar">
         {routes.map((route) => {
           const isActive = pathname === route.href || pathname.startsWith(route.href + '/');
+          const label =
+            'previewLabel' in route &&
+            route.previewLabel &&
+            user?.role !== 'SUPER_ADMIN'
+              ? route.previewLabel
+              : route.label;
           return (
             <Link
               key={route.href}
@@ -83,7 +89,7 @@ export function Sidebar({ onClose }: SidebarProps) {
                 isActive ? 'text-white' : 'text-white/40 group-hover:text-white'
               )} />
               <span className="text-sm font-bold tracking-tight">
-                {route.label}
+                {label}
               </span>
               {isActive && (
                 <ChevronRight className="ml-auto h-3.5 w-3.5 opacity-50" />

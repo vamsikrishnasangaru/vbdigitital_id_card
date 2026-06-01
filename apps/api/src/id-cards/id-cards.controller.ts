@@ -13,8 +13,8 @@ export class IdCardsController {
   constructor(private readonly idCardsService: IdCardsService) {}
 
   @Post('generate')
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER')
-  @ApiOperation({ summary: 'Generate ID cards for students' })
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Generate ID cards and upload PDFs to Google Drive (super admin only)' })
   generate(@Body() body: { templateId: string; studentIds: string[] }) {
     return this.idCardsService.generate(body.templateId, body.studentIds);
   }

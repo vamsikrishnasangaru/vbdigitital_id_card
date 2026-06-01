@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DriveService } from '../drive/drive.service';
 import { IdCardRendererService } from './id-card-renderer.service';
@@ -21,6 +21,12 @@ export class IdCardsService {
   async generate(templateId: string, studentIds: string[]) {
     if (!templateId || !studentIds?.length) {
       throw new BadRequestException('Template ID and Student IDs are required');
+    }
+
+    if (!this.driveService.isDriveEnabled()) {
+      throw new ServiceUnavailableException(
+        'Google Drive is not configured. Set GOOGLE_DRIVE_CREDENTIALS in the API environment before generating cards.',
+      );
     }
 
     const template = await this.prisma.template.findFirst({
@@ -96,8 +102,12 @@ export class IdCardsService {
           }
         }
         if (!driveFileId) {
-          const subDir = `id-cards/${student.schoolId || 'general'}`;
-          pdfUrl = await this.uploadsService.saveBuffer(pdfBuffer, subDir, fileName);
+          results.push({
+            studentId,
+            status: 'FAILED',
+            error: 'Google Drive upload failed — card was not saved',
+          });
+          continue;
         }
 
         await this.prisma.idCard.update({
@@ -117,12 +127,13 @@ export class IdCardsService {
 
     const successCount = results.filter((r) => r.status === 'SUCCESS').length;
     const failCount = results.filter((r) => r.status === 'FAILED').length;
+    const driveCount = results.filter((r) => r.driveFileId).length;
 
     return {
       message:
         failCount === 0
-          ? `Generated ${successCount} ID card(s) successfully`
-          : `Generated ${successCount}, failed ${failCount}`,
+          ? `Generated ${successCount} ID card(s) and uploaded to Google Drive`
+          : `Uploaded ${driveCount} to Google Drive, ${failCount} failed`,
       successCount,
       failCount,
       results,

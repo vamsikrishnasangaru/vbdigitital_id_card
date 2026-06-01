@@ -404,7 +404,10 @@ export default function StudentsPage() {
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
   const canGenerate =
-    !!selectedTemplateId && studentsData.length > 0 && !generateMutation.isPending;
+    isSuperAdmin &&
+    !!selectedTemplateId &&
+    studentsData.length > 0 &&
+    !generateMutation.isPending;
 
   const handleDeleteStudent = (s: { id: string; firstName?: string; lastName?: string }) => {
     if (!confirm(`Remove ${s.firstName ?? ''} ${s.lastName ?? ''}? This cannot be undone.`)) return;
@@ -435,6 +438,7 @@ export default function StudentsPage() {
   const studentPhotoSrc = (photoUrl?: string | null) => (photoUrl ? resolveMediaUrl(photoUrl) : '');
 
   const handleGenerate = () => {
+    if (!isSuperAdmin) return;
     if (!selectedTemplateId) {
       toast.error('Select a template first');
       return;
@@ -443,7 +447,13 @@ export default function StudentsPage() {
       toast.error('No students match the current filters');
       return;
     }
-    if (!confirm(`Generate ID cards for ${studentsData.length} student(s)?`)) return;
+    if (
+      !confirm(
+        `Generate ${studentsData.length} ID card PDF(s) and upload to Google Drive?`,
+      )
+    ) {
+      return;
+    }
     generateMutation.mutate();
   };
 
@@ -526,14 +536,14 @@ export default function StudentsPage() {
           </h2>
           <p className="text-muted-foreground text-sm font-medium">
             {isSuperAdmin
-              ? 'Select a school, filter students, and generate ID cards.'
+              ? 'Select a school, filter students, and generate ID cards to Google Drive.'
               : isTeacher
-                ? 'Your allocated class is selected by default. Open any class or section when covering for another teacher.'
-                : 'View and manage all students in your school.'}
+                ? 'Your allocated class is selected by default. Preview ID cards with the eye icon on each student.'
+                : 'View and manage students. Preview ID cards with the eye icon on each student.'}
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
-          {effectiveSchoolId && (
+          {effectiveSchoolId && isSuperAdmin && (
             <button
               type="button"
               disabled={!canGenerate}
@@ -767,7 +777,9 @@ export default function StudentsPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground ml-1">Generate with template</label>
+            <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground ml-1">
+              {isSuperAdmin ? 'Generate with template' : 'Preview with template'}
+            </label>
             <select
               value={selectedTemplateId}
               onChange={(e) => setSelectedTemplateId(e.target.value)}
@@ -795,8 +807,9 @@ export default function StudentsPage() {
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 text-sm text-foreground">
             <CreditCard className="h-4 w-4 shrink-0 text-emerald-600" />
             <span>
-              <span className="font-bold">{studentsData.length}</span> student{studentsData.length === 1 ? '' : 's'} in this list will use{' '}
-              <span className="font-black">{selectedTemplate?.name ?? 'template'}</span> when you generate.
+              <span className="font-bold">{studentsData.length}</span> student{studentsData.length === 1 ? '' : 's'} — preview with{' '}
+              <span className="font-black">{selectedTemplate?.name ?? 'template'}</span>
+              {isSuperAdmin ? ' or use Generate ID Cards to upload PDFs to Google Drive.' : ' (eye icon on each row).'}
             </span>
             {studentsTotal > studentsData.length && (
               <span className="text-xs font-bold text-amber-600">
@@ -1244,6 +1257,7 @@ export default function StudentsPage() {
             orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
             student={viewStudent}
             schoolId={effectiveSchoolId || undefined}
+            restrictedPreview={!isSuperAdmin}
             onClose={() => {
               setCardPreviewOpen(false);
               setPreviewTemplate(null);

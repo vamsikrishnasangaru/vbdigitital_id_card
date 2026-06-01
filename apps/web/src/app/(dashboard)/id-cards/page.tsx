@@ -55,11 +55,8 @@ export default function IdCardsPage() {
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
 
   const { data: schools = [] } = useQuery({
-    queryKey: ['schools', 'id-cards-picker'],
-    queryFn: async () => {
-      const { data } = await api.get('/schools', { params: { limit: 100 } });
-      return data.data as { id: string; name: string; code: string }[];
-    },
+    queryKey: queryKeys.schools.picker,
+    queryFn: fetchSchoolsPicker,
     enabled: isSuperAdmin,
   });
 
@@ -156,9 +153,17 @@ export default function IdCardsPage() {
   });
 
   const canGenerate =
-    !!selectedTemplate && !!selectedSection && students.length > 0 && !generateMutation.isPending;
+    isSuperAdmin &&
+    !!selectedTemplate &&
+    !!selectedSection &&
+    students.length > 0 &&
+    !generateMutation.isPending;
+
+  const canPreview =
+    !!selectedTemplate && !!selectedSection && students.length > 0;
 
   const handleGenerate = () => {
+    if (!isSuperAdmin) return;
     if (!effectiveSchoolId) {
       toast.error('Select a school first');
       return;
@@ -171,7 +176,13 @@ export default function IdCardsPage() {
       toast.error('Select a class and section with students');
       return;
     }
-    if (!confirm(`Generate ID cards for ${students.length} student(s)?`)) return;
+    if (
+      !confirm(
+        `Generate ${students.length} ID card PDF(s) and upload to Google Drive?`,
+      )
+    ) {
+      return;
+    }
     generateMutation.mutate();
   };
 
@@ -227,22 +238,33 @@ export default function IdCardsPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-[0.2em] mb-1">
-            <Zap className="h-3.5 w-3.5 fill-primary/20" /> Generate Cards
+            <Zap className="h-3.5 w-3.5 fill-primary/20" />{' '}
+            {isSuperAdmin ? 'Generate Cards' : 'Preview Cards'}
           </div>
           <h2 className="text-4xl font-black tracking-tight text-foreground">
             ID Card Generator
           </h2>
-          <p className="text-muted-foreground text-sm font-medium">Select a class and template to generate ID cards for students.</p>
+          <p className="text-muted-foreground text-sm font-medium">
+            {isSuperAdmin
+              ? 'Select a class and template, then generate PDFs — uploaded to Google Drive.'
+              : 'Select a class and template, then use Preview on each student to view their card.'}
+          </p>
         </div>
-        <button 
-          disabled={!canGenerate}
-          onClick={handleGenerate}
-          className="group relative flex items-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-2xl text-sm font-black shadow-2xl shadow-primary/30 hover:shadow-primary/50 active:scale-95 disabled:opacity-50 transition-all overflow-hidden shrink-0"
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-          {generateMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-          GENERATE CARDS
-        </button>
+        {isSuperAdmin && (
+          <button
+            disabled={!canGenerate}
+            onClick={handleGenerate}
+            className="group relative flex items-center gap-3 px-8 py-4 bg-primary text-primary-foreground rounded-2xl text-sm font-black shadow-2xl shadow-primary/30 hover:shadow-primary/50 active:scale-95 disabled:opacity-50 transition-all overflow-hidden shrink-0"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            {generateMutation.isPending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Play className="h-5 w-5" />
+            )}
+            GENERATE CARDS
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
@@ -326,21 +348,31 @@ export default function IdCardsPage() {
                   <div className="h-full bg-primary rounded-full transition-all" style={{ width: students.length > 0 ? '100%' : '0%' }} />
                 </div>
                 <p className="text-[10px] font-medium text-muted-foreground text-center">
-                  Cards are rendered as PDF and saved for printing.
+                  {isSuperAdmin
+                    ? 'Super admin: PDFs render and upload to Google Drive.'
+                    : 'Use the eye icon on each student to preview their ID card.'}
                 </p>
-                <button
-                  type="button"
-                  disabled={!canGenerate}
-                  onClick={handleGenerate}
-                  className="w-full flex items-center justify-center gap-2 py-4 bg-primary text-primary-foreground rounded-2xl text-sm font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all"
-                >
-                  {generateMutation.isPending ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Play className="h-5 w-5" />
-                  )}
-                  Generate cards
-                </button>
+                {isSuperAdmin ? (
+                  <button
+                    type="button"
+                    disabled={!canGenerate}
+                    onClick={handleGenerate}
+                    className="w-full flex items-center justify-center gap-2 py-4 bg-primary text-primary-foreground rounded-2xl text-sm font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all"
+                  >
+                    {generateMutation.isPending ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Play className="h-5 w-5" />
+                    )}
+                    Generate cards
+                  </button>
+                ) : (
+                  <p className="text-center text-xs font-bold text-muted-foreground py-2">
+                    {canPreview
+                      ? `${students.length} student(s) ready to preview`
+                      : 'Choose template, class, and section'}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -481,6 +513,7 @@ export default function IdCardsPage() {
             templateName={`${previewTemplate.name} - ${selectedStudent.firstName} (PREVIEW)`}
             orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
             student={selectedStudent}
+            restrictedPreview={!isSuperAdmin}
             onClose={() => {
               setPreviewOpen(false);
               setPreviewTemplate(null);
