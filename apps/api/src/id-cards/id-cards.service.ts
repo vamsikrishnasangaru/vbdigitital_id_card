@@ -97,8 +97,16 @@ export class IdCardsService {
               pdfBuffer,
               [schoolName, className, sectionName],
             );
-          } catch (driveErr: any) {
-            this.logger.warn(`Drive upload failed for ${fileName}: ${driveErr.message}`);
+          } catch (driveErr: unknown) {
+            const driveMessage =
+              driveErr instanceof Error ? driveErr.message : 'Google Drive upload failed';
+            this.logger.warn(`Drive upload failed for ${fileName}: ${driveMessage}`);
+            results.push({
+              studentId,
+              status: 'FAILED',
+              error: driveMessage,
+            });
+            continue;
           }
         }
         if (!driveFileId) {

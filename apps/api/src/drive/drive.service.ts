@@ -98,6 +98,8 @@ export class DriveService implements OnModuleInit {
           'Set GOOGLE_DRIVE_ROOT_FOLDER_ID (folder in your Drive shared with the service account) or GOOGLE_DRIVE_SHARED_DRIVE_ID. Service accounts cannot store files in their own Drive.',
         );
       }
+
+      void this.verifyUploadTarget();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to load Google Drive credentials: ${message}`);
@@ -112,7 +114,7 @@ export class DriveService implements OnModuleInit {
     fileName: string,
     mimeType: string,
     fileBuffer: Buffer,
-    folderHierarchy: string[] // e.g., ["School Name", "Class", "Section"] under configured root
+    folderHierarchy: string[] // e.g., ["School Name", "Class", "Section"]
   ): Promise<string> {
     if (!this.isConfigured) {
       throw new Error(`Skipping upload of ${fileName} — Google Drive not configured.`);
@@ -124,31 +126,88 @@ export class DriveService implements OnModuleInit {
     }
 
     try {
-      const folderId = await this.resolveFolderHierarchy(folderHierarchy);
-      if (!folderId) throw new Error('Failed to resolve target folder ID');
+      // Shared drives: nested folders use the shared drive quota.
+      // Personal Drive + service account: subfolders created by the SA are SA-owned (no quota).
+      // Upload directly into the user-shared root folder with a descriptive filename.
+      const parentId = this.sharedDriveId
+        ? await this.resolveFolderHierarchy(folderHierarchy)
+        : this.rootFolderId;
+      if (!parentId) throw new Error('Failed to resolve target folder ID');
 
-      const stream = new Readable();
-      stream.push(fileBuffer);
-      stream.push(null);
+      const driveFileName =
+        this.sharedDriveId || folderHierarchy.length === 0
+          ? fileName
+          : `${folderHierarchy.join(' - ')} - ${fileName}`;
 
-      const response = await this.drive.files.create({
-        requestBody: {
-          name: fileName,
-          parents: [folderId],
-        },
-        media: {
-          mimeType,
-          body: stream,
-        },
-        fields: 'id, webViewLink',
+      return await this.createFileInParent(driveFileName, mimeType, fileBuffer, parentId);
+    } catch (error: unknown) {
+      const message = DriveService.formatDriveError(error);
+      this.logger.error(`Error uploading file ${fileName} to Google Drive: ${message}`);
+      throw new Error(message);
+    }
+  }
+
+  private static formatDriveError(error: unknown): string {
+    if (error && typeof error === 'object') {
+      const err = error as {
+        message?: string;
+        response?: { data?: { error?: { message?: string } } };
+        errors?: Array<{ message?: string }>;
+      };
+      return (
+        err.response?.data?.error?.message ||
+        err.errors?.[0]?.message ||
+        err.message ||
+        String(error)
+      );
+    }
+    return String(error);
+  }
+
+  private async createFileInParent(
+    fileName: string,
+    mimeType: string,
+    fileBuffer: Buffer,
+    parentId: string,
+  ): Promise<string> {
+    const stream = new Readable();
+    stream.push(fileBuffer);
+    stream.push(null);
+
+    const response = await this.drive.files.create({
+      requestBody: {
+        name: fileName,
+        parents: [parentId],
+      },
+      media: {
+        mimeType,
+        body: stream,
+      },
+      fields: 'id, webViewLink',
+      supportsAllDrives: true,
+    });
+
+    this.logger.log(`Uploaded ${fileName} to Drive folder ${parentId}. File ID: ${response.data.id}`);
+    return response.data.id || '';
+  }
+
+  /** Confirm the shared root folder is visible to the service account. */
+  private async verifyUploadTarget(): Promise<void> {
+    const folderId = this.rootFolderId ?? this.sharedDriveId;
+    if (!folderId) return;
+
+    try {
+      const meta = await this.drive.files.get({
+        fileId: folderId,
+        fields: 'id,name,mimeType,driveId',
         supportsAllDrives: true,
       });
-
-      this.logger.log(`Uploaded ${fileName} to Drive. File ID: ${response.data.id}`);
-      return response.data.id || '';
-    } catch (error: any) {
-      this.logger.error(`Error uploading file ${fileName} to Google Drive: ${error.message}`, error);
-      throw error;
+      this.logger.log(`Drive upload target OK: "${meta.data.name}" (${meta.data.id})`);
+    } catch (error: unknown) {
+      const message = DriveService.formatDriveError(error);
+      this.logger.error(
+        `Cannot access Drive folder ${folderId}. Share it with the service account as Editor. ${message}`,
+      );
     }
   }
 
@@ -195,6 +254,7 @@ export class DriveService implements OnModuleInit {
     const res = await this.drive.files.list(
       this.driveListParams({
         q: query,
+        spaces: 'drive',
         fields: 'files(id, name)',
         pageSize: 1,
       }),
