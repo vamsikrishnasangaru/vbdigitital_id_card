@@ -63,7 +63,7 @@ export class IdCardsService {
   }
 
   private async generateDownloadPack(templateId: string, studentIds: string[]) {
-    await this.loadTemplate(templateId);
+    const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
     const files: { name: string; buffer: Buffer }[] = [];
     const errors: { studentId: string; error: string }[] = [];
