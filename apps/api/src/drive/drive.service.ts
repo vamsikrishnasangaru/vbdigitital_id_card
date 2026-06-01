@@ -1,3 +1,5 @@
+import { readFileSync, existsSync } from 'fs';
+import { resolve } from 'path';
 import { Injectable, Logger } from '@nestjs/common';
 import { google, drive_v3 } from 'googleapis';
 import { Readable } from 'stream';
@@ -16,20 +18,58 @@ export class DriveService {
     this.initDriveClient();
   }
 
+  /** Normalize .env / PM2 values: trim and strip wrapping quotes. */
+  private readCredentialsJson(): string | null {
+    const fromEnv = process.env.GOOGLE_DRIVE_CREDENTIALS?.trim();
+    if (fromEnv) {
+      if (
+        (fromEnv.startsWith("'") && fromEnv.endsWith("'")) ||
+        (fromEnv.startsWith('"') && fromEnv.endsWith('"'))
+      ) {
+        return fromEnv.slice(1, -1).trim();
+      }
+      return fromEnv;
+    }
+
+    const pathEnv = process.env.GOOGLE_DRIVE_CREDENTIALS_PATH?.trim();
+    if (pathEnv) {
+      const filePath = resolve(process.cwd(), pathEnv);
+      if (!existsSync(filePath)) {
+        this.logger.error(`GOOGLE_DRIVE_CREDENTIALS_PATH file not found: ${filePath}`);
+        return null;
+      }
+      return readFileSync(filePath, 'utf8').trim();
+    }
+
+    const defaultPath = resolve(process.cwd(), 'secure', 'google-drive-service-account.json');
+    if (existsSync(defaultPath)) {
+      this.logger.log(`Loading Google Drive credentials from ${defaultPath}`);
+      return readFileSync(defaultPath, 'utf8').trim();
+    }
+
+    return null;
+  }
+
   private initDriveClient() {
-    const credentialsStr = process.env.GOOGLE_DRIVE_CREDENTIALS;
+    const credentialsStr = this.readCredentialsJson();
     if (!credentialsStr) {
-      this.logger.warn('GOOGLE_DRIVE_CREDENTIALS not provided in .env. Google Drive sync will be disabled.');
+      this.logger.warn(
+        'Google Drive credentials missing. Set GOOGLE_DRIVE_CREDENTIALS, GOOGLE_DRIVE_CREDENTIALS_PATH, or place JSON at secure/google-drive-service-account.json',
+      );
       return;
     }
 
     try {
-      const credentials = JSON.parse(credentialsStr);
-      
-      // Fix for private key newlines when loaded from .env
-      if (credentials.private_key) {
-        credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+      const credentials = JSON.parse(credentialsStr) as {
+        private_key?: string;
+        client_email?: string;
+      };
+
+      if (!credentials.client_email || !credentials.private_key) {
+        throw new Error('JSON must include client_email and private_key');
       }
+
+      credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
 
       const auth = new google.auth.GoogleAuth({
         credentials,
@@ -38,9 +78,10 @@ export class DriveService {
 
       this.drive = google.drive({ version: 'v3', auth });
       this.isConfigured = true;
-      this.logger.log('Google Drive client initialized successfully.');
+      this.logger.log(`Google Drive client initialized (${credentials.client_email}).`);
     } catch (error) {
-      this.logger.error('Failed to parse GOOGLE_DRIVE_CREDENTIALS JSON string.', error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to load Google Drive credentials: ${message}`);
     }
   }
 

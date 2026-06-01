@@ -1,7 +1,12 @@
+import { resolve } from 'path';
+import { config as loadEnv } from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+
+// Load apps/api/.env before Nest boots (PM2 cwd should be apps/api).
+loadEnv({ path: resolve(__dirname, '..', '.env') });
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
