@@ -902,7 +902,7 @@ export default function StudentsPage() {
                       <Phone className="h-2.5 w-2.5 shrink-0" /> {s.parentPhone || 'No contact'}
                     </div>
                     <div className="mt-2 font-mono text-[11px] font-black px-2 py-1 rounded-lg bg-muted border border-border inline-block">
-                      {s.admissionNumber}
+                      {s.rollNumber || '—'}
                     </div>
                   </div>
                 </div>
@@ -981,7 +981,7 @@ export default function StudentsPage() {
             <thead>
               <tr className="border-b border-border bg-muted/20">
                 <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Student Name</th>
-                <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Admission No.</th>
+                <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Roll No.</th>
                 <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Class / Section</th>
                 <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Template</th>
                 <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Status</th>
@@ -1040,7 +1040,7 @@ export default function StudentsPage() {
                   </td>
                   <td className="p-6">
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card border border-border font-mono text-[11px] font-black text-foreground shadow-sm">
-                      {s.admissionNumber}
+                      {s.rollNumber || '—'}
                     </div>
                   </td>
                   <td className="p-6">
