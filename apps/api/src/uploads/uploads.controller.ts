@@ -14,9 +14,15 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import type { Response } from 'express';
+import * as fs from 'fs';
 import * as path from 'path';
 import { UploadsService } from './uploads.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+const UPLOAD_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Cross-Origin-Resource-Policy': 'cross-origin',
+} as const;
 
 @ApiTags('Uploads')
 @Controller('uploads')
@@ -31,13 +37,27 @@ export class UploadsController {
     if (!relative) {
       throw new NotFoundException(`Upload not found: ${filename}`);
     }
-    const absolute = path.join(process.cwd(), 'uploads', relative);
-    return res.sendFile(absolute, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Cross-Origin-Resource-Policy': 'cross-origin',
-      },
-    });
+    return this.sendUploadFile(relative, res);
+  }
+
+  /** Fallback file serve when static middleware misses (nested template/school paths). */
+  @Get('*path')
+  @ApiOperation({ summary: 'Serve uploaded file by relative path' })
+  serveByPath(@Param('path') filePath: string | string[], @Res() res: Response) {
+    const relative = Array.isArray(filePath) ? filePath.join('/') : filePath;
+    if (!relative || relative.startsWith('by-name/')) {
+      throw new NotFoundException('Upload path required');
+    }
+    return this.sendUploadFile(relative, res);
+  }
+
+  private sendUploadFile(relative: string, res: Response) {
+    const safe = relative.replace(/\\/g, '/').replace(/^\/+/, '');
+    const absolute = path.join(this.uploadsService.getUploadDir(), safe);
+    if (!fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) {
+      throw new NotFoundException(`Upload not found: ${safe}`);
+    }
+    return res.sendFile(absolute, { headers: UPLOAD_HEADERS });
   }
 
   @Post()

@@ -1,11 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadsService } from '../uploads/uploads.service';
+import { normalizeConfigMediaUrls, normalizeStoredUploadUrl } from '../uploads/media-url.util';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto';
 import { Orientation } from '@prisma/client';
 
 @Injectable()
 export class TemplatesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploadsService: UploadsService,
+  ) {}
 
   private normalizeCode(code?: string): string | undefined {
     const trimmed = code?.trim();
@@ -33,6 +38,20 @@ export class TemplatesService {
       return (config as { elements: unknown }).elements;
     }
     return config;
+  }
+
+  private normalizeTemplateMedia<T extends { frontBgUrl?: string | null; backBgUrl?: string | null; frontConfig?: unknown; backConfig?: unknown }>(
+    tpl: T,
+  ): T {
+    const uploadDir = this.uploadsService.getUploadDir();
+    const findByBasename = (name: string) => this.uploadsService.findRelativeByBasename(name);
+    return {
+      ...tpl,
+      frontBgUrl: normalizeStoredUploadUrl(tpl.frontBgUrl, uploadDir, findByBasename),
+      backBgUrl: normalizeStoredUploadUrl(tpl.backBgUrl, uploadDir, findByBasename),
+      frontConfig: normalizeConfigMediaUrls(tpl.frontConfig, uploadDir, findByBasename),
+      backConfig: normalizeConfigMediaUrls(tpl.backConfig, uploadDir, findByBasename),
+    };
   }
 
   async create(dto: CreateTemplateDto) {
@@ -97,7 +116,7 @@ export class TemplatesService {
   async findOne(id: string) {
     const tpl = await this.prisma.template.findUnique({ where: { id } });
     if (!tpl) throw new NotFoundException('Template not found');
-    return tpl;
+    return this.normalizeTemplateMedia(tpl);
   }
 
   async duplicate(

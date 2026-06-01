@@ -42,6 +42,7 @@ export function DesignerSnapProvider({
   ppiRatio,
   displayElements,
   orientation,
+  defaultShowGrid = true,
 }: {
   children: React.ReactNode;
   cardWidth: number;
@@ -49,8 +50,9 @@ export function DesignerSnapProvider({
   ppiRatio: number;
   displayElements: DesignerElement[];
   orientation: 'HORIZONTAL' | 'VERTICAL';
+  defaultShowGrid?: boolean;
 }) {
-  const [showGrid, setShowGrid] = useState(true);
+  const [showGrid, setShowGrid] = useState(defaultShowGrid);
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [guides, setGuides] = useState<SnapGuides>(EMPTY_SNAP_GUIDES);
   const guidesRafRef = useRef<number | null>(null);

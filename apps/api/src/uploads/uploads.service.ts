@@ -42,6 +42,10 @@ export class UploadsService {
     return path.join(process.cwd(), relativePath);
   }
 
+  getUploadDir(): string {
+    return this.uploadDir;
+  }
+
   /** Find uploads/... path when DB only stores a bare filename. */
   findRelativeByBasename(basename: string): string | null {
     const safe = path.basename(basename);

@@ -796,6 +796,7 @@ export function IdCardDesigner({
       ppiRatio={ppiRatio}
       displayElements={displayElements}
       orientation={orientation}
+      defaultShowGrid={Boolean(onSave)}
     >
       <DesignerEditorShell
         templateName={templateName}

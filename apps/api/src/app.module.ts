@@ -26,16 +26,6 @@ import { DriveModule } from './drive/drive.module';
       envFilePath: join(process.cwd(), '.env'),
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/api/v1/uploads',
-      serveStaticOptions: {
-        setHeaders(res) {
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        },
-      },
-    }),
     PrismaModule,
     AuthModule,
     TeachersModule,
@@ -51,6 +41,19 @@ import { DriveModule } from './drive/drive.module';
     UploadsModule,
     IdCardsModule,
     DriveModule,
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'uploads'),
+      serveRoot: '/api/v1/uploads',
+      serveStaticOptions: {
+        index: false,
+        fallthrough: true,
+        redirect: false,
+        setHeaders(res) {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        },
+      },
+    }),
   ],
 })
 export class AppModule {}

@@ -7,7 +7,8 @@ export function cn(...inputs: ClassValue[]) {
 
 /** Same-origin URL for files under apps/api/uploads (nginx or Next → Nest). */
 export function uploadPublicUrl(relativePath: string): string {
-  const clean = relativePath.replace(/^\/+/, '').replace(/^uploads\//, '');
+  const clean = relativePath.replace(/^\/+/, '').replace(/^uploads\//, '').replace(/\/+$/, '');
+  if (!clean) return '';
   return `/api/v1/uploads/${clean}`;
 }
 
@@ -49,27 +50,32 @@ export function proxiedUploadUrl(url: string): string | null {
 /** Resolve API-relative upload paths (e.g. /uploads/templates/...) to a full URL. */
 export function resolveMediaUrl(url?: string | null): string {
   if (!url) return '';
-  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
+  if (trimmed.startsWith('color:') || trimmed.startsWith('gradient:')) return trimmed;
 
-  const proxied = proxiedUploadUrl(url);
+  const proxied = proxiedUploadUrl(trimmed);
   if (proxied) return proxied;
 
-  if (url.startsWith('http')) {
-    const fromRemote = proxiedUploadUrl(url);
+  if (trimmed.startsWith('http')) {
+    const fromRemote = proxiedUploadUrl(trimmed);
     if (fromRemote) return fromRemote;
     try {
-      const parsed = new URL(url);
+      const parsed = new URL(trimmed);
       const pathProxied = proxiedUploadUrl(`${parsed.pathname}${parsed.search}`);
       if (pathProxied) return pathProxied;
     } catch {
       /* ignore malformed URLs */
     }
-    return url;
+    return trimmed;
   }
 
   const base = (process.env.NEXT_PUBLIC_API_URL || '/api/v1').replace(/\/$/, '');
-  const absolute = `${base}${url.startsWith('/') ? url : `/${url}`}`;
-  return proxiedUploadUrl(absolute) ?? absolute;
+  const absolute = `${base}${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`;
+  const resolved = proxiedUploadUrl(absolute) ?? absolute;
+  if (/\/api\/v1\/uploads\/?$/.test(resolved)) return '';
+  return resolved;
 }
 
 export function formatDate(date: string | Date) {
