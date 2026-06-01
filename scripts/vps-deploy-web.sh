@@ -16,8 +16,25 @@ export PORT="${PORT:-3000}"
 export HOSTNAME="${HOSTNAME:-0.0.0.0}"
 # Same-origin /api/v1 — nginx must proxy to Nest on :4000 (do not use localhost in the browser build).
 export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-/api/v1}"
+echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" > .env.production
+
+# Dev .env.local often contains localhost and breaks live auth if baked into the client bundle.
+ENV_LOCAL_BACKUP=""
+if [[ -f .env.local ]]; then
+  ENV_LOCAL_BACKUP=".env.local.bak.$$"
+  mv .env.local "$ENV_LOCAL_BACKUP"
+  echo "Renamed .env.local → $ENV_LOCAL_BACKUP for production build"
+fi
+cleanup_env_local() {
+  if [[ -n "$ENV_LOCAL_BACKUP" && -f "$ENV_LOCAL_BACKUP" ]]; then
+    mv -f "$ENV_LOCAL_BACKUP" .env.local
+  fi
+}
+trap cleanup_env_local EXIT
 
 pnpm exec next build --webpack
+cleanup_env_local
+trap - EXIT
 
 if [[ ! -f "$STANDALONE/server.js" ]]; then
   echo "ERROR: missing $STANDALONE/server.js — build did not produce standalone output."
