@@ -22,6 +22,7 @@ if (envResult.error && !existsSync(envPath)) {
 } else if (envResult.parsed) {
   const hasDb = Boolean(process.env.DATABASE_URL?.trim());
   const hasDrive =
+    Boolean(process.env.GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN?.trim()) ||
     Boolean(process.env.GOOGLE_DRIVE_CREDENTIALS?.trim()) ||
     Boolean(process.env.GOOGLE_DRIVE_CREDENTIALS_PATH?.trim()) ||
     existsSync(resolve(process.cwd(), 'secure', 'google-drive-service-account.json'));

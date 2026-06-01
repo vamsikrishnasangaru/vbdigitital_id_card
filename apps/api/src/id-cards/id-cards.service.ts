@@ -25,7 +25,7 @@ export class IdCardsService {
 
     if (!this.driveService.isDriveEnabled()) {
       throw new ServiceUnavailableException(
-        'Google Drive is not configured. Set GOOGLE_DRIVE_CREDENTIALS in the API environment before generating cards.',
+        'Google Drive is not configured. Set GOOGLE_DRIVE_OAUTH_* (personal Gmail) or GOOGLE_DRIVE_CREDENTIALS (Workspace shared drives).',
       );
     }
 

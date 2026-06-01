@@ -24,9 +24,9 @@ if [[ -z "${DATABASE_URL:-}" ]] || [[ "$DATABASE_URL" == *'USER'* ]] || [[ "$DAT
   exit 1
 fi
 
-if [[ -z "${GOOGLE_DRIVE_CREDENTIALS:-}" ]] && [[ -z "${GOOGLE_DRIVE_CREDENTIALS_PATH:-}" ]] \
+if [[ -z "${GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN:-}" ]] && [[ -z "${GOOGLE_DRIVE_CREDENTIALS:-}" ]] \
   && [[ ! -f "$API_DIR/secure/google-drive-service-account.json" ]]; then
-  echo "WARN: Google Drive not configured — add GOOGLE_DRIVE_CREDENTIALS or secure/*.json to .env"
+  echo "WARN: Google Drive not configured — add GOOGLE_DRIVE_OAUTH_* (Gmail) to .env"
 fi
 
 pnpm --filter @repo/db run generate

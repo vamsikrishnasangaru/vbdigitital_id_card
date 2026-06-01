@@ -2,7 +2,10 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { google, drive_v3 } from 'googleapis';
+import type { OAuth2Client } from 'google-auth-library';
 import { Readable } from 'stream';
+
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 
 function escapeDriveQueryValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -13,9 +16,9 @@ export class DriveService implements OnModuleInit {
   private readonly logger = new Logger(DriveService.name);
   private drive: drive_v3.Drive;
   private isConfigured = false;
-  /** Folder in a user’s Drive shared with the service account (Editor). */
+  /** OAuth uploads use the signed-in user's storage (required for personal Gmail). */
+  private usesUserOAuth = false;
   private rootFolderId: string | undefined;
-  /** Google Workspace shared drive ID (alternative to root folder). */
   private sharedDriveId: string | undefined;
 
   isDriveEnabled(): boolean {
@@ -26,20 +29,23 @@ export class DriveService implements OnModuleInit {
     this.initDriveClient();
   }
 
-  /** Normalize .env / PM2 values: trim and strip wrapping quotes. */
-  private readCredentialsJson(): string | null {
-    const fromEnv = process.env.GOOGLE_DRIVE_CREDENTIALS?.trim();
-    if (fromEnv) {
-      if (
-        (fromEnv.startsWith("'") && fromEnv.endsWith("'")) ||
-        (fromEnv.startsWith('"') && fromEnv.endsWith('"'))
-      ) {
-        return fromEnv.slice(1, -1).trim();
-      }
-      return fromEnv;
+  private readEnvValue(key: string): string | undefined {
+    const raw = process.env[key]?.trim();
+    if (!raw) return undefined;
+    if (
+      (raw.startsWith("'") && raw.endsWith("'")) ||
+      (raw.startsWith('"') && raw.endsWith('"'))
+    ) {
+      return raw.slice(1, -1).trim();
     }
+    return raw;
+  }
 
-    const pathEnv = process.env.GOOGLE_DRIVE_CREDENTIALS_PATH?.trim();
+  private readServiceAccountJson(): string | null {
+    const fromEnv = this.readEnvValue('GOOGLE_DRIVE_CREDENTIALS');
+    if (fromEnv) return fromEnv;
+
+    const pathEnv = this.readEnvValue('GOOGLE_DRIVE_CREDENTIALS_PATH');
     if (pathEnv) {
       const filePath = resolve(process.cwd(), pathEnv);
       if (!existsSync(filePath)) {
@@ -51,18 +57,47 @@ export class DriveService implements OnModuleInit {
 
     const defaultPath = resolve(process.cwd(), 'secure', 'google-drive-service-account.json');
     if (existsSync(defaultPath)) {
-      this.logger.log(`Loading Google Drive credentials from ${defaultPath}`);
       return readFileSync(defaultPath, 'utf8').trim();
     }
-
     return null;
   }
 
+  private tryInitOAuth(): OAuth2Client | null {
+    const refreshToken = this.readEnvValue('GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN');
+    const clientId = this.readEnvValue('GOOGLE_DRIVE_OAUTH_CLIENT_ID');
+    const clientSecret = this.readEnvValue('GOOGLE_DRIVE_OAUTH_CLIENT_SECRET');
+    if (!refreshToken || !clientId || !clientSecret) return null;
+
+    const redirectUri =
+      this.readEnvValue('GOOGLE_DRIVE_OAUTH_REDIRECT_URI') ||
+      'http://localhost:3333/oauth2callback';
+
+    const oauth2 = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+    oauth2.setCredentials({ refresh_token: refreshToken });
+    return oauth2;
+  }
+
   private initDriveClient() {
-    const credentialsStr = this.readCredentialsJson();
+    this.rootFolderId = this.readEnvValue('GOOGLE_DRIVE_ROOT_FOLDER_ID');
+    this.sharedDriveId = this.readEnvValue('GOOGLE_DRIVE_SHARED_DRIVE_ID');
+
+    const oauth2 = this.tryInitOAuth();
+    if (oauth2) {
+      this.drive = google.drive({ version: 'v3', auth: oauth2 });
+      this.usesUserOAuth = true;
+      this.isConfigured = true;
+      this.logger.log(
+        'Google Drive client initialized (OAuth — uses your Gmail storage; required for personal Google accounts).',
+      );
+      this.logUploadTarget();
+      void this.verifyUploadTarget();
+      return;
+    }
+
+    const credentialsStr = this.readServiceAccountJson();
     if (!credentialsStr) {
       this.logger.warn(
-        'Google Drive credentials missing. Set GOOGLE_DRIVE_CREDENTIALS, GOOGLE_DRIVE_CREDENTIALS_PATH, or place JSON at secure/google-drive-service-account.json',
+        'Google Drive not configured. For personal Gmail, set GOOGLE_DRIVE_OAUTH_CLIENT_ID, GOOGLE_DRIVE_OAUTH_CLIENT_SECRET, GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN (run scripts/google-drive-oauth-setup.mjs). Service accounts only work with Google Workspace Shared drives.',
       );
       return;
     }
@@ -74,31 +109,23 @@ export class DriveService implements OnModuleInit {
       };
 
       if (!credentials.client_email || !credentials.private_key) {
-        throw new Error('JSON must include client_email and private_key');
+        throw new Error('Service account JSON must include client_email and private_key');
       }
 
       credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
 
       const auth = new google.auth.GoogleAuth({
         credentials,
-        scopes: ['https://www.googleapis.com/auth/drive'],
+        scopes: [DRIVE_SCOPE],
       });
 
       this.drive = google.drive({ version: 'v3', auth });
-      this.rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim() || undefined;
-      this.sharedDriveId = process.env.GOOGLE_DRIVE_SHARED_DRIVE_ID?.trim() || undefined;
       this.isConfigured = true;
-      this.logger.log(`Google Drive client initialized (${credentials.client_email}).`);
-      if (this.rootFolderId) {
-        this.logger.log(`Drive upload root folder: ${this.rootFolderId}`);
-      } else if (this.sharedDriveId) {
-        this.logger.log(`Drive upload shared drive: ${this.sharedDriveId}`);
-      } else {
-        this.logger.warn(
-          'Set GOOGLE_DRIVE_ROOT_FOLDER_ID (folder in your Drive shared with the service account) or GOOGLE_DRIVE_SHARED_DRIVE_ID. Service accounts cannot store files in their own Drive.',
-        );
-      }
-
+      this.logger.log(`Google Drive client initialized (service account ${credentials.client_email}).`);
+      this.logger.warn(
+        'Service accounts cannot upload to personal Gmail Drive. Use OAuth credentials or Google Workspace Shared drives.',
+      );
+      this.logUploadTarget();
       void this.verifyUploadTarget();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -106,38 +133,52 @@ export class DriveService implements OnModuleInit {
     }
   }
 
-  /**
-   * Uploads a file (PDF or PNG/JPG) to a specific Google Drive folder.
-   * If folder doesn't exist, it creates it using the nested hierarchy logic.
-   */
+  private logUploadTarget(): void {
+    if (this.rootFolderId) {
+      this.logger.log(`Drive upload root folder: ${this.rootFolderId}`);
+    } else if (this.sharedDriveId) {
+      this.logger.log(`Drive upload shared drive: ${this.sharedDriveId}`);
+    } else if (this.usesUserOAuth) {
+      this.logger.warn('Set GOOGLE_DRIVE_ROOT_FOLDER_ID to your "VB Digital ID Cards" folder ID.');
+    }
+  }
+
   async uploadFile(
     fileName: string,
     mimeType: string,
     fileBuffer: Buffer,
-    folderHierarchy: string[] // e.g., ["School Name", "Class", "Section"]
+    folderHierarchy: string[],
   ): Promise<string> {
     if (!this.isConfigured) {
-      throw new Error(`Skipping upload of ${fileName} — Google Drive not configured.`);
+      throw new Error('Google Drive is not configured.');
     }
-    if (!this.rootFolderId && !this.sharedDriveId) {
+
+    if (!this.usesUserOAuth && !this.rootFolderId && !this.sharedDriveId) {
       throw new Error(
-        'Configure GOOGLE_DRIVE_ROOT_FOLDER_ID (share a folder with the service account) or GOOGLE_DRIVE_SHARED_DRIVE_ID.',
+        'Configure GOOGLE_DRIVE_ROOT_FOLDER_ID or use OAuth (recommended for Gmail).',
+      );
+    }
+
+    if (!this.usesUserOAuth && !this.sharedDriveId) {
+      throw new Error(
+        'Personal Gmail cannot use a service account for uploads. Set GOOGLE_DRIVE_OAUTH_* tokens (see scripts/google-drive-oauth-setup.mjs).',
       );
     }
 
     try {
-      // Shared drives: nested folders use the shared drive quota.
-      // Personal Drive + service account: subfolders created by the SA are SA-owned (no quota).
-      // Upload directly into the user-shared root folder with a descriptive filename.
-      const parentId = this.sharedDriveId
-        ? await this.resolveFolderHierarchy(folderHierarchy)
-        : this.rootFolderId;
-      if (!parentId) throw new Error('Failed to resolve target folder ID');
+      let parentId: string | null;
+      let driveFileName = fileName;
 
-      const driveFileName =
-        this.sharedDriveId || folderHierarchy.length === 0
-          ? fileName
-          : `${folderHierarchy.join(' - ')} - ${fileName}`;
+      if (this.sharedDriveId || this.usesUserOAuth) {
+        parentId = await this.resolveFolderHierarchy(folderHierarchy);
+      } else {
+        parentId = this.rootFolderId ?? null;
+        if (folderHierarchy.length > 0) {
+          driveFileName = `${folderHierarchy.join(' - ')} - ${fileName}`;
+        }
+      }
+
+      if (!parentId) throw new Error('Failed to resolve target folder ID');
 
       return await this.createFileInParent(driveFileName, mimeType, fileBuffer, parentId);
     } catch (error: unknown) {
@@ -191,7 +232,6 @@ export class DriveService implements OnModuleInit {
     return response.data.id || '';
   }
 
-  /** Confirm the shared root folder is visible to the service account. */
   private async verifyUploadTarget(): Promise<void> {
     const folderId = this.rootFolderId ?? this.sharedDriveId;
     if (!folderId) return;
@@ -205,15 +245,10 @@ export class DriveService implements OnModuleInit {
       this.logger.log(`Drive upload target OK: "${meta.data.name}" (${meta.data.id})`);
     } catch (error: unknown) {
       const message = DriveService.formatDriveError(error);
-      this.logger.error(
-        `Cannot access Drive folder ${folderId}. Share it with the service account as Editor. ${message}`,
-      );
+      this.logger.error(`Cannot access Drive folder ${folderId}: ${message}`);
     }
   }
 
-  /**
-   * Creates or resolves a nested folder structure returning the leaf folder ID.
-   */
   private driveListParams(extra: drive_v3.Params$Resource$Files$List = {}) {
     return {
       supportsAllDrives: true,
@@ -239,7 +274,7 @@ export class DriveService implements OnModuleInit {
 
   private async getOrCreateFolder(folderName: string, parentId?: string): Promise<string | null> {
     if (!parentId) {
-      this.logger.error('Cannot create Drive folder without a parent (configure GOOGLE_DRIVE_ROOT_FOLDER_ID).');
+      this.logger.error('Cannot create Drive folder without a parent (set GOOGLE_DRIVE_ROOT_FOLDER_ID).');
       return null;
     }
 
@@ -264,7 +299,6 @@ export class DriveService implements OnModuleInit {
       return res.data.files[0].id || null;
     }
 
-    // Folder doesn't exist, create it
     const createRes = await this.drive.files.create({
       requestBody: {
         name: folderName,

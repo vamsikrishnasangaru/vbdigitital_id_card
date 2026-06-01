@@ -37,10 +37,16 @@ else
   ok=false
 fi
 
+if [[ -n "${GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN:-}" ]] && [[ -n "${GOOGLE_DRIVE_OAUTH_CLIENT_ID:-}" ]] && [[ -n "${GOOGLE_DRIVE_OAUTH_CLIENT_SECRET:-}" ]]; then
+  echo "OK   Google Drive OAuth configured (personal Gmail)"
+elif [[ -n "${GOOGLE_DRIVE_CREDENTIALS:-}" ]] || [[ -f "$API_DIR/secure/google-drive-service-account.json" ]]; then
+  echo "WARN Service account only — uploads fail on personal Gmail; use OAuth (scripts/google-drive-oauth-setup.mjs)"
+fi
+
 if [[ -n "${GOOGLE_DRIVE_ROOT_FOLDER_ID:-}" ]] || [[ -n "${GOOGLE_DRIVE_SHARED_DRIVE_ID:-}" ]]; then
   echo "OK   Drive upload target configured (root folder or shared drive)"
 else
-  echo "FAIL Set GOOGLE_DRIVE_ROOT_FOLDER_ID (folder shared with service account) or GOOGLE_DRIVE_SHARED_DRIVE_ID"
+  echo "FAIL Set GOOGLE_DRIVE_ROOT_FOLDER_ID=1gnCxuct8y6wRdP23iBHI0CbHJR2Ra1ep (your VB Digital ID Cards folder)"
   ok=false
 fi
 
