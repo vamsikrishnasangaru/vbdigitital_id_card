@@ -14,6 +14,8 @@ cd "$WEB_DIR"
 export RELEASE_REVISION="${RELEASE_REVISION:-$(git -C "$APP_ROOT" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d)}"
 export PORT="${PORT:-3000}"
 export HOSTNAME="${HOSTNAME:-0.0.0.0}"
+# Same-origin /api/v1 — nginx must proxy to Nest on :4000 (do not use localhost in the browser build).
+export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-/api/v1}"
 
 pnpm exec next build --webpack
 
