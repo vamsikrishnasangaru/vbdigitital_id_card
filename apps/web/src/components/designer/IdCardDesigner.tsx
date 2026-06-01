@@ -39,7 +39,7 @@ import { DesignerToolbar } from './DesignerToolbar';
 import { DesignerElementsSidebar } from './DesignerElementsSidebar';
 import { ImageCropDialog } from './ImageCropDialog';
 import { useDesignerHistory } from './useDesignerHistory';
-import {
+import { 
   catalogActionToElementType,
   type ElementCatalogAction,
 } from './designer-elements-catalog';
@@ -98,13 +98,13 @@ function parseElements(input: DesignerElement[] | string): DesignerElement[] {
   return [];
 }
 
-export function IdCardDesigner({
-  bgUrl,
-  elements: initialElements,
-  onSave,
-  onClose,
-  templateName,
-  orientation = 'HORIZONTAL',
+export function IdCardDesigner({ 
+  bgUrl, 
+  elements: initialElements, 
+  onSave, 
+  onClose, 
+  templateName, 
+  orientation = 'HORIZONTAL', 
   schoolId,
   student,
   isRenderMode = false,
@@ -364,7 +364,7 @@ export function IdCardDesigner({
 
     insertDesignerElement(
       {
-        type,
+      type,
         ...(fieldType ? { fieldType } : {}),
         ...(text ? { text } : {}),
         ...shapeDefaults,
@@ -581,12 +581,11 @@ export function IdCardDesigner({
     }
     const stage = stageRef.current;
     if (!stage) return;
-    try {
-      exportStageToPdf(stage, `${templateName.replace(/\s+/g, '_')}_${activeSide}.pdf`, orientation);
-      toast.success('PDF exported');
-    } catch (err) {
-      toast.error(err instanceof DesignerExportError ? err.message : 'PDF export failed');
-    }
+    void exportStageToPdf(stage, `${templateName.replace(/\s+/g, '_')}_${activeSide}.pdf`, orientation)
+      .then(() => toast.success('PDF exported'))
+      .catch((err) => {
+        toast.error(err instanceof DesignerExportError ? err.message : 'PDF export failed');
+      });
   };
 
   useEffect(() => {
@@ -657,7 +656,7 @@ export function IdCardDesigner({
   ]);
 
   if (isRenderMode) {
-    return (
+  return (
       <div
         id="id-card-canvas"
         className="bg-white overflow-hidden"
@@ -757,7 +756,7 @@ export function IdCardDesigner({
             })}
           </Layer>
         </Stage>
-      </div>
+          </div>
     );
   }
 
@@ -977,8 +976,8 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
           {showGrid && (
             <div className="absolute bottom-4 left-4 z-10 text-[10px] font-medium text-white/40 pointer-events-none max-w-xs">
               Drag freely · Arrow keys move selection (Shift = 8px) · Snap via toolbar magnet
-            </div>
-          )}
+          </div>
+        )}
           <div
             style={{ width: p.cardWidth * p.scale, height: p.cardHeight * p.scale }}
             id="id-card-canvas"
@@ -1114,7 +1113,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
           <aside className="w-[300px] shrink-0 border-l border-white/[0.08] bg-[#0d0d12] overflow-y-auto designer-scroll">
             <div className="px-4 py-3 border-b border-white/[0.08]">
               <p className="text-xs font-black text-white/90">Properties</p>
-            </div>
+              </div>
             <DesignerPropertiesPanel
               selected={p.selected}
               onUpdate={(patch) => p.selectedId && p.updateElement(p.selectedId, patch, true)}

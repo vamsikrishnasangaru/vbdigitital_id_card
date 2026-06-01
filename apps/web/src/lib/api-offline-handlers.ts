@@ -29,7 +29,10 @@ export async function resolveOfflineGet(
   }
 
   if (url.includes('/classes/school/')) {
-    const schoolId = url.split('/classes/school/')[1]?.split('?')[0];
+    const schoolId = url
+      .split('/classes/school/')[1]
+      ?.split('?')[0]
+      ?.replace(/\/picker$/, '');
     if (schoolId) {
       const hit =
         offlineClasses.getClassesForSchool(schoolId) ?? offlineStore.getClasses(schoolId);

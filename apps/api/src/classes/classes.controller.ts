@@ -41,6 +41,14 @@ export class ClassesController {
     return this.classesService.createClass(schoolId, body.name, body.sortOrder);
   }
 
+  @Get('school/:schoolId/picker')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER')
+  @ApiOperation({ summary: 'Classes + sections for dropdowns (fast)' })
+  findAllPicker(@Request() req: any, @Param('schoolId') schoolId: string) {
+    const target = this.resolveSchoolId(req, schoolId);
+    return this.classesService.findAllClassesPicker(target);
+  }
+
   @Get('school/:schoolId')
   @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER')
   @ApiOperation({ summary: 'Get all classes for a school' })

@@ -8,6 +8,7 @@ import { Plus, Search, Edit, Trash2, School as SchoolIcon, Loader2, Filter, Down
 import { cn } from '@/lib/utils';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
+import { queryKeys } from '@/lib/query-keys';
 import { offlineStore } from '@/lib/offline-store';
 
 interface School {
@@ -34,7 +35,7 @@ export default function SchoolsPage() {
 
   // Queries
   const { data: schoolsData, isLoading } = useQuery({
-    queryKey: ['schools', deferredSearch],
+    queryKey: queryKeys.schools.adminList(deferredSearch),
     queryFn: async () => {
       const { data } = await api.get('/schools', { params: { search: deferredSearch || undefined, limit: 50 } });
       const list = data.data as School[];
@@ -52,7 +53,7 @@ export default function SchoolsPage() {
       } else {
         toast.success('School created successfully');
       }
-      queryClient.invalidateQueries({ queryKey: ['schools'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.schools.all });
       closeModal();
     },
     onError: (err: any) => {
@@ -70,7 +71,7 @@ export default function SchoolsPage() {
       } else {
         toast.success('School updated successfully');
       }
-      queryClient.invalidateQueries({ queryKey: ['schools'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.schools.all });
       closeModal();
     },
     onError: (err: any) => {
@@ -87,7 +88,7 @@ export default function SchoolsPage() {
       } else {
         toast.success('School deleted successfully');
       }
-      queryClient.invalidateQueries({ queryKey: ['schools'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.schools.all });
     },
     onError: (err: unknown) => {
       if (!(err as { response?: unknown }).response && !navigator.onLine) return;

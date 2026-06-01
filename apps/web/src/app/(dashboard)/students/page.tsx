@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useDeferredValue, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
@@ -14,11 +15,25 @@ import { cn, resolveMediaUrl } from '@/lib/utils';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
 import { StudentPhotoPicker } from '@/components/ui/student-photo-picker';
-import { IdCardDesigner } from '@/components/designer/IdCardDesigner';
+import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOverlay';
 import { normalizeFrontConfig } from '@/lib/template-utils';
+import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
+import { queryKeys } from '@/lib/query-keys';
+import { fetchSchoolsPicker } from '@/lib/schools-query';
+import {
+  classesQueryKey,
+  classesQueryStaleTime,
+  fetchClassesPicker,
+  getCachedClassesForSchool,
+} from '@/lib/classes-query';
 import { offlineStore } from '@/lib/offline-store';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { useMergedStudents } from '@/hooks/use-merged-students';
+
+const IdCardDesigner = dynamic(
+  () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
+  { ssr: false, loading: () => <DesignerLoadingOverlay /> },
+);
 
 const SELECT_OPTION_CLASS = 'bg-popover text-popover-foreground';
 
@@ -46,7 +61,10 @@ export default function StudentsPage() {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isTeacher = user?.role === 'TEACHER';
   const teacherDefaultsApplied = useRef(false);
-  const [selectedSchoolId, setSelectedSchoolId] = useState('');
+  const [selectedSchoolId, setSelectedSchoolId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('students_selected_school_id') ?? '';
+  });
   const [schoolSearch, setSchoolSearch] = useState('');
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());
@@ -79,15 +97,17 @@ export default function StudentsPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [viewStudent, setViewStudent] = useState<any | null>(null);
   const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<{
+    id: string;
+    name: string;
+    frontBgUrl?: string;
+    orientation: string;
+    frontConfig?: unknown;
+  } | null>(null);
 
   const { data: schools = [] } = useQuery({
-    queryKey: ['schools', 'students-picker'],
-    queryFn: async () => {
-      const { data } = await api.get('/schools', { params: { limit: 100 } });
-      const list = data.data as { id: string; name: string; code: string }[];
-      offlineStore.cacheSchools(list);
-      return list;
-    },
+    queryKey: queryKeys.schools.picker,
+    queryFn: fetchSchoolsPicker,
     enabled: isSuperAdmin,
   });
 
@@ -207,35 +227,36 @@ export default function StudentsPage() {
     ? studentsData.length
     : Math.max(studentsData.length, studentsResponse?.total ?? 0);
 
-  const { data: classes = [] } = useQuery({
-    queryKey: ['classes', effectiveSchoolId],
-    queryFn: async () => {
-      if (!effectiveSchoolId) return [];
-      const { data } = await api.get(`/classes/school/${effectiveSchoolId}`);
-      const list = data || [];
-      offlineStore.cacheClasses(effectiveSchoolId, list);
-      return list;
-    },
+  const { data: classes = [], isPending: classesPending } = useQuery({
+    queryKey: classesQueryKey(effectiveSchoolId),
+    queryFn: () => fetchClassesPicker(effectiveSchoolId),
     enabled: !!effectiveSchoolId,
+    staleTime: classesQueryStaleTime(),
+    placeholderData: () => getCachedClassesForSchool(effectiveSchoolId),
   });
 
   const enrollSchoolId = showCreate ? (form.schoolId || effectiveSchoolId) : '';
-  const { data: enrollClassesFetched = [], isFetching: loadingEnrollClasses } = useQuery({
-    queryKey: ['classes', enrollSchoolId],
-    queryFn: async () => {
-      const { data } = await api.get(`/classes/school/${enrollSchoolId}`);
-      const list = data || [];
-      offlineStore.cacheClasses(enrollSchoolId, list);
-      return list;
-    },
-    enabled: showCreate && !!enrollSchoolId,
-    staleTime: 1000 * 60 * 10,
+
+  const { data: enrollAltClasses = [], isPending: enrollAltPending } = useQuery({
+    queryKey: classesQueryKey(enrollSchoolId),
+    queryFn: () => fetchClassesPicker(enrollSchoolId),
+    enabled: showCreate && !!enrollSchoolId && enrollSchoolId !== effectiveSchoolId,
+    staleTime: classesQueryStaleTime(),
+    placeholderData: () => getCachedClassesForSchool(enrollSchoolId),
   });
 
   const enrollClasses =
-    showCreate && enrollSchoolId === effectiveSchoolId && classes.length > 0
-      ? classes
-      : enrollClassesFetched;
+    !showCreate || !enrollSchoolId
+      ? []
+      : enrollSchoolId === effectiveSchoolId
+        ? classes
+        : enrollAltClasses;
+
+  const enrollClassesLoading =
+    showCreate &&
+    !!enrollSchoolId &&
+    enrollClasses.length === 0 &&
+    (enrollSchoolId === effectiveSchoolId ? classesPending : enrollAltPending);
 
   const { data: templates = [] } = useQuery({
     queryKey: ['templates', effectiveSchoolId],
@@ -390,13 +411,25 @@ export default function StudentsPage() {
     deleteMutation.mutate(s.id);
   };
 
-  const openCardPreview = (s: any) => {
+  const openCardPreview = async (s: { id: string; firstName?: string }) => {
     if (!selectedTemplateId) {
       toast.error('Choose a template under “Generate with template” first');
       return;
     }
     setViewStudent(s);
-    setCardPreviewOpen(true);
+    try {
+      const tpl = await fetchTemplateWithConfig<{
+        id: string;
+        name: string;
+        frontBgUrl?: string;
+        orientation: string;
+        frontConfig?: unknown;
+      }>(selectedTemplateId);
+      setPreviewTemplate(tpl);
+      setCardPreviewOpen(true);
+    } catch {
+      toast.error('Failed to load template for preview');
+    }
   };
 
   const studentPhotoSrc = (photoUrl?: string | null) => (photoUrl ? resolveMediaUrl(photoUrl) : '');
@@ -523,45 +556,43 @@ export default function StudentsPage() {
             <Download className="h-4 w-4 shrink-0" /> Export CSV
           </button>
           <button onClick={() => {
-            const primary = isTeacher && teacherAssignments[0] ? teacherAssignments[0] : null;
-            if (primary) {
-              const cls = classes.find((c: { id: string }) => c.id === primary.class.id);
-              setSections(cls?.sections || []);
-            } else {
-              setSections([]);
-            }
-            setForm({
-              schoolId: effectiveSchoolId || '',
-              classId: primary?.class.id || '',
-              sectionId: primary?.section.id || '',
-              firstName: '',
-              lastName: '',
-              rollNumber: '',
-              admissionNumber: '',
-              parentName: '',
-              parentPhone: '',
-              bloodGroup: '',
-              address: '',
-              dateOfBirth: '',
-              emergencyContact: '',
-              transportDetails: '',
-            });
-            setPhoto(null);
-            setPhotoPreview(null);
-            setSections([]);
-            const prefetchSchoolId = isSuperAdmin ? form.schoolId || effectiveSchoolId : effectiveSchoolId;
-            if (prefetchSchoolId) {
-              void queryClient.prefetchQuery({
-                queryKey: ['classes', prefetchSchoolId],
-                queryFn: async () => {
-                  const { data } = await api.get(`/classes/school/${prefetchSchoolId}`);
-                  const list = data || [];
-                  offlineStore.cacheClasses(prefetchSchoolId, list);
-                  return list;
-                },
+            void (async () => {
+              const primary = isTeacher && teacherAssignments[0] ? teacherAssignments[0] : null;
+              const schoolId = effectiveSchoolId || '';
+              setForm({
+                schoolId,
+                classId: primary?.class.id || '',
+                sectionId: primary?.section.id || '',
+                firstName: '',
+                lastName: '',
+                rollNumber: '',
+                admissionNumber: '',
+                parentName: '',
+                parentPhone: '',
+                bloodGroup: '',
+                address: '',
+                dateOfBirth: '',
+                emergencyContact: '',
+                transportDetails: '',
               });
-            }
-            setShowCreate(true);
+              setPhoto(null);
+              setPhotoPreview(null);
+              if (primary && schoolId) {
+                const cached = getCachedClassesForSchool(schoolId) ?? classes;
+                const cls = cached.find((c) => c.id === primary.class.id);
+                setSections(cls?.sections || []);
+              } else {
+                setSections([]);
+              }
+              if (schoolId) {
+                await queryClient.ensureQueryData({
+                  queryKey: classesQueryKey(schoolId),
+                  queryFn: () => fetchClassesPicker(schoolId),
+                  staleTime: classesQueryStaleTime(),
+                });
+              }
+              setShowCreate(true);
+            })();
           }} className="group relative flex items-center justify-center gap-2 px-6 py-3.5 bg-primary text-primary-foreground rounded-2xl text-sm font-black shadow-xl shadow-primary/20 hover:shadow-primary/40 active:scale-95 transition-all overflow-hidden w-full sm:w-auto">
             <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
             <Plus className="h-5 w-5" /> Enroll Student
@@ -1204,17 +1235,18 @@ export default function StudentsPage() {
         </div>
       )}
 
-      {cardPreviewOpen && selectedTemplate && viewStudent && (
+      {cardPreviewOpen && previewTemplate && viewStudent && (
         <div className="fixed inset-0 z-[110] bg-background">
           <IdCardDesigner
-            bgUrl={selectedTemplate.frontBgUrl || ''}
-            elements={normalizeFrontConfig(selectedTemplate.frontConfig)}
-            templateName={`${selectedTemplate.name} - ${viewStudent.firstName} (PREVIEW)`}
-            orientation={selectedTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
+            bgUrl={previewTemplate.frontBgUrl || ''}
+            elements={normalizeFrontConfig(previewTemplate.frontConfig)}
+            templateName={`${previewTemplate.name} - ${viewStudent.firstName} (PREVIEW)`}
+            orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
             student={viewStudent}
             schoolId={effectiveSchoolId || undefined}
             onClose={() => {
               setCardPreviewOpen(false);
+              setPreviewTemplate(null);
             }}
           />
         </div>
@@ -1279,6 +1311,13 @@ export default function StudentsPage() {
                             const schoolId = e.target.value;
                             setForm({ ...form, schoolId, classId: '', sectionId: '' });
                             setSections([]);
+                            if (schoolId) {
+                              void queryClient.prefetchQuery({
+                                queryKey: classesQueryKey(schoolId),
+                                queryFn: () => fetchClassesPicker(schoolId),
+                                staleTime: classesQueryStaleTime(),
+                              });
+                            }
                           }}
                           required
                           className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
@@ -1313,7 +1352,7 @@ export default function StudentsPage() {
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
                       >
                         <option value="">
-                          {loadingEnrollClasses ? 'Loading classes…' : 'Select class'}
+                          {enrollClassesLoading ? 'Loading classes…' : 'Select class'}
                         </option>
                         {enrollClasses.map((c: { id: string; name: string }) => (
                           <option key={c.id} value={c.id}>{c.name}</option>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -8,7 +9,15 @@ import {
   Plus, Trash2, Loader2, Image as ImageIcon,
   Settings2, Layout, Palette, X, School, Search, Upload, Copy, Layers,
 } from 'lucide-react';
-import { IdCardDesigner } from '@/components/designer/IdCardDesigner';
+import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOverlay';
+import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
+import { queryKeys } from '@/lib/query-keys';
+import { fetchSchoolsPicker, type SchoolPickerOption } from '@/lib/schools-query';
+
+const IdCardDesigner = dynamic(
+  () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
+  { ssr: false, loading: () => <DesignerLoadingOverlay /> },
+);
 import { TemplateBackgroundPicker, createEmptyBackground } from '@/components/designer/TemplateBackgroundPicker';
 import { cn, resolveMediaUrl } from '@/lib/utils';
 import { normalizeFrontConfig, uploadTemplateBackground } from '@/lib/template-utils';
@@ -19,12 +28,6 @@ import {
   isValidBackground,
   templateCardBackgroundStyle,
 } from '@/lib/background-utils';
-interface SchoolOption {
-  id: string;
-  name: string;
-  code: string;
-}
-
 interface Template {
   id: string;
   name: string;
@@ -33,7 +36,7 @@ interface Template {
   schoolId?: string | null;
   orientation: 'HORIZONTAL' | 'VERTICAL';
   frontBgUrl: string;
-  frontConfig: any[];
+  frontConfig?: any[];
   backBgUrl?: string;
   backConfig?: any[];
   school?: { id: string; name: string; code: string };
@@ -46,7 +49,7 @@ function templateDisplayCode(tpl: { id: string; code?: string | null }) {
 
 function suggestDuplicateCode(
   tpl: Template,
-  targetSchool?: SchoolOption,
+  targetSchool?: SchoolPickerOption,
 ) {
   const base = (tpl.code || tpl.name.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '') || 'TEMPLATE')
     .toUpperCase()
@@ -83,11 +86,8 @@ export default function TemplatesPage() {
   const [isCreating, setIsCreating] = useState(false);
 
   const { data: schools = [] } = useQuery({
-    queryKey: ['schools', 'picker'],
-    queryFn: async () => {
-      const { data } = await api.get('/schools', { params: { limit: 100 } });
-      return data.data as SchoolOption[];
-    },
+    queryKey: queryKeys.schools.picker,
+    queryFn: fetchSchoolsPicker,
   });
 
   useEffect(() => {
@@ -452,12 +452,18 @@ export default function TemplatesPage() {
     }
   };
 
-  const handleEdit = (template: Template) => {
-    setEditingTemplate({
-      ...template,
-      frontConfig: normalizeFrontConfig(template.frontConfig) as Template['frontConfig'],
-    });
-    setDesignerOpen(true);
+  const handleEdit = async (template: Template) => {
+    try {
+      const data = await fetchTemplateWithConfig<Template>(template.id);
+      setEditingTemplate({
+        ...data,
+        frontConfig: normalizeFrontConfig(data.frontConfig) as Template['frontConfig'],
+        backConfig: normalizeFrontConfig(data.backConfig ?? []) as Template['backConfig'],
+      });
+      setDesignerOpen(true);
+    } catch {
+      toast.error('Failed to load template');
+    }
   };
 
   return (
@@ -785,8 +791,8 @@ export default function TemplatesPage() {
             onSaveAs={handleSaveAs}
             bgUrl={editingTemplate.frontBgUrl || ''}
             backBgUrl={editingTemplate.backBgUrl}
-            elements={normalizeFrontConfig(editingTemplate.frontConfig) as Template['frontConfig']}
-            backElements={normalizeFrontConfig(editingTemplate.backConfig ?? []) as Template['frontConfig']}
+            elements={normalizeFrontConfig(editingTemplate.frontConfig ?? [])}
+            backElements={normalizeFrontConfig(editingTemplate.backConfig ?? [])}
             templateName={editingTemplate.name}
             orientation={editingTemplate.orientation || 'HORIZONTAL'}
           />

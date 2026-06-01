@@ -23,6 +23,8 @@ import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
+import { queryKeys } from '@/lib/query-keys';
+import { fetchSchoolsPicker } from '@/lib/schools-query';
 import { offlineStore } from '@/lib/offline-store';
 import { offlineTeachers } from '@/lib/offline-teachers';
 import { offlineClasses } from '@/lib/offline-classes';
@@ -98,13 +100,8 @@ export default function TeachersPage() {
   };
 
   const { data: schools = [] } = useQuery({
-    queryKey: ['schools', 'teachers-picker'],
-    queryFn: async () => {
-      const { data } = await api.get('/schools', { params: { limit: 100 } });
-      const list = data.data as { id: string; name: string; code: string }[];
-      offlineStore.cacheSchools(list);
-      return list;
-    },
+    queryKey: queryKeys.schools.picker,
+    queryFn: fetchSchoolsPicker,
     enabled: isSuperAdmin,
   });
 

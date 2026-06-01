@@ -75,7 +75,22 @@ export class TemplatesService {
     return this.prisma.template.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { idCards: true } }, school: { select: { id: true, name: true, code: true } } },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        description: true,
+        schoolId: true,
+        frontBgUrl: true,
+        backBgUrl: true,
+        orientation: true,
+        isDefault: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        school: { select: { id: true, name: true, code: true } },
+        _count: { select: { idCards: true } },
+      },
     });
   }
 

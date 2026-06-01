@@ -63,6 +63,24 @@ export class ClassesService {
     });
   }
 
+  /** Lightweight list for dropdowns (enrollment, filters) — no per-section student counts. */
+  async findAllClassesPicker(schoolId: string) {
+    return this.prisma.class.findMany({
+      where: { schoolId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        sortOrder: true,
+        sections: {
+          where: { deletedAt: null },
+          orderBy: { sortOrder: 'asc' },
+          select: { id: true, name: true, sortOrder: true },
+        },
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
   async deleteClass(id: string, schoolId?: string) {
     const cls = await this.prisma.class.findFirst({
       where: { id, deletedAt: null, ...(schoolId ? { schoolId } : {}) },

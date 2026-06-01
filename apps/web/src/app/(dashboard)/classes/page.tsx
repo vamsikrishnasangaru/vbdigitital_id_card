@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StatCard } from '@/components/ui/stat-card';
+import { queryKeys } from '@/lib/query-keys';
+import { fetchSchoolsPicker } from '@/lib/schools-query';
 import { offlineStore } from '@/lib/offline-store';
 import { offlineClasses } from '@/lib/offline-classes';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
@@ -89,13 +91,8 @@ export default function ClassesPage() {
   };
 
   const { data: schools = [] } = useQuery({
-    queryKey: ['schools', 'picker'],
-    queryFn: async () => {
-      const { data } = await api.get('/schools', { params: { limit: 100 } });
-      const list = data.data as SchoolOption[];
-      offlineStore.cacheSchools(list);
-      return list;
-    },
+    queryKey: queryKeys.schools.picker,
+    queryFn: fetchSchoolsPicker,
     enabled: isSuperAdmin,
   });
 

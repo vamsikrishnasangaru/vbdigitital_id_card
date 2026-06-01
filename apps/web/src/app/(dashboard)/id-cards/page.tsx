@@ -11,25 +11,25 @@ import {
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
+import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOverlay';
 import { cn, resolveMediaUrl } from '@/lib/utils';
 import { normalizeFrontConfig } from '@/lib/template-utils';
+import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
+import { queryKeys } from '@/lib/query-keys';
+import {
+  classesQueryKey,
+  classesQueryStaleTime,
+  fetchClassesPicker,
+  getCachedClassesForSchool,
+} from '@/lib/classes-query';
+import { fetchSchoolsPicker } from '@/lib/schools-query';
 import { offlineStore } from '@/lib/offline-store';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { useMergedStudents } from '@/hooks/use-merged-students';
 
 const IdCardDesigner = dynamic(
   () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-muted-foreground">Loading designer...</span>
-        </div>
-      </div>
-    ),
-  },
+  { ssr: false, loading: () => <DesignerLoadingOverlay /> },
 );
 
 export default function IdCardsPage() {
@@ -45,6 +45,12 @@ export default function IdCardsPage() {
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<{
+    name: string;
+    frontBgUrl?: string;
+    orientation: string;
+    frontConfig?: unknown;
+  } | null>(null);
 
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
 
@@ -91,14 +97,11 @@ export default function IdCardsPage() {
   });
 
   const { data: classes = [] } = useQuery({
-    queryKey: ['classes', effectiveSchoolId],
-    queryFn: async () => {
-      if (!effectiveSchoolId) return [];
-      const { data } = await api.get(`/classes/school/${effectiveSchoolId}`);
-      offlineStore.cacheClasses(effectiveSchoolId, data);
-      return data;
-    },
+    queryKey: classesQueryKey(effectiveSchoolId),
+    queryFn: () => fetchClassesPicker(effectiveSchoolId),
     enabled: !!effectiveSchoolId,
+    staleTime: classesQueryStaleTime(),
+    placeholderData: () => getCachedClassesForSchool(effectiveSchoolId),
   });
 
   const { data: studentsRaw = [], isLoading: loadingStudents } = useQuery({
@@ -178,7 +181,6 @@ export default function IdCardsPage() {
     }
   }, [templates, selectedTemplate]);
 
-  const activeTemplate = templates.find((t: any) => t.id === selectedTemplate);
   const activeClass = classes.find((c: any) => c.id === selectedClass);
   const sections = activeClass?.sections || [];
   const selectedSchool = schools.find((s) => s.id === effectiveSchoolId);
@@ -433,12 +435,25 @@ export default function IdCardsPage() {
                           <td className="p-6 text-right">
                             <button 
                               onClick={() => {
-                                if (!selectedTemplate) {
-                                  toast.error('Select a template to preview');
-                                  return;
-                                }
-                                setSelectedStudent(s);
-                                setPreviewOpen(true);
+                                void (async () => {
+                                  if (!selectedTemplate) {
+                                    toast.error('Select a template to preview');
+                                    return;
+                                  }
+                                  try {
+                                    const tpl = await fetchTemplateWithConfig<{
+                                      name: string;
+                                      frontBgUrl?: string;
+                                      orientation: string;
+                                      frontConfig?: unknown;
+                                    }>(selectedTemplate);
+                                    setPreviewTemplate(tpl);
+                                    setSelectedStudent(s);
+                                    setPreviewOpen(true);
+                                  } catch {
+                                    toast.error('Failed to load template for preview');
+                                  }
+                                })();
                               }}
                               className="p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-lg transition-all"
                               title="Preview Card"
@@ -458,16 +473,17 @@ export default function IdCardsPage() {
       </div>
 
       {/* Designer Preview Overlay */}
-      {previewOpen && activeTemplate && selectedStudent && (
+      {previewOpen && previewTemplate && selectedStudent && (
         <div className="fixed inset-0 z-[110] bg-background">
           <IdCardDesigner
-            bgUrl={activeTemplate.frontBgUrl || ''}
-            elements={normalizeFrontConfig(activeTemplate.frontConfig)}
-            templateName={`${activeTemplate.name} - ${selectedStudent.firstName} (PREVIEW)`}
-            orientation={activeTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
+            bgUrl={previewTemplate.frontBgUrl || ''}
+            elements={normalizeFrontConfig(previewTemplate.frontConfig)}
+            templateName={`${previewTemplate.name} - ${selectedStudent.firstName} (PREVIEW)`}
+            orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
             student={selectedStudent}
             onClose={() => {
               setPreviewOpen(false);
+              setPreviewTemplate(null);
               setSelectedStudent(null);
             }}
           />

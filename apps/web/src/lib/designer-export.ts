@@ -1,5 +1,4 @@
 import type Konva from 'konva';
-import { jsPDF } from 'jspdf';
 
 const EXPORT_PIXEL_RATIO = 4;
 
@@ -39,11 +38,12 @@ export function getCardDimensionsInches(orientation: 'HORIZONTAL' | 'VERTICAL') 
   return orientation === 'VERTICAL' ? { widthIn: h, heightIn: w } : { widthIn: w, heightIn: h };
 }
 
-export function exportStageToPdf(
+export async function exportStageToPdf(
   stage: Konva.Stage,
   filename: string,
   orientation: 'HORIZONTAL' | 'VERTICAL',
 ) {
+  const { jsPDF } = await import('jspdf');
   const { widthIn, heightIn } = getCardDimensionsInches(orientation);
   const uri = dataUrlFromStage(stage);
   const pdf = new jsPDF({

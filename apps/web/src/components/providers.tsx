@@ -1,5 +1,6 @@
 'use client';
 
+import { OfflineSyncProvider } from '@/components/OfflineSyncProvider';
 import { SerwistRegistration } from '@/components/SerwistRegistration';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
@@ -80,11 +81,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
           persistOptions={{ persister, maxAge: 1000 * 60 * 60 * 24 * 7 }}
         >
           <OfflineSyncListener queryClient={queryClient} />
-          {children}
+          <OfflineSyncProvider>{children}</OfflineSyncProvider>
         </PersistQueryClientProvider>
       ) : (
         <QueryClientProvider client={queryClient}>
-          {children}
+          <OfflineSyncProvider>{children}</OfflineSyncProvider>
         </QueryClientProvider>
       )}
       <Toaster position="top-right" richColors closeButton />

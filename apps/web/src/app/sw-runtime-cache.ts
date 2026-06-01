@@ -175,22 +175,12 @@ export const runtimeCaching: RuntimeCaching[] = [
     matcher: /\/api\/auth\/.*/,
     handler: new NetworkOnly({ networkTimeoutSeconds: 10 }),
   },
+  /** Dynamic API data — never cache (React Query + offline store handle freshness). */
   {
     matcher: ({ sameOrigin, url: { pathname } }) =>
       sameOrigin && pathname.startsWith("/api/"),
     method: "GET",
-    handler: new NetworkFirst({
-      cacheName: "apis",
-      plugins: [
-        new ExpirationPlugin({
-          maxEntries: 32,
-          maxAgeSeconds: 300,
-          maxAgeFrom: "last-used",
-        }),
-      ],
-      /** Fail fast to cache so the UI does not hang on slow VPS links. */
-      networkTimeoutSeconds: 3,
-    }),
+    handler: new NetworkOnly({ networkTimeoutSeconds: 10 }),
   },
   {
     matcher: ({ sameOrigin }) => !sameOrigin,
