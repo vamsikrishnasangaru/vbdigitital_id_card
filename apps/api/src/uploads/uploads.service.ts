@@ -42,6 +42,28 @@ export class UploadsService {
     return path.join(process.cwd(), relativePath);
   }
 
+  /** Find uploads/... path when DB only stores a bare filename. */
+  findRelativeByBasename(basename: string): string | null {
+    const safe = path.basename(basename);
+    if (!safe || safe !== basename.replace(/\\/g, '/')) return null;
+
+    const walk = (dir: string): string | null => {
+      if (!fs.existsSync(dir)) return null;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          const found = walk(full);
+          if (found) return found;
+        } else if (entry.name === safe) {
+          return path.relative(this.uploadDir, full).replace(/\\/g, '/');
+        }
+      }
+      return null;
+    };
+
+    return walk(this.uploadDir);
+  }
+
   async saveBuffer(buffer: Buffer, subDir: string, filename: string): Promise<string> {
     const dir = path.join(this.uploadDir, subDir);
     if (!fs.existsSync(dir)) {

@@ -28,7 +28,15 @@ const withSerwist = withSerwistInit({
       })(),
 });
 
-const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace(/\/$/, '');
+const publicApiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace(
+  /\/$/,
+  '',
+);
+/** Server-side rewrites must hit Nest on :4000 when the public URL is same-origin `/api/v1`. */
+const apiRewriteTarget = (
+  process.env.API_REWRITE_TARGET ||
+  (publicApiBase.startsWith('http') ? publicApiBase : 'http://127.0.0.1:4000/api/v1')
+).replace(/\/$/, '');
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -58,12 +66,12 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/media-uploads/:path*',
-        destination: `${apiBase}/uploads/:path*`,
+        destination: `${apiRewriteTarget}/uploads/:path*`,
       },
-      /** Optional same-origin API proxy (avoids mistaken navigation to bare `/api`). */
+      /** Same-origin API proxy → NestJS on the VPS. */
       {
         source: '/api/v1/:path*',
-        destination: `${apiBase}/:path*`,
+        destination: `${apiRewriteTarget}/:path*`,
       },
     ];
   },

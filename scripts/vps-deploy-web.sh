@@ -16,7 +16,11 @@ export PORT="${PORT:-3000}"
 export HOSTNAME="${HOSTNAME:-0.0.0.0}"
 # Same-origin /api/v1 — nginx must proxy to Nest on :4000 (do not use localhost in the browser build).
 export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-/api/v1}"
-echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" > .env.production
+export API_REWRITE_TARGET="${API_REWRITE_TARGET:-http://127.0.0.1:4000/api/v1}"
+{
+  echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"
+  echo "API_REWRITE_TARGET=$API_REWRITE_TARGET"
+} > .env.production
 
 # Dev .env.local often contains localhost and breaks live auth if baked into the client bundle.
 ENV_LOCAL_BACKUP=""

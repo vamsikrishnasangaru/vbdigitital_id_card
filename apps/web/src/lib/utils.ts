@@ -5,11 +5,45 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Same-origin URL for files under apps/api/uploads (nginx or Next → Nest). */
+export function uploadPublicUrl(relativePath: string): string {
+  const clean = relativePath.replace(/^\/+/, '').replace(/^uploads\//, '');
+  return `/api/v1/uploads/${clean}`;
+}
+
+/** Extract path under uploads/ from stored values (several legacy formats). */
+export function extractUploadRelativePath(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  const withoutOrigin = trimmed.replace(/^https?:\/\/[^/]+/i, '');
+
+  const fromApi = withoutOrigin.match(/\/api\/v1\/uploads\/(.+)$/i);
+  if (fromApi) return fromApi[1];
+
+  const fromUploads = withoutOrigin.match(/\/uploads\/(.+)$/i);
+  if (fromUploads) return fromUploads[1];
+
+  const fromMedia = withoutOrigin.match(/\/media-uploads\/(.+)$/i);
+  if (fromMedia) return fromMedia[1];
+
+  if (withoutOrigin.startsWith('uploads/')) {
+    return withoutOrigin.slice('uploads/'.length);
+  }
+
+  // Bare filename (e.g. 1780298562990-iy37do.jpeg) — served via by-name lookup
+  if (/^[^/]+\.(jpe?g|png|gif|webp)$/i.test(withoutOrigin)) {
+    return `by-name/${withoutOrigin}`;
+  }
+
+  return null;
+}
+
 /** Map stored upload paths to a same-origin URL so Konva can export PNG/PDF (avoids tainted canvas). */
 export function proxiedUploadUrl(url: string): string | null {
-  const match = url.match(/\/uploads\/(.+)$/);
-  if (!match) return null;
-  return `/media-uploads/${match[1]}`;
+  const relative = extractUploadRelativePath(url);
+  if (!relative) return null;
+  return uploadPublicUrl(relative);
 }
 
 /** Resolve API-relative upload paths (e.g. /uploads/templates/...) to a full URL. */
@@ -20,9 +54,13 @@ export function resolveMediaUrl(url?: string | null): string {
   const proxied = proxiedUploadUrl(url);
   if (proxied) return proxied;
 
-  if (url.startsWith('http')) return url;
+  if (url.startsWith('http')) {
+    const fromRemote = proxiedUploadUrl(url);
+    if (fromRemote) return fromRemote;
+    return url;
+  }
 
-  const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace(/\/$/, '');
+  const base = (process.env.NEXT_PUBLIC_API_URL || '/api/v1').replace(/\/$/, '');
   const absolute = `${base}${url.startsWith('/') ? url : `/${url}`}`;
   return proxiedUploadUrl(absolute) ?? absolute;
 }
