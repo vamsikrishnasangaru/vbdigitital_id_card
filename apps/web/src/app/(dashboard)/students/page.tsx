@@ -1428,19 +1428,6 @@ export default function StudentsPage() {
                 {/* Visual Identity Section */}
                 <div className="lg:col-span-4 space-y-6">
                   <StudentPhotoPicker preview={photoPreview} onPhotoChange={handlePhotoSelected} />
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                      Aadhar Card
-                    </label>
-                    <input
-                      value={form.aadharCard}
-                      onChange={(e) => setForm({ ...form, aadharCard: e.target.value })}
-                      inputMode="numeric"
-                      maxLength={12}
-                      className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
-                      placeholder="12-digit Aadhar number"
-                    />
-                  </div>
                 </div>
 
                 {/* Information Fields Section */}
@@ -1608,6 +1595,19 @@ export default function StudentsPage() {
                         Optional details
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                            Aadhar Card
+                          </label>
+                          <input
+                            value={form.aadharCard}
+                            onChange={(e) => setForm({ ...form, aadharCard: e.target.value })}
+                            inputMode="numeric"
+                            maxLength={12}
+                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
+                            placeholder="12-digit Aadhar number"
+                          />
+                        </div>
                         <div className="space-y-2">
                           <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
                             Blood group
