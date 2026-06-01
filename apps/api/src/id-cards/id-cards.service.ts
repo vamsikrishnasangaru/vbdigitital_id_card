@@ -198,6 +198,16 @@ export class IdCardsService {
       where: { id: templateId, deletedAt: null, isActive: true },
     });
     if (!template) throw new BadRequestException('Template not found');
+
+    const bg = template.frontBgUrl?.trim();
+    if (!bg) {
+      this.logger.warn(
+        `Template ${templateId} has no frontBgUrl. Set a background image under Templates → Replace background.`,
+      );
+    } else if (!bg.startsWith('color:') && !bg.startsWith('gradient:')) {
+      this.logger.log(`Template ${templateId} background image path: ${bg}`);
+    }
+
     return template;
   }
 

@@ -1,5 +1,5 @@
 import { parseBackground } from '@/lib/background-utils';
-import { resolveMediaUrl } from '@/lib/utils';
+import { resolveMediaUrl, resolveMediaUrlAbsolute } from '@/lib/utils';
 
 export const DESIGN_PPI = 96;
 
@@ -588,19 +588,20 @@ export function collectRenderImageUrls(
   bgUrl: string,
   elements: DesignerElement[],
   student: Record<string, unknown> | null | undefined,
-  options?: { usePlaceholder?: boolean },
+  options?: { usePlaceholder?: boolean; absolute?: boolean },
 ): string[] {
+  const resolve = options?.absolute ? resolveMediaUrlAbsolute : resolveMediaUrl;
   const parsedBg = parseBackground(bgUrl);
   const urls: string[] = [];
 
   if (parsedBg.mode === 'image' && parsedBg.imageUrl) {
-    urls.push(resolveMediaUrl(parsedBg.imageUrl));
+    urls.push(resolve(parsedBg.imageUrl));
   }
 
   for (const el of elements) {
     if (!isMediaElement(el)) continue;
     const url = getElementImageUrl(el, student, options);
-    if (url && !url.startsWith('data:')) urls.push(url);
+    if (url && !url.startsWith('data:')) urls.push(resolve(url));
   }
 
   return [...new Set(urls.filter(Boolean))];

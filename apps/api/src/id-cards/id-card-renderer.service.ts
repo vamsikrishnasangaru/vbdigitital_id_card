@@ -73,7 +73,22 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async waitForRenderReady(page: Page): Promise<void> {
-    await page.waitForSelector('[data-render-status="ready"]', { timeout: 90000 });
+    await page.waitForFunction(
+      () => {
+        const status = document.querySelector('[data-render-status]')?.getAttribute('data-render-status');
+        return status === 'ready' || status === 'error';
+      },
+      { timeout: 90000 },
+    );
+
+    const renderError = await page.evaluate(() => {
+      const root = document.querySelector('[data-render-status="error"]');
+      return root?.textContent?.trim() || null;
+    });
+    if (renderError) {
+      throw new Error(renderError);
+    }
+
     await page.waitForSelector('#id-card-canvas[data-render-images-ready="true"]', { timeout: 90000 });
     await page.waitForSelector('#id-card-canvas canvas', { timeout: 30000 });
 

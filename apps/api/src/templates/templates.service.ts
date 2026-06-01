@@ -1,7 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
-import { normalizeConfigMediaUrls, normalizeStoredUploadUrl } from '../uploads/media-url.util';
+import {
+  extractUploadRelativePath,
+  normalizeConfigMediaUrls,
+  normalizeStoredUploadUrl,
+  uploadsFileExists,
+} from '../uploads/media-url.util';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto';
 import { Orientation } from '@prisma/client';
 
@@ -10,6 +16,7 @@ export class TemplatesService {
   constructor(
     private prisma: PrismaService,
     private uploadsService: UploadsService,
+    private configService: ConfigService,
   ) {}
 
   private normalizeCode(code?: string): string | undefined {
@@ -42,15 +49,50 @@ export class TemplatesService {
 
   private normalizeTemplateMedia<T extends { frontBgUrl?: string | null; backBgUrl?: string | null; frontConfig?: unknown; backConfig?: unknown }>(
     tpl: T,
-  ): T {
+  ) {
     const uploadDir = this.uploadsService.getUploadDir();
     const findByBasename = (name: string) => this.uploadsService.findRelativeByBasename(name);
-    return {
+    const normalized = {
       ...tpl,
       frontBgUrl: normalizeStoredUploadUrl(tpl.frontBgUrl, uploadDir, findByBasename),
       backBgUrl: normalizeStoredUploadUrl(tpl.backBgUrl, uploadDir, findByBasename),
       frontConfig: normalizeConfigMediaUrls(tpl.frontConfig, uploadDir, findByBasename),
       backConfig: normalizeConfigMediaUrls(tpl.backConfig, uploadDir, findByBasename),
+    };
+    return {
+      ...normalized,
+      frontBgMedia: this.describeBgMedia(normalized.frontBgUrl),
+    };
+  }
+
+  private describeBgMedia(frontBgUrl?: string | null) {
+    if (!frontBgUrl?.trim()) {
+      return { configured: false, mode: 'none' as const, exists: false, path: null, publicUrl: null };
+    }
+    if (frontBgUrl.startsWith('color:') || frontBgUrl.startsWith('gradient:')) {
+      return {
+        configured: true,
+        mode: frontBgUrl.startsWith('color:') ? ('solid' as const) : ('gradient' as const),
+        exists: true,
+        path: frontBgUrl,
+        publicUrl: null,
+      };
+    }
+
+    const uploadDir = this.uploadsService.getUploadDir();
+    const relative = extractUploadRelativePath(frontBgUrl);
+    const exists = relative ? uploadsFileExists(uploadDir, relative) : false;
+    const frontend = (this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000').replace(
+      /\/$/,
+      '',
+    );
+    return {
+      configured: true,
+      mode: 'image' as const,
+      exists,
+      path: frontBgUrl,
+      relative,
+      publicUrl: exists && relative ? `${frontend}/api/v1/uploads/${relative}` : null,
     };
   }
 

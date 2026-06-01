@@ -78,6 +78,19 @@ export function resolveMediaUrl(url?: string | null): string {
   return resolved;
 }
 
+/** Same as resolveMediaUrl but absolute (needed for headless Konva render). */
+export function resolveMediaUrlAbsolute(url?: string | null): string {
+  const resolved = resolveMediaUrl(url);
+  if (!resolved) return '';
+  if (resolved.startsWith('data:') || resolved.startsWith('blob:') || resolved.startsWith('http')) {
+    return resolved;
+  }
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${resolved.startsWith('/') ? resolved : `/${resolved}`}`;
+  }
+  return resolved;
+}
+
 export function formatDate(date: string | Date) {
   return new Intl.DateTimeFormat('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',

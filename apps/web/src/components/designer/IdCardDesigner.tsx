@@ -29,7 +29,7 @@ import {
 } from '@/lib/designer-utils';
 import { uploadDesignerAsset } from '@/lib/template-utils';
 import { parseBackground, gradientEndPoint } from '@/lib/background-utils';
-import { cn, resolveMediaUrl } from '@/lib/utils';
+import { cn, resolveMediaUrl, resolveMediaUrlAbsolute } from '@/lib/utils';
 import { DESIGNER_MOCK_STUDENT } from '@/lib/designer-mock-student';
 import { DesignerExportError, exportStageToPdf, exportStageToPng } from '@/lib/designer-export';
 import { DesignerMediaLayer } from './DesignerMediaLayer';
@@ -150,9 +150,11 @@ export function IdCardDesigner({
 
   const activeBgUrl = activeSide === 'back' && backBgUrl ? backBgUrl : bgUrl;
   const parsedBg = parseBackground(activeBgUrl);
+  const resolveUploadUrl = isRenderMode ? resolveMediaUrlAbsolute : resolveMediaUrl;
   const imageSrc =
-    parsedBg.mode === 'image' && parsedBg.imageUrl ? resolveMediaUrl(parsedBg.imageUrl) : undefined;
+    parsedBg.mode === 'image' && parsedBg.imageUrl ? resolveUploadUrl(parsedBg.imageUrl) : undefined;
   const [backgroundImage, bgStatus] = useCorsImage(imageSrc ?? '');
+  const [renderImageError, setRenderImageError] = useState<string | null>(null);
 
   const elements = activeSide === 'front' ? frontElements : backElements;
 
@@ -200,7 +202,7 @@ export function IdCardDesigner({
   const renderImageUrls = useMemo(
     () =>
       isRenderMode
-        ? collectRenderImageUrls(activeBgUrl, elements, previewStudent, mediaOptions)
+        ? collectRenderImageUrls(activeBgUrl, elements, previewStudent, { ...mediaOptions, absolute: true })
         : [],
     [isRenderMode, activeBgUrl, elements, previewStudent, mediaOptions, historyVersion],
   );
@@ -651,10 +653,18 @@ export function IdCardDesigner({
   });
 
   useEffect(() => {
+    if (!isRenderMode || !imageSrc || parsedBg.mode !== 'image') return;
+    if (bgStatus === 'failed') {
+      setRenderImageError(`Template background failed to load: ${imageSrc}`);
+    }
+  }, [isRenderMode, imageSrc, parsedBg.mode, bgStatus]);
+
+  useEffect(() => {
     if (!isRenderMode || !onRenderReady) return;
     if (preloadStatus === 'loading') return;
     if (parsedBg.mode === 'image' && imageSrc) {
       if (bgStatus === 'loading') return;
+      if (bgStatus === 'failed') return;
       if (bgStatus === 'loaded' && !backgroundImage) return;
     }
     const timer = setTimeout(() => onRenderReady(), 500);
@@ -672,6 +682,20 @@ export function IdCardDesigner({
   ]);
 
   if (isRenderMode) {
+    if (renderImageError) {
+      return (
+        <div
+          id="id-card-canvas"
+          data-render-status="error"
+          data-render-images-ready="false"
+          className="bg-white text-red-600 text-sm p-4"
+          style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
+        >
+          {renderImageError}
+        </div>
+      );
+    }
+
     if (preloadStatus === 'loading') {
       return (
         <div
@@ -735,7 +759,11 @@ export function IdCardDesigner({
                   <DesignerMediaLayer
                     key={el.id}
                     el={el}
-                    imageUrl={getElementImageUrl(el, student, mediaOptions)}
+                    imageUrl={
+                      isRenderMode
+                        ? resolveMediaUrlAbsolute(getElementImageUrl(el, student, mediaOptions))
+                        : getElementImageUrl(el, student, mediaOptions)
+                    }
                     selected={false}
                     ppiRatio={ppiRatio}
                     cardWidth={CARD_WIDTH}
