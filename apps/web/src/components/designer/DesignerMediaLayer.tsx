@@ -8,6 +8,7 @@ import type { DesignerElement, PhotoShape } from '@/lib/designer-utils';
 import {
   getClipFunc,
   getDashPattern,
+  getEffectiveBorderWidth,
   getElementSize,
   getImageCoverLayout,
 } from '@/lib/designer-utils';
@@ -86,7 +87,7 @@ export function DesignerMediaLayer({
   const [image, status] = useCorsImage(imageUrl || '');
   const imageRef = useRef<Konva.Image>(null);
   const isStudentPhoto = el.type === 'photo' || el.fieldType === 'studentPhoto';
-  const borderW = isStudentPhoto ? 0 : (el.borderWidth ?? 0) * ppiRatio;
+  const borderW = isStudentPhoto ? 0 : getEffectiveBorderWidth(el) * ppiRatio;
   const shape = (el.photoShape || 'rectangle') as PhotoShape;
   const cornerRadius = (el.cornerRadius ?? 8) * ppiRatio;
   const adjust = el.colorAdjust || {};

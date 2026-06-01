@@ -5,6 +5,7 @@ import type { DesignerElement } from '@/lib/designer-utils';
 import {
   getCardSize,
   getDragClampSize,
+  getEffectiveBorderWidth,
   getElementSize,
   getSquarePhotoSize,
 } from '@/lib/designer-utils';
@@ -52,6 +53,17 @@ function parseNumInput(raw: string): number | undefined {
   if (trimmed === '') return undefined;
   const n = Number(trimmed);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function borderWidthInputValue(el: DesignerElement): string {
+  const w = el.borderWidth ?? (el.borderColor ? getEffectiveBorderWidth(el) : undefined);
+  return numInputValue(w);
+}
+
+function borderWidthPatch(width: number | undefined): Partial<DesignerElement> {
+  if (width === undefined) return { borderWidth: undefined };
+  if (width <= 0) return { borderWidth: undefined, borderColor: undefined, borderStyle: undefined };
+  return { borderWidth: width };
 }
 
 function SizeRow({
@@ -240,10 +252,10 @@ function colorPatchWithBorder(
   color: string | undefined,
   currentWidth?: number,
 ): Partial<DesignerElement> {
-  if (!color) return { borderColor: color };
+  if (!color) return { borderColor: undefined, borderWidth: undefined };
   return {
     borderColor: color,
-    ...(!(currentWidth != null && currentWidth > 0) ? { borderWidth: 1 } : {}),
+    borderWidth: Math.max(currentWidth ?? 0, 1),
   };
 }
 
@@ -251,10 +263,10 @@ function colorPatchWithStroke(
   color: string | undefined,
   currentWidth?: number,
 ): Partial<DesignerElement> {
-  if (!color) return { stroke: color };
+  if (!color) return { stroke: undefined, strokeWidth: undefined };
   return {
     stroke: color,
-    ...(!(currentWidth != null && currentWidth > 0) ? { strokeWidth: 1 } : {}),
+    strokeWidth: Math.max(currentWidth ?? 0, 1),
   };
 }
 
@@ -422,9 +434,9 @@ export function DesignerPropertiesPanel({
                 type="number"
                 min={0}
                 max={20}
-                placeholder="0"
-                value={numInputValue(selected.borderWidth)}
-                onChange={(e) => onUpdate({ borderWidth: parseNumInput(e.target.value) })}
+                placeholder="1"
+                value={borderWidthInputValue(selected)}
+                onChange={(e) => onUpdate(borderWidthPatch(parseNumInput(e.target.value)))}
               />
             </div>
             <div className="space-y-1.5">
@@ -522,9 +534,9 @@ export function DesignerPropertiesPanel({
                 type="number"
                 min={0}
                 max={20}
-                placeholder="0"
-                value={numInputValue(selected.borderWidth)}
-                onChange={(e) => onUpdate({ borderWidth: parseNumInput(e.target.value) })}
+                placeholder="1"
+                value={borderWidthInputValue(selected)}
+                onChange={(e) => onUpdate(borderWidthPatch(parseNumInput(e.target.value)))}
               />
             </div>
             <div className="space-y-1.5">

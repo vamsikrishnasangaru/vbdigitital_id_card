@@ -156,6 +156,12 @@ export function getDashPattern(style: BorderStyle | undefined, width: number): n
   return undefined;
 }
 
+/** Border color without width still draws at 1px in the designer. */
+export function getEffectiveBorderWidth(el: Pick<DesignerElement, 'borderColor' | 'borderWidth'>): number {
+  if (!el.borderColor?.trim()) return 0;
+  return Math.max(el.borderWidth ?? 0, 1);
+}
+
 export function resolveStudentField(
   student: Record<string, unknown> | null | undefined,
   fieldType?: string,
@@ -551,6 +557,10 @@ export function sanitizeElement(el: DesignerElement, orientation: 'HORIZONTAL' |
         height: defaults.height ?? (orientation === 'VERTICAL' ? 115 : 96),
       };
     }
+  }
+
+  if (next.type === 'text' && next.borderColor?.trim() && getEffectiveBorderWidth(next) !== (next.borderWidth ?? 0)) {
+    next = { ...next, borderWidth: getEffectiveBorderWidth(next) };
   }
 
   return clampElementToCard(next, orientation);

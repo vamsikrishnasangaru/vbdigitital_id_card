@@ -1,10 +1,10 @@
 'use client';
 
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Group, Text, Rect } from 'react-konva';
 import Konva from 'konva';
 import type { DesignerElement } from '@/lib/designer-utils';
-import { getDashPattern, getKonvaFontStyle } from '@/lib/designer-utils';
+import { getDashPattern, getEffectiveBorderWidth, getKonvaFontStyle } from '@/lib/designer-utils';
 import { useLayerSnapDrag } from './useLayerSnapDrag';
 
 interface DesignerTextLayerProps {
@@ -39,11 +39,13 @@ export function DesignerTextLayer({
   onDragEnd,
   onTransformEnd,
 }: DesignerTextLayerProps) {
-  const frameSizeRef = useRef({ width: 40, height: PREVIEW_FONT_SIZE * 1.4 });
   const hasBoxWidth = el.width != null && el.width > 0;
   const previewFontSize = el.fontSize ?? PREVIEW_FONT_SIZE;
-  const frameSize = frameSizeRef.current;
-  const borderW = (el.borderWidth ?? 0) * ppiRatio;
+  const [frameSize, setFrameSize] = useState({
+    width: hasBoxWidth ? el.width! : 40,
+    height: previewFontSize * 1.4,
+  });
+  const borderW = getEffectiveBorderWidth(el) * ppiRatio;
 
   const { groupRef, dragBoundFunc, onDragStart, onDragEnd: onDragEndKonva } = useLayerSnapDrag(
     el,
@@ -57,11 +59,24 @@ export function DesignerTextLayer({
   useLayoutEffect(() => {
     const node = textRef.current;
     if (!node) return;
-    frameSizeRef.current = {
+    const next = {
       width: hasBoxWidth ? el.width! : Math.max(node.width(), 8),
       height: Math.max(node.height(), previewFontSize * 1.2),
     };
-  }, [text, el.width, hasBoxWidth, previewFontSize, el.fontFamily, el.fontStyle, el.textDecoration]);
+    setFrameSize((prev) =>
+      prev.width === next.width && prev.height === next.height ? prev : next,
+    );
+  }, [
+    text,
+    el.width,
+    hasBoxWidth,
+    previewFontSize,
+    el.fontFamily,
+    el.fontStyle,
+    el.textDecoration,
+    el.fill,
+    el.fontSize,
+  ]);
 
   return (
     <Group
@@ -87,18 +102,6 @@ export function DesignerTextLayer({
           listening={false}
         />
       )}
-      {borderW > 0 && (
-        <Rect
-          x={0}
-          y={0}
-          width={frameSize.width}
-          height={frameSize.height}
-          stroke={el.borderColor || '#000000'}
-          strokeWidth={borderW}
-          dash={getDashPattern(el.borderStyle, borderW)}
-          listening={false}
-        />
-      )}
       <Text
         ref={textRef}
         text={text}
@@ -111,6 +114,19 @@ export function DesignerTextLayer({
         stroke={(el.strokeWidth ?? 0) > 0 && el.stroke ? el.stroke : undefined}
         strokeWidth={(el.strokeWidth ?? 0) > 0 ? (el.strokeWidth ?? 1) * ppiRatio : 0}
       />
+      {borderW > 0 && (
+        <Rect
+          x={0}
+          y={0}
+          width={frameSize.width}
+          height={frameSize.height}
+          fillEnabled={false}
+          stroke={el.borderColor || '#000000'}
+          strokeWidth={borderW}
+          dash={getDashPattern(el.borderStyle, borderW)}
+          listening={false}
+        />
+      )}
     </Group>
   );
 }

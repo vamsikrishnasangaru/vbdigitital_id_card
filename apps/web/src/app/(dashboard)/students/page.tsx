@@ -60,6 +60,42 @@ interface TeacherAssignment {
   section: { id: string; name: string };
 }
 
+interface StudentFormState {
+  schoolId: string;
+  classId: string;
+  sectionId: string;
+  firstName: string;
+  lastName: string;
+  rollNumber: string;
+  admissionNumber: string;
+  parentName: string;
+  parentPhone: string;
+  bloodGroup: string;
+  address: string;
+  dateOfBirth: string;
+  emergencyContact: string;
+  transportDetails: string;
+}
+
+function emptyStudentForm(schoolId = ''): StudentFormState {
+  return {
+    schoolId,
+    classId: '',
+    sectionId: '',
+    firstName: '',
+    lastName: '',
+    rollNumber: '',
+    admissionNumber: '',
+    parentName: '',
+    parentPhone: '',
+    bloodGroup: '',
+    address: '',
+    dateOfBirth: '',
+    emergencyContact: '',
+    transportDetails: '',
+  };
+}
+
 export default function StudentsPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -86,22 +122,7 @@ export default function StudentsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [sections, setSections] = useState<any[]>([]);
-  const [form, setForm] = useState<any>({
-    schoolId: '',
-    classId: '',
-    sectionId: '',
-    firstName: '',
-    lastName: '',
-    rollNumber: '',
-    admissionNumber: '',
-    parentName: '',
-    parentPhone: '',
-    bloodGroup: '',
-    address: '',
-    dateOfBirth: '',
-    emergencyContact: '',
-    transportDetails: '',
-  });
+  const [form, setForm] = useState<StudentFormState>(() => emptyStudentForm());
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [viewStudent, setViewStudent] = useState<any | null>(null);
@@ -320,22 +341,7 @@ export default function StudentsPage() {
     setEditingStudentId(null);
     setPhoto(null);
     setPhotoPreview(null);
-    setForm({
-      schoolId: effectiveSchoolId || '',
-      classId: '',
-      sectionId: '',
-      firstName: '',
-      lastName: '',
-      rollNumber: '',
-      admissionNumber: '',
-      parentName: '',
-      parentPhone: '',
-      bloodGroup: '',
-      address: '',
-      dateOfBirth: '',
-      emergencyContact: '',
-      transportDetails: '',
-    });
+    setForm(emptyStudentForm(effectiveSchoolId || ''));
     setSections([]);
   };
 
@@ -347,18 +353,16 @@ export default function StudentsPage() {
   const openCreateStudent = async () => {
     resetEnrollForm();
     const schoolId = effectiveSchoolId || '';
-    setForm((prev) => ({ ...prev, schoolId }));
     const primary = isTeacher && teacherAssignments[0] ? teacherAssignments[0] : null;
     if (primary && schoolId) {
       const cached = getCachedClassesForSchool(schoolId) ?? classes;
       const cls = cached.find((c) => c.id === primary.class.id);
       setSections(cls?.sections || []);
-      setForm((prev) => ({
-        ...prev,
-        schoolId,
+      setForm({
+        ...emptyStudentForm(schoolId),
         classId: primary.class.id,
         sectionId: primary.section.id,
-      }));
+      });
     }
     if (schoolId) {
       await queryClient.ensureQueryData({
