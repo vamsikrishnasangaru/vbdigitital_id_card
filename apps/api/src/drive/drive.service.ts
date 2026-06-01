@@ -2,7 +2,6 @@ import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { google, drive_v3 } from 'googleapis';
-import type { OAuth2Client } from 'google-auth-library';
 import { Readable } from 'stream';
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
@@ -62,7 +61,7 @@ export class DriveService implements OnModuleInit {
     return null;
   }
 
-  private tryInitOAuth(): OAuth2Client | null {
+  private tryInitOAuth() {
     const refreshToken = this.readEnvValue('GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN');
     const clientId = this.readEnvValue('GOOGLE_DRIVE_OAUTH_CLIENT_ID');
     const clientSecret = this.readEnvValue('GOOGLE_DRIVE_OAUTH_CLIENT_SECRET');
