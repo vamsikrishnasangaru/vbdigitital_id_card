@@ -1,9 +1,29 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AnalyticsService {
   constructor(private prisma: PrismaService) {}
+
+  private getRecentStudents(where: Prisma.StudentWhereInput) {
+    return this.prisma.student.findMany({
+      where: { ...where, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        rollNumber: true,
+        status: true,
+        createdAt: true,
+        class: { select: { name: true } },
+        section: { select: { name: true } },
+        school: { select: { id: true, name: true } },
+      },
+    });
+  }
 
   async getSuperAdminDashboard() {
     const [totalSchools, totalStudents, totalOrders, pendingOrders, printingBatches, deliveries] = await Promise.all([
@@ -34,6 +54,7 @@ export class AnalyticsService {
         take: 5,
         include: { _count: { select: { students: true } } },
       }),
+      recentStudents: await this.getRecentStudents({}),
     };
   }
 
@@ -61,6 +82,7 @@ export class AnalyticsService {
     return {
       totalStudents, draftStudents, submittedStudents, approvedStudents,
       totalOrders, pendingDeliveries, classWise,
+      recentStudents: await this.getRecentStudents({ schoolId }),
     };
   }
 
@@ -98,6 +120,9 @@ export class AnalyticsService {
     return {
       totalStudents, draftStudents, submittedStudents, approvedStudents,
       assignments: sectionStats,
+      recentStudents: sectionIds.length
+        ? await this.getRecentStudents({ sectionId: { in: sectionIds } })
+        : [],
     };
   }
 }

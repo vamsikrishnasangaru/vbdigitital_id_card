@@ -12,6 +12,34 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { StatCard, type StatCardColor } from '@/components/ui/stat-card';
 
+type RecentStudent = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  rollNumber?: string | null;
+  status: string;
+  createdAt: string;
+  class?: { name: string };
+  section?: { name: string };
+  school?: { id: string; name: string };
+};
+
+type DashboardData = {
+  recentStudents?: RecentStudent[];
+  recentSchools?: { id: string; name: string; _count?: { students: number } }[];
+  [key: string]: unknown;
+};
+
+function formatStudentActivityMeta(student: RecentStudent, showSchool: boolean) {
+  const parts: string[] = [];
+  if (showSchool && student.school?.name) parts.push(student.school.name);
+  const classSection = [student.class?.name, student.section?.name].filter(Boolean).join(' · ');
+  if (classSection) parts.push(classSection);
+  if (student.rollNumber) parts.push(`Roll ${student.rollNumber}`);
+  parts.push(student.status.replace(/_/g, ' '));
+  return parts.join(' · ');
+}
+
 export default function DashboardPage() {
   const { user } = useAuthStore();
 
@@ -54,6 +82,10 @@ export default function DashboardPage() {
   };
 
   const statCards = getStatCards();
+  const dashboard = data as DashboardData | null | undefined;
+  const recentStudents = dashboard?.recentStudents ?? [];
+  const recentSchools = dashboard?.recentSchools ?? [];
+  const showSchoolInActivity = user?.role === 'SUPER_ADMIN';
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -100,31 +132,64 @@ export default function DashboardPage() {
             </div>
             
             <div className="p-4">
-              {user?.role === 'SUPER_ADMIN' ? (
+              {loading ? (
+                <div className="space-y-2 p-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-16 bg-muted/50 animate-pulse rounded-2xl" />
+                  ))}
+                </div>
+              ) : recentStudents.length > 0 ? (
                 <div className="space-y-1">
-                  {loading ? (
-                    <div className="space-y-2 p-4">{[1, 2, 3].map(i => <div key={i} className="h-16 bg-muted/50 animate-pulse rounded-2xl" />)}</div>
-                  ) : data?.recentSchools?.length > 0 ? (
-                    data.recentSchools.map((s: any) => (
-                      <div key={s.id} className="flex items-center justify-between p-4 rounded-2xl hover:bg-muted/50 transition-all group">
-                        <div className="flex items-center gap-4">
-                          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <School className="h-5 w-5 text-primary" />
+                  {recentStudents.map((student) => (
+                    <Link
+                      key={student.id}
+                      href="/students"
+                      className="flex items-center justify-between p-4 rounded-2xl hover:bg-muted/50 transition-all group"
+                    >
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                          <Users className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-black text-foreground truncate">
+                            {student.firstName} {student.lastName}
                           </div>
-                          <div>
-                            <div className="text-sm font-black text-foreground">{s.name}</div>
-                            <div className="text-[10px] text-muted-foreground font-bold uppercase">{s._count?.students || 0} Students</div>
+                          <div className="text-[10px] text-muted-foreground font-bold uppercase truncate">
+                            {formatStudentActivityMeta(student, showSchoolInActivity)}
                           </div>
                         </div>
-                        <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
                       </div>
-                    ))
-                  ) : (
-                    <div className="p-12 text-center text-muted-foreground font-medium italic">No recent activity yet.</div>
-                  )}
+                      <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              ) : user?.role === 'SUPER_ADMIN' && recentSchools.length > 0 ? (
+                <div className="space-y-1">
+                  {recentSchools.map((school) => (
+                    <Link
+                      key={school.id}
+                      href="/schools"
+                      className="flex items-center justify-between p-4 rounded-2xl hover:bg-muted/50 transition-all group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <School className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-black text-foreground">{school.name}</div>
+                          <div className="text-[10px] text-muted-foreground font-bold uppercase">
+                            {school._count?.students || 0} Students
+                          </div>
+                        </div>
+                      </div>
+                      <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
+                    </Link>
+                  ))}
                 </div>
               ) : (
-                <div className="p-12 text-center text-muted-foreground font-medium italic">No recent activity yet.</div>
+                <div className="p-12 text-center text-muted-foreground font-medium italic">
+                  No recent activity yet.
+                </div>
               )}
             </div>
           </div>
