@@ -101,7 +101,7 @@ export function GenerateCardsDialog({
               <div className="font-black text-foreground">Google Drive</div>
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
                 {driveAvailable
-                  ? 'Upload PDFs to your configured Google Drive folder (School → Class → Section).'
+                  ? 'Upload PNG images to your configured Google Drive folder (School → Class → Section).'
                   : 'Not configured yet. Set up OAuth on the server when you are ready — use Download for now.'}
               </p>
             </div>

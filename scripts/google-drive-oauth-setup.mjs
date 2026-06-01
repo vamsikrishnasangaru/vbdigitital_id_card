@@ -8,10 +8,18 @@
  * 3. OAuth consent screen: add your Gmail as a test user (if app is in Testing)
  *
  * Run from repo root:
+ *   cd apps/api && pnpm run drive:oauth-setup
+ * Or:
  *   GOOGLE_DRIVE_OAUTH_CLIENT_ID=xxx GOOGLE_DRIVE_OAUTH_CLIENT_SECRET=yyy node scripts/google-drive-oauth-setup.mjs
  */
 import http from 'http';
-import { google } from 'googleapis';
+import { createRequire } from 'module';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(resolve(__dirname, '../apps/api/package.json'));
+const { google } = require('googleapis');
 
 const clientId = process.env.GOOGLE_DRIVE_OAUTH_CLIENT_ID?.trim();
 const clientSecret = process.env.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET?.trim();

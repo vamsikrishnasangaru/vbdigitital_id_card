@@ -140,22 +140,22 @@ export class IdCardsService {
         const className = student.class?.name || student.section?.class?.name || 'Class';
         const sectionName = student.section?.name || 'Section';
 
-        this.logger.log(`Rendering ID card PDF for Drive upload (${studentId})...`);
-        const pdfBuffer = await this.rendererService.renderCardPdf(
+        this.logger.log(`Rendering ID card PNG for Drive upload (${studentId})...`);
+        const pngBuffer = await this.rendererService.renderCard(
           templateId,
           studentId,
           renderToken,
           template.orientation as Orientation,
         );
 
-        const fileName = `${idCardFileBaseName(student)}.pdf`;
+        const fileName = `${idCardFileBaseName(student)}.png`;
         let driveFileId: string | undefined;
 
         try {
           driveFileId = await this.driveService.uploadFile(
             fileName,
-            'application/pdf',
-            pdfBuffer,
+            'image/png',
+            pngBuffer,
             [schoolName, className, sectionName],
           );
         } catch (driveErr: unknown) {

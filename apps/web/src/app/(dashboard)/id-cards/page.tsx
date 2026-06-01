@@ -378,7 +378,7 @@ export default function IdCardsPage() {
                 </div>
                 <p className="text-[10px] font-medium text-muted-foreground text-center">
                   {isSuperAdmin
-                    ? 'Super admin: PDFs render and upload to Google Drive.'
+                    ? 'Super admin: PNG images render and upload to Google Drive.'
                     : 'Use the eye icon on each student to preview their ID card.'}
                 </p>
                 {isSuperAdmin ? (
