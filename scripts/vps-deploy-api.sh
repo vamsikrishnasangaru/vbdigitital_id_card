@@ -24,10 +24,15 @@ if [[ -z "${DATABASE_URL:-}" ]] || [[ "$DATABASE_URL" == *'USER'* ]] || [[ "$DAT
   exit 1
 fi
 
+export DATABASE_URL
+
 if [[ -z "${GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN:-}" ]] && [[ -z "${GOOGLE_DRIVE_CREDENTIALS:-}" ]] \
   && [[ ! -f "$API_DIR/secure/google-drive-service-account.json" ]]; then
   echo "WARN: Google Drive not configured — add GOOGLE_DRIVE_OAUTH_* (Gmail) to .env"
 fi
+
+echo "Applying database migrations..."
+pnpm --filter @repo/db exec prisma migrate deploy
 
 pnpm --filter @repo/db run generate
 

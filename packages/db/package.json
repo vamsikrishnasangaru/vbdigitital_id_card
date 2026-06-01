@@ -8,6 +8,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "lint": "eslint .",
