@@ -178,6 +178,7 @@ export function resolveStudentField(
     rollNumber?: string;
     dateOfBirth?: string;
     bloodGroup?: string;
+    aadharCard?: string;
     parentName?: string;
     parentPhone?: string;
     address?: string;
@@ -208,6 +209,8 @@ export function resolveStudentField(
       return s.dateOfBirth ? new Date(s.dateOfBirth).toLocaleDateString('en-IN') : 'N/A';
     case 'bloodGroup':
       return s.bloodGroup || 'N/A';
+    case 'aadharCard':
+      return s.aadharCard || 'N/A';
     case 'parentName':
       return s.parentName || 'N/A';
     case 'parentPhone':

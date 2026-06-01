@@ -72,6 +72,7 @@ export class StudentsService {
         { lastName: { contains: search, mode: 'insensitive' } },
         { admissionNumber: { contains: search, mode: 'insensitive' } },
         { rollNumber: { contains: search, mode: 'insensitive' } },
+        { aadharCard: { contains: search, mode: 'insensitive' } },
         { parentPhone: { contains: search, mode: 'insensitive' } },
         { parentName: { contains: search, mode: 'insensitive' } },
       ];
@@ -140,6 +141,7 @@ export class StudentsService {
       photo,
       dateOfBirth,
       bloodGroup,
+      aadharCard,
       emergencyContact,
       transportDetails,
       parentName,
@@ -167,6 +169,7 @@ export class StudentsService {
     if (parentPhone !== undefined) payload.parentPhone = parentPhone ? String(parentPhone).trim() : null;
     if (address !== undefined) payload.address = address ? String(address).trim() : null;
     if (bloodGroup !== undefined) payload.bloodGroup = bloodGroup ? String(bloodGroup).trim() : null;
+    if (aadharCard !== undefined) payload.aadharCard = aadharCard ? String(aadharCard).trim() : null;
     if (emergencyContact !== undefined) {
       payload.emergencyContact = emergencyContact ? String(emergencyContact).trim() : null;
     }

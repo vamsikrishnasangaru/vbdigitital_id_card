@@ -137,6 +137,7 @@ model Student {
   lastName         String
   dateOfBirth      DateTime?
   bloodGroup       String?
+  aadharCard       String?
   photoUrl         String?
   parentName       String?
   parentPhone      String?

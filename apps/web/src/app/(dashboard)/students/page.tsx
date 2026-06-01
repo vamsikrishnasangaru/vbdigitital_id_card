@@ -71,6 +71,7 @@ interface StudentFormState {
   parentName: string;
   parentPhone: string;
   bloodGroup: string;
+  aadharCard: string;
   address: string;
   dateOfBirth: string;
   emergencyContact: string;
@@ -89,6 +90,7 @@ function emptyStudentForm(schoolId = ''): StudentFormState {
     parentName: '',
     parentPhone: '',
     bloodGroup: '',
+    aadharCard: '',
     address: '',
     dateOfBirth: '',
     emergencyContact: '',
@@ -388,6 +390,7 @@ export default function StudentsPage() {
     parentName?: string | null;
     parentPhone?: string | null;
     bloodGroup?: string | null;
+    aadharCard?: string | null;
     address?: string | null;
     dateOfBirth?: string | null;
     emergencyContact?: string | null;
@@ -411,6 +414,7 @@ export default function StudentsPage() {
       parentName: student.parentName || '',
       parentPhone: student.parentPhone || '',
       bloodGroup: student.bloodGroup || '',
+      aadharCard: student.aadharCard || '',
       address: student.address || '',
       dateOfBirth: student.dateOfBirth ? String(student.dateOfBirth).slice(0, 10) : '',
       emergencyContact: student.emergencyContact || '',
@@ -631,6 +635,7 @@ export default function StudentsPage() {
           parentPhone: form.parentPhone.trim(),
           address: form.address.trim(),
           bloodGroup: form.bloodGroup?.trim() || null,
+          aadharCard: form.aadharCard?.trim() || null,
           dateOfBirth: form.dateOfBirth || null,
           emergencyContact: form.emergencyContact?.trim() || null,
           transportDetails: form.transportDetails?.trim() || null,
@@ -651,6 +656,7 @@ export default function StudentsPage() {
     formData.append('parentPhone', form.parentPhone.trim());
     formData.append('address', form.address.trim());
     if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
+    if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
     if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
     if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
     if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
@@ -705,13 +711,6 @@ export default function StudentsPage() {
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-foreground">
             Students
           </h2>
-          <p className="text-muted-foreground text-sm font-medium">
-            {isSuperAdmin
-              ? 'Select a school, filter students, and generate ID cards (download or Google Drive).'
-              : isTeacher
-                ? 'Your allocated class is selected by default. Preview ID cards with the eye icon on each student.'
-                : 'View and manage students. Preview ID cards with the eye icon on each student.'}
-          </p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
           {effectiveSchoolId && isSuperAdmin && (
@@ -939,21 +938,6 @@ export default function StudentsPage() {
             Template filter: students with ID cards matching &quot;{deferredTemplateCode}&quot;
             {filteredTemplates.length > 0 && ` · ${filteredTemplates.length} template(s) match`}
           </p>
-        )}
-        {selectedTemplateId && studentsData.length > 0 && effectiveSchoolId && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 text-sm text-foreground">
-            <CreditCard className="h-4 w-4 shrink-0 text-emerald-600" />
-            <span>
-              <span className="font-bold">{studentsData.length}</span> student{studentsData.length === 1 ? '' : 's'} — preview with{' '}
-              <span className="font-black">{selectedTemplate?.name ?? 'template'}</span>
-              {isSuperAdmin ? ' or use Generate ID Cards to download PNGs or upload to Google Drive.' : ' (eye icon on each row).'}
-            </span>
-            {studentsTotal > studentsData.length && (
-              <span className="text-xs font-bold text-amber-600">
-                (List capped at {studentsData.length} of {studentsTotal} — narrow filters to include everyone.)
-              </span>
-            )}
-          </div>
         )}
       </div>
 
@@ -1429,7 +1413,7 @@ export default function StudentsPage() {
                   <p className="text-muted-foreground text-sm font-medium">
                     {editingStudentId
                       ? 'Update the student details below and save your changes.'
-                      : 'Enter the student details below to add them to the system.'}
+                      : 'Enter the Student Details'}
                   </p>
                 </div>
               </div>
@@ -1444,21 +1428,18 @@ export default function StudentsPage() {
                 {/* Visual Identity Section */}
                 <div className="lg:col-span-4 space-y-6">
                   <StudentPhotoPicker preview={photoPreview} onPhotoChange={handlePhotoSelected} />
-                  <div className="p-6 bg-muted/30 rounded-3xl border border-border">
-                    <h5 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-4">Identity Standards</h5>
-                    <ul className="space-y-3">
-                      {[
-                        'Front-facing portrait',
-                        'Uniform background',
-                        'No eyewear or caps',
-                        'Max file size: 2MB'
-                      ].map((hint, i) => (
-                        <li key={i} className="flex items-center gap-3 text-xs font-bold text-foreground">
-                          <Check className="h-3.5 w-3.5 text-primary" />
-                          {hint}
-                        </li>
-                      ))}
-                    </ul>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                      Aadhar Card
+                    </label>
+                    <input
+                      value={form.aadharCard}
+                      onChange={(e) => setForm({ ...form, aadharCard: e.target.value })}
+                      inputMode="numeric"
+                      maxLength={12}
+                      className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
+                      placeholder="12-digit Aadhar number"
+                    />
                   </div>
                 </div>
 

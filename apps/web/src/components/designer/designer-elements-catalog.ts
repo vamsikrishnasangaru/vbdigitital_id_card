@@ -30,6 +30,7 @@ const FIELD_ICONS: Record<string, LucideIcon> = {
   rollNo: Hash,
   classSection: GraduationCap,
   bloodGroup: Droplets,
+  aadharCard: Hash,
   parentName: User,
   parentPhone: Phone,
   address: MapPin,
