@@ -24,6 +24,11 @@ export class DriveService implements OnModuleInit {
     return this.isConfigured;
   }
 
+  /** True when uploads can use user OAuth or a Workspace shared drive (not service-account-only). */
+  canUploadToDrive(): boolean {
+    return this.isConfigured && (this.usesUserOAuth || Boolean(this.sharedDriveId));
+  }
+
   onModuleInit() {
     this.initDriveClient();
   }

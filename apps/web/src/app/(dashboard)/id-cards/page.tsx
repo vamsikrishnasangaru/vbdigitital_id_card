@@ -26,6 +26,13 @@ import { fetchSchoolsPicker } from '@/lib/schools-query';
 import { offlineStore } from '@/lib/offline-store';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { useMergedStudents } from '@/hooks/use-merged-students';
+import { GenerateCardsDialog } from '@/components/id-cards/GenerateCardsDialog';
+import {
+  generateIdCards,
+  triggerIdCardDownload,
+  fetchDriveStatus,
+  type GenerateDestination,
+} from '@/lib/generate-id-cards';
 
 const IdCardDesigner = dynamic(
   () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
@@ -51,6 +58,7 @@ export default function IdCardsPage() {
     orientation: string;
     frontConfig?: unknown;
   } | null>(null);
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
 
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
 
@@ -125,31 +133,59 @@ export default function IdCardsPage() {
 
   // Mutations
   const generateMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post('/id-cards/generate', {
+    mutationFn: async (destination: GenerateDestination) => {
+      return generateIdCards({
         templateId: selectedTemplate,
-        studentIds: students.map((s: any) => s.id),
+        studentIds: students.map((s: { id: string }) => s.id),
+        destination,
       });
-      return data;
     },
-    onSuccess: (data) => {
-      if (data._offline) {
-        toast.info(data.message || 'Generation queued — will run when you are back online');
-        return;
-      }
-      if (data.failCount > 0) {
-        toast.warning(data.message || `Some cards failed (${data.failCount})`);
-        const firstErr = data.results?.find((r: any) => r.status === 'FAILED')?.error;
-        if (firstErr) toast.error(firstErr, { duration: 8000 });
+    onSuccess: (result) => {
+      setShowGenerateDialog(false);
+      if (result.kind === 'file') {
+        triggerIdCardDownload(result.blob, result.filename);
+        if (result.failCount > 0) {
+          toast.warning(`Downloaded ${result.successCount} card(s); ${result.failCount} failed`);
+        } else {
+          toast.success(
+            result.filename.endsWith('.zip')
+              ? `Downloaded ZIP with ${result.successCount} PNG card(s)`
+              : 'Downloaded ID card PNG',
+          );
+        }
       } else {
-        toast.success(data.message || `Generated ${data.successCount} card(s)`);
+        const data = result.data as {
+          _offline?: boolean;
+          message?: string;
+          failCount?: number;
+          successCount?: number;
+          results?: { status: string; error?: string }[];
+        };
+        if (data._offline) {
+          toast.info(data.message || 'Generation queued — will run when you are back online');
+          return;
+        }
+        if ((data.failCount ?? 0) > 0) {
+          toast.warning(data.message || `Some cards failed (${data.failCount})`);
+          const firstErr = data.results?.find((r) => r.status === 'FAILED')?.error;
+          if (firstErr) toast.error(firstErr, { duration: 8000 });
+        } else {
+          toast.success(data.message || `Uploaded ${data.successCount} card(s) to Google Drive`);
+        }
       }
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
-    onError: (err: any) => {
+    onError: (err: { response?: { data?: { message?: string } } }) => {
       if (!err.response && !navigator.onLine) return;
       toast.error(err.response?.data?.message || 'Failed to generate ID cards');
     },
+  });
+
+  const { data: driveStatus } = useQuery({
+    queryKey: ['id-cards', 'drive-status'],
+    queryFn: fetchDriveStatus,
+    enabled: isSuperAdmin,
+    staleTime: 60_000,
   });
 
   const canGenerate =
@@ -176,14 +212,7 @@ export default function IdCardsPage() {
       toast.error('Select a class and section with students');
       return;
     }
-    if (
-      !confirm(
-        `Generate ${students.length} ID card PDF(s) and upload to Google Drive?`,
-      )
-    ) {
-      return;
-    }
-    generateMutation.mutate();
+    setShowGenerateDialog(true);
   };
 
   useEffect(() => {
@@ -246,7 +275,7 @@ export default function IdCardsPage() {
           </h2>
           <p className="text-muted-foreground text-sm font-medium">
             {isSuperAdmin
-              ? 'Select a class and template, then generate PDFs — uploaded to Google Drive.'
+              ? 'Select a class and template, then download PNG/ZIP or upload to Google Drive.'
               : 'Select a class and template, then use Preview on each student to view their card.'}
           </p>
         </div>
@@ -522,8 +551,19 @@ export default function IdCardsPage() {
           />
         </div>
       )}
+
       </>
       )}
+
+      <GenerateCardsDialog
+        open={showGenerateDialog}
+        onClose={() => setShowGenerateDialog(false)}
+        studentCount={students.length}
+        isSubmitting={generateMutation.isPending}
+        driveAvailable={driveStatus?.canUpload ?? false}
+        onDownload={() => generateMutation.mutate('download')}
+        onGoogleDrive={() => generateMutation.mutate('drive')}
+      />
     </div>
   );
 }
