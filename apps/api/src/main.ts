@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { config as loadEnv } from 'dotenv';
 import { NestFactory } from '@nestjs/core';
@@ -5,8 +6,29 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
-// Load apps/api/.env before Nest boots (PM2 cwd should be apps/api).
-loadEnv({ path: resolve(__dirname, '..', '.env') });
+/** PM2 cwd is apps/api; compiled main lives in dist/. */
+function resolveApiEnvPath(): string {
+  const candidates = [
+    resolve(process.cwd(), '.env'),
+    resolve(__dirname, '..', '.env'),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? candidates[0];
+}
+
+const envPath = resolveApiEnvPath();
+const envResult = loadEnv({ path: envPath });
+if (envResult.error && !existsSync(envPath)) {
+  console.warn(`[bootstrap] No .env at ${envPath} — set DATABASE_URL and GOOGLE_DRIVE_* in the environment.`);
+} else if (envResult.parsed) {
+  const hasDb = Boolean(process.env.DATABASE_URL?.trim());
+  const hasDrive =
+    Boolean(process.env.GOOGLE_DRIVE_CREDENTIALS?.trim()) ||
+    Boolean(process.env.GOOGLE_DRIVE_CREDENTIALS_PATH?.trim()) ||
+    existsSync(resolve(process.cwd(), 'secure', 'google-drive-service-account.json'));
+  console.log(
+    `[bootstrap] Loaded ${envPath} (DATABASE_URL=${hasDb ? 'yes' : 'no'}, Google Drive=${hasDrive ? 'yes' : 'no'})`,
+  );
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

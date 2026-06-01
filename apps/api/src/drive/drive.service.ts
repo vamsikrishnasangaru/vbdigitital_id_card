@@ -1,11 +1,11 @@
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { google, drive_v3 } from 'googleapis';
 import { Readable } from 'stream';
 
 @Injectable()
-export class DriveService {
+export class DriveService implements OnModuleInit {
   private readonly logger = new Logger(DriveService.name);
   private drive: drive_v3.Drive;
   private isConfigured = false;
@@ -14,7 +14,7 @@ export class DriveService {
     return this.isConfigured;
   }
 
-  constructor() {
+  onModuleInit() {
     this.initDriveClient();
   }
 

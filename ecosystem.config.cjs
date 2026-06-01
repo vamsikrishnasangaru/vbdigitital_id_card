@@ -17,7 +17,8 @@ module.exports = {
       cwd: '/var/www/id-app/apps/api',
       script: 'dist/main.js',
       interpreter: 'node',
-      env_file: '/var/www/id-app/apps/api/.env',
+      // Do not use PM2 env_file — it can mis-parse .env and override DATABASE_URL.
+      // apps/api/src/main.ts loads /var/www/id-app/apps/api/.env via dotenv on boot.
       env: {
         NODE_ENV: 'production',
         PORT: '4000',
