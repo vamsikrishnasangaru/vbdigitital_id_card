@@ -45,9 +45,11 @@ export function StudentExcelImportDialog({
     mutationFn: async (students: ReturnType<typeof toImportPayload>) => {
       const { data } = await api.post<{
         created: number;
+        updated?: number;
         failed: number;
         classesCreated?: number;
         sectionsCreated?: number;
+        results?: { index: number; success: boolean; message?: string; updated?: boolean }[];
       }>('/students/bulk-import', {
         schoolId,
         students,
@@ -55,16 +57,38 @@ export function StudentExcelImportDialog({
       return data;
     },
     onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ['students'] });
+      void queryClient.invalidateQueries({ queryKey: ['classes', schoolId] });
+
+      if (data.failed > 0 && data.results?.length) {
+        setParsedRows((prev) =>
+          prev.map((row, idx) => {
+            const result = data.results!.find((r) => r.index === idx);
+            if (!result || result.success) return row;
+            return { ...row, status: 'error' as const, message: result.message || 'Import failed' };
+          }),
+        );
+        const reasons = data.results
+          .filter((r) => !r.success)
+          .map((r) => r.message)
+          .filter(Boolean)
+          .slice(0, 3)
+          .join(' · ');
+        toast.error(
+          reasons || `${data.failed} row(s) failed — see errors in the table`,
+        );
+        return;
+      }
+
+      const summary: string[] = [];
+      if (data.created) summary.push(`${data.created} added`);
+      if (data.updated) summary.push(`${data.updated} updated`);
       const extras: string[] = [];
       if (data.classesCreated) extras.push(`${data.classesCreated} class(es) created`);
       if (data.sectionsCreated) extras.push(`${data.sectionsCreated} section(s) created`);
       toast.success(
-        `Imported ${data.created} student(s)${data.failed ? `, ${data.failed} failed` : ''}${
-          extras.length ? ` · ${extras.join(', ')}` : ''
-        }`,
+        `${summary.join(', ') || 'Import complete'}${extras.length ? ` · ${extras.join(', ')}` : ''}`,
       );
-      void queryClient.invalidateQueries({ queryKey: ['students'] });
-      void queryClient.invalidateQueries({ queryKey: ['classes', schoolId] });
       handleClose();
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {

@@ -249,10 +249,11 @@ export class StudentsService {
     const classSectionCache = await this.classesService.buildClassSectionCache(schoolId);
 
     let created = 0;
+    let updated = 0;
     let failed = 0;
     let classesCreated = 0;
     let sectionsCreated = 0;
-    const results: { index: number; success: boolean; message?: string }[] = [];
+    const results: { index: number; success: boolean; message?: string; updated?: boolean }[] = [];
 
     const reqString = (value: unknown, label: string): string => {
       if (typeof value !== 'string') {
@@ -313,24 +314,49 @@ export class StudentsService {
         if (createdSection) sectionsCreated += 1;
 
         const admissionNumber = `ADM-${rollNumber}`;
+        const studentData = {
+          classId,
+          sectionId,
+          firstName,
+          lastName,
+          rollNumber,
+          parentName,
+          parentPhone: row.parentPhone?.trim() || null,
+          address,
+        };
 
-        await this.prisma.student.create({
-          data: {
+        const existing = await this.prisma.student.findFirst({
+          where: {
             schoolId,
-            classId,
-            sectionId,
-            firstName,
-            lastName,
-            rollNumber,
-            admissionNumber,
-            parentName,
-            parentPhone: row.parentPhone?.trim() || null,
-            address,
-            status: 'DRAFT',
+            deletedAt: null,
+            OR: [{ admissionNumber }, { rollNumber }],
           },
         });
-        created += 1;
-        results.push({ index: i, success: true });
+
+        if (existing) {
+          await this.prisma.student.update({
+            where: { id: existing.id },
+            data: studentData,
+          });
+          updated += 1;
+          results.push({
+            index: i,
+            success: true,
+            updated: true,
+            message: `Updated existing student (roll ${rollNumber})`,
+          });
+        } else {
+          await this.prisma.student.create({
+            data: {
+              schoolId,
+              ...studentData,
+              admissionNumber,
+              status: 'DRAFT',
+            },
+          });
+          created += 1;
+          results.push({ index: i, success: true });
+        }
       } catch (err: unknown) {
         failed += 1;
         let message = 'Import failed';
@@ -345,7 +371,15 @@ export class StudentsService {
       }
     }
 
-    return { created, failed, total: rows.length, classesCreated, sectionsCreated, results };
+    return {
+      created,
+      updated,
+      failed,
+      total: rows.length,
+      classesCreated,
+      sectionsCreated,
+      results,
+    };
   }
 
   async getClassWiseStats(schoolId: string) {
