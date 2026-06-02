@@ -23,7 +23,7 @@ const allRoutes = [
   { label: 'Reports', icon: BarChart3, href: '/analytics', roles: ['SUPER_ADMIN'] },
   { label: 'Templates', icon: Palette, href: '/templates', roles: ['SUPER_ADMIN'] },
   { label: 'Alerts', icon: Bell, href: '/notifications', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
-  { label: 'Settings', icon: Settings, href: '/settings', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
+  { label: 'Settings', icon: Settings, href: '/settings', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
 ];
 
 interface SidebarProps {

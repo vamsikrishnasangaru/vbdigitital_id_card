@@ -207,7 +207,7 @@ export default function DashboardPage() {
                 { label: 'Add Student', href: '/students', icon: UserPlus, roles: ['SCHOOL_ADMIN', 'TEACHER'] },
                 { label: 'Generate Cards', href: '/id-cards', icon: CreditCard, roles: ['SCHOOL_ADMIN'] },
                 { label: 'Printing', href: '/print', icon: Printer, roles: ['SUPER_ADMIN'] },
-                { label: 'Settings', href: '/settings', icon: Settings, roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
+                { label: 'Settings', href: '/settings', icon: Settings, roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
               ].filter(a => a.roles.includes(user?.role as string)).map((action) => (
                 <Link
                   key={action.label}

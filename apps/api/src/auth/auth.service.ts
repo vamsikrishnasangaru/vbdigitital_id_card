@@ -1,8 +1,8 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
-import { LoginDto, RegisterDto, RefreshTokenDto, ChangePasswordDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, RefreshTokenDto, ChangePasswordDto, UpdateProfileDto } from './dto/auth.dto';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -100,10 +100,45 @@ export class AuthService {
         phone: true, avatarUrl: true, role: true, isActive: true,
         schoolId: true, school: { select: { id: true, name: true, code: true, logoUrl: true } },
         createdAt: true,
+        _count: { select: { teacherAssignments: true } },
       },
     });
     if (!user) throw new UnauthorizedException('User not found');
     return user;
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const data: { firstName?: string; lastName?: string; phone?: string | null } = {};
+    if (dto.firstName !== undefined) {
+      const firstName = dto.firstName.trim();
+      if (!firstName) throw new BadRequestException('First name is required');
+      data.firstName = firstName;
+    }
+    if (dto.lastName !== undefined) {
+      const lastName = dto.lastName.trim();
+      if (!lastName) throw new BadRequestException('Last name is required');
+      data.lastName = lastName;
+    }
+    if (dto.phone !== undefined) {
+      data.phone = dto.phone.trim() ? dto.phone.trim() : null;
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true, email: true, firstName: true, lastName: true,
+        phone: true, avatarUrl: true, role: true, isActive: true,
+        schoolId: true, school: { select: { id: true, name: true, code: true, logoUrl: true } },
+        createdAt: true,
+        _count: { select: { teacherAssignments: true } },
+      },
+    });
+
+    return updated;
   }
 
   /** Short-lived token for headless PDF render (Puppeteer). */
