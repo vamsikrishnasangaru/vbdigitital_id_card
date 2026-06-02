@@ -313,7 +313,10 @@ export class StudentsService {
         if (createdClass) classesCreated += 1;
         if (createdSection) sectionsCreated += 1;
 
-        const admissionNumber = `ADM-${rollNumber}`;
+        // Admission numbers must be unique across the whole school, but roll numbers often
+        // repeat across different classes/sections. Use a scoped admission number to avoid
+        // collisions while keeping it deterministic for re-import.
+        const admissionNumber = `ADM-${classId.slice(0, 6)}-${sectionId.slice(0, 6)}-${rollNumber}`;
         const studentData = {
           classId,
           sectionId,
@@ -329,7 +332,14 @@ export class StudentsService {
           where: {
             schoolId,
             deletedAt: null,
-            OR: [{ admissionNumber }, { rollNumber }],
+            OR: [
+              // New deterministic import admission number.
+              { admissionNumber },
+              // Legacy admission number used by earlier imports.
+              { admissionNumber: `ADM-${rollNumber}` },
+              // Treat roll number duplicates only within the same class/section.
+              { classId, sectionId, rollNumber },
+            ],
           },
         });
 

@@ -201,12 +201,12 @@ export function parseExcelRows(
       message = `Will create section "${row.sectionName}" in ${resolved.matchedClassName ?? row.className}`;
     }
 
-    let rollNumber = row.rollNumber?.trim() || '';
+    const rollNumber = row.rollNumber?.trim() || '';
     if (!rollNumber) {
-      rollNumber = `IMP-${rowNumber}`;
+      return { ...row, message: 'Roll number is required' };
     }
     if (usedRollNumbers.has(rollNumber)) {
-      rollNumber = `${rollNumber}-${index + 1}`;
+      return { ...row, message: `Duplicate roll number "${rollNumber}" in this file` };
     }
     usedRollNumbers.add(rollNumber);
 

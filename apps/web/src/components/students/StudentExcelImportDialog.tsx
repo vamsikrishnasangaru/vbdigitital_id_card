@@ -222,10 +222,11 @@ export function StudentExcelImportDialog({
 
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Required columns: <strong className="text-foreground">Student Name</strong>,{' '}
+            <strong className="text-foreground">Roll Number</strong>,{' '}
             <strong className="text-foreground">Class</strong>,{' '}
             <strong className="text-foreground">Section</strong>,{' '}
             <strong className="text-foreground">Father Name</strong>,{' '}
-            <strong className="text-foreground">Address</strong>. Optional: Roll Number, Parent Phone.
+            <strong className="text-foreground">Address</strong>. Optional: Parent Phone.
             Existing classes are matched automatically (e.g. &quot;10&quot; matches &quot;Class 10&quot;).
             New classes and sections are created when needed.
           </p>
@@ -248,6 +249,7 @@ export function StudentExcelImportDialog({
                   <tr>
                     <th className="text-left px-3 py-2 font-bold">Row</th>
                     <th className="text-left px-3 py-2 font-bold">Student</th>
+                    <th className="text-left px-3 py-2 font-bold">Roll No.</th>
                     <th className="text-left px-3 py-2 font-bold">Class</th>
                     <th className="text-left px-3 py-2 font-bold">Section</th>
                     <th className="text-left px-3 py-2 font-bold">Father Name</th>
@@ -258,6 +260,7 @@ export function StudentExcelImportDialog({
                     <tr key={row.rowNumber} className={row.status === 'error' ? 'bg-red-500/5' : ''}>
                       <td className="px-3 py-2 text-muted-foreground">{row.rowNumber}</td>
                       <td className="px-3 py-2 font-medium">{row.studentName}</td>
+                      <td className="px-3 py-2 font-mono font-bold">{row.rollNumber || '—'}</td>
                       <td className="px-3 py-2">{row.className}</td>
                       <td className="px-3 py-2">{row.sectionName}</td>
                       <td className="px-3 py-2">
