@@ -73,8 +73,11 @@ export class StudentsService {
       where.OR = [
         ...(where.OR ?? []),
         { photoUrl: null },
+        { photoUrl: '' },
         { rollNumber: null },
+        { rollNumber: '' },
         { parentName: null },
+        { parentName: '' },
         { parentPhone: null },
         { parentPhone: '' },
       ];
@@ -83,7 +86,7 @@ export class StudentsService {
       where.rollNumber = { not: null };
       where.parentName = { not: null };
       where.parentPhone = { not: null };
-      where.NOT = [{ parentPhone: '' }];
+      where.NOT = [{ photoUrl: '' }, { rollNumber: '' }, { parentName: '' }, { parentPhone: '' }];
     }
     if (search) {
       where.OR = [
@@ -186,7 +189,10 @@ export class StudentsService {
     if (sectionId !== undefined) payload.sectionId = sectionId;
     if (firstName !== undefined) payload.firstName = String(firstName).trim();
     if (lastName !== undefined) payload.lastName = String(lastName).trim();
-    if (rollNumber !== undefined) payload.rollNumber = String(rollNumber).trim();
+    if (rollNumber !== undefined) {
+      const trimmed = String(rollNumber).trim();
+      payload.rollNumber = trimmed ? trimmed : null;
+    }
     if (parentName !== undefined) payload.parentName = parentName ? String(parentName).trim() : null;
     if (parentPhone !== undefined) payload.parentPhone = parentPhone ? String(parentPhone).trim() : null;
     if (address !== undefined) payload.address = address ? String(address).trim() : null;
