@@ -181,13 +181,38 @@ export function IdCardDesigner({
   const transformerRef = useRef<Konva.Transformer>(null);
   const canvasScrollRef = useRef<HTMLDivElement>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userZoomedRef = useRef(false);
 
   const PPI = isRenderMode ? 300 : DESIGN_PPI;
   const ppiRatio = PPI / DESIGN_PPI;
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;
-  const [scale, setScale] = useState(isRenderMode ? 1 : isVertical ? 1.5 : 2);
+  const [scale, setScale] = useState<number>(isRenderMode ? 1 : 1);
+
+  useEffect(() => {
+    if (isRenderMode) return;
+    const el = canvasScrollRef.current;
+    if (!el) return;
+
+    const computeFit = () => {
+      if (userZoomedRef.current) return;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!w || !h) return;
+      // Leave some space for padding + banners; keep scale reasonable.
+      const padding = w < 640 ? 24 : 64;
+      const fit = Math.min((w - padding) / CARD_WIDTH, (h - padding) / CARD_HEIGHT);
+      const clamped = Math.max(0.5, Math.min(2, fit));
+      if (Number.isFinite(clamped) && clamped > 0) setScale(clamped);
+    };
+
+    computeFit();
+
+    const ro = new ResizeObserver(() => computeFit());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [CARD_WIDTH, CARD_HEIGHT, isRenderMode]);
 
   const previewStudent = previewMode ? DESIGNER_MOCK_STUDENT : student;
   const displayElements = useMemo(
@@ -843,8 +868,14 @@ export function IdCardDesigner({
         onTogglePreview={() => setPreviewMode((p) => !p)}
         onUndo={undo}
         onRedo={redo}
-        onZoomIn={() => setScale((s) => Math.min(5, s + 0.25))}
-        onZoomOut={() => setScale((s) => Math.max(0.5, s - 0.25))}
+        onZoomIn={() => {
+          userZoomedRef.current = true;
+          setScale((s) => Math.min(5, s + 0.25));
+        }}
+        onZoomOut={() => {
+          userZoomedRef.current = true;
+          setScale((s) => Math.max(0.5, s - 0.25));
+        }}
         onDelete={deleteSelected}
         onDuplicate={duplicateSelected}
         onToggleSide={() => {
@@ -1010,17 +1041,19 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
 
       <div className="flex-1 flex min-h-0">
         {p.onSaveProp && (
-          <DesignerElementsSidebar
-            onAdd={p.addElementFromAction}
-            onUploadImage={p.onUploadImage}
-            onUploadAsset={p.onUploadAsset}
-          />
+          <div className="hidden lg:block">
+            <DesignerElementsSidebar
+              onAdd={p.addElementFromAction}
+              onUploadImage={p.onUploadImage}
+              onUploadAsset={p.onUploadAsset}
+            />
+          </div>
         )}
 
         <div
           ref={p.canvasScrollRef}
           tabIndex={0}
-          className="flex-1 relative overflow-auto designer-scroll flex items-center justify-center p-8 bg-[#121218] outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
+          className="flex-1 relative overflow-auto designer-scroll flex items-center justify-center p-3 sm:p-8 bg-[#121218] outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
           onDragOver={(e) => e.preventDefault()}
           onDrop={p.handleCanvasDrop}
           onMouseDown={() => p.canvasScrollRef.current?.focus({ preventScroll: true })}
@@ -1168,7 +1201,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
         </div>
 
         {p.onSaveProp && (
-          <aside className="w-[300px] shrink-0 border-l border-white/[0.08] bg-[#0d0d12] overflow-y-auto designer-scroll">
+          <aside className="hidden xl:block w-[300px] shrink-0 border-l border-white/[0.08] bg-[#0d0d12] overflow-y-auto designer-scroll">
             <div className="px-4 py-3 border-b border-white/[0.08]">
               <p className="text-xs font-black text-white/90">Properties</p>
               </div>
