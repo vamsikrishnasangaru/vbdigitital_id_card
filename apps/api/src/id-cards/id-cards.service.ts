@@ -68,7 +68,8 @@ export class IdCardsService {
     const files: { name: string; buffer: Buffer }[] = [];
     const errors: { studentId: string; error: string }[] = [];
 
-    for (const studentId of studentIds) {
+    for (let i = 0; i < studentIds.length; i++) {
+      const studentId = studentIds[i];
       try {
         const student = await this.loadStudent(studentId);
         await this.ensureIdCardRecord(studentId, templateId);
@@ -86,9 +87,12 @@ export class IdCardsService {
           where: { studentId, templateId },
           data: { status: 'PRINTED' },
         });
+        if (i < studentIds.length - 1) {
+          await new Promise((r) => setTimeout(r, 300));
+        }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`Download render failed for ${studentId}: ${message}`);
+        this.logger.warn(`Download render failed for ${studentId}: ${message}`);
         errors.push({ studentId, error: message });
       }
     }
@@ -132,7 +136,8 @@ export class IdCardsService {
       driveFileId?: string;
     }[] = [];
 
-    for (const studentId of studentIds) {
+    for (let i = 0; i < studentIds.length; i++) {
+      const studentId = studentIds[i];
       try {
         await this.ensureIdCardRecord(studentId, templateId);
         const student = await this.loadStudent(studentId);
@@ -140,7 +145,6 @@ export class IdCardsService {
         const className = student.class?.name || student.section?.class?.name || 'Class';
         const sectionName = student.section?.name || 'Section';
 
-        this.logger.log(`Rendering ID card PNG for Drive upload (${studentId})...`);
         const pngBuffer = await this.rendererService.renderCard(
           templateId,
           studentId,
@@ -172,9 +176,12 @@ export class IdCardsService {
         });
 
         results.push({ studentId, status: 'SUCCESS', driveFileId });
+        if (i < studentIds.length - 1) {
+          await new Promise((r) => setTimeout(r, 300));
+        }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`Failed to generate ID card for student ${studentId}: ${message}`);
+        this.logger.warn(`ID card render failed for student ${studentId}: ${message}`);
         results.push({ studentId, status: 'FAILED', error: message });
       }
     }

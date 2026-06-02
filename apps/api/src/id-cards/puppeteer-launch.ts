@@ -5,6 +5,11 @@ const PUPPETEER_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--no-first-run',
+  '--no-zygote',
+  '--disable-extensions',
+  '--disable-background-networking',
 ];
 
 /** Resolve Chrome/Chromium for headless PDF rendering (VPS uses system Chromium). */

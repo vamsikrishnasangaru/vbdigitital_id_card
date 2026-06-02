@@ -41,6 +41,11 @@ bash "$APP_ROOT/scripts/vps-install-chrome.sh"
 cd "$API_DIR"
 pnpm run build
 
+# Puppeteer loads render pages from the local Next server (not the public URL).
+if ! grep -q '^FRONTEND_URL=' "$API_DIR/.env" 2>/dev/null; then
+  echo "WARN: Add FRONTEND_URL=http://127.0.0.1:3000 to $API_DIR/.env for reliable ID card rendering."
+fi
+
 pm2 restart vb-api
 pm2 save
 
