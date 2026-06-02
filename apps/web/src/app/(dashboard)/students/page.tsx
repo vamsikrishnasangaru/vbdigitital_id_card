@@ -1020,6 +1020,7 @@ export default function StudentsPage() {
 
       <ResponsiveDataView
         className="panel-xl"
+        tableOnMobile
         mobile={
           loading ? (
             <ListLoading message="Loading students..." />

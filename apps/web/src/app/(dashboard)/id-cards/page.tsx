@@ -409,7 +409,7 @@ export default function IdCardsPage() {
 
         {/* Right: Students List/Preview */}
         <div className="xl:col-span-8 space-y-6">
-          <div className="panel-xl overflow-hidden min-h-[600px] flex flex-col">
+          <div className="panel-xl min-h-[600px] flex flex-col min-w-0">
             <div className="p-8 border-b border-border bg-muted/20 flex justify-between items-center">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 bg-white rounded-2xl flex items-center justify-center shadow-lg">
@@ -424,7 +424,7 @@ export default function IdCardsPage() {
               </div>
             </div>
 
-            <div className="flex-1">
+            <div className="flex-1 min-h-0 min-w-0 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
               {loadingStudents ? (
                 <div className="p-24 text-center">
                   <div className="flex flex-col items-center gap-4">
@@ -448,20 +448,20 @@ export default function IdCardsPage() {
                   </div>
                 </div>
               ) : (
-                <div className="p-2">
-                  <table className="w-full text-left border-collapse">
+                <div className="p-2 inline-block min-w-full">
+                  <table className="w-full text-left border-collapse min-w-[640px]">
                     <thead>
                       <tr className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
-                        <th className="p-6">Student Name</th>
-                        <th className="p-6">Student ID</th>
-                        <th className="p-6">Photo Status</th>
-                        <th className="p-6 text-right">Actions</th>
+                        <th className="p-4 sm:p-6 whitespace-nowrap">Student Name</th>
+                        <th className="p-4 sm:p-6 whitespace-nowrap">Student ID</th>
+                        <th className="p-4 sm:p-6 whitespace-nowrap">Photo Status</th>
+                        <th className="p-4 sm:p-6 text-right whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/30">
                       {students.map((s: any) => (
                         <tr key={s.id} className="group/row hover:bg-muted/30 transition-all">
-                          <td className="p-6">
+                          <td className="p-4 sm:p-6 whitespace-nowrap">
                             <div className="flex items-center gap-4">
                               <div className="h-10 w-10 rounded-xl overflow-hidden shadow-sm border border-border bg-muted">
                                 {s.photoUrl ? (
@@ -479,21 +479,21 @@ export default function IdCardsPage() {
                               <div className="font-black text-foreground group-hover/row:text-primary transition-colors">{s.firstName} {s.lastName}</div>
                             </div>
                           </td>
-                          <td className="p-6">
-                            <span className="font-mono text-xs font-black text-muted-foreground px-3 py-1.5 rounded-lg bg-muted border border-border">
+                          <td className="p-4 sm:p-6 whitespace-nowrap">
+                            <span className="font-mono text-xs font-black text-muted-foreground px-3 py-1.5 rounded-lg bg-muted border border-border whitespace-nowrap">
                               {s.admissionNumber}
                             </span>
                           </td>
-                          <td className="p-6">
+                          <td className="p-4 sm:p-6 whitespace-nowrap">
                             <div className={cn(
-                              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap",
                               s.photoUrl ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
                             )}>
                               {s.photoUrl ? <ShieldCheck className="h-3 w-3" /> : <X className="h-3 w-3" />}
                               {s.photoUrl ? 'Has Photo' : 'No Photo'}
                             </div>
                           </td>
-                          <td className="p-6 text-right">
+                          <td className="p-4 sm:p-6 text-right whitespace-nowrap">
                             <button 
                               onClick={() => {
                                 void (async () => {

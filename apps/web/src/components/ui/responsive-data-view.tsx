@@ -8,14 +8,26 @@ interface ResponsiveDataViewProps {
   /** Table markup for desktop (lg+) */
   desktop: React.ReactNode;
   className?: string;
+  /** Show table on mobile with horizontal scroll instead of card list */
+  tableOnMobile?: boolean;
 }
 
-export function ResponsiveDataView({ mobile, desktop, className }: ResponsiveDataViewProps) {
+export function ResponsiveDataView({
+  mobile,
+  desktop,
+  className,
+  tableOnMobile = false,
+}: ResponsiveDataViewProps) {
   return (
-    <div className={cn('panel-toolbar overflow-hidden shadow-sm', className)}>
-      <div className="lg:hidden divide-y divide-border">{mobile}</div>
-      <div className="hidden lg:block overflow-x-auto">
-        <div className="min-w-full inline-block align-middle">{desktop}</div>
+    <div className={cn('panel-toolbar shadow-sm min-w-0', className)}>
+      {!tableOnMobile && <div className="lg:hidden divide-y divide-border">{mobile}</div>}
+      <div
+        className={cn(
+          'overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]',
+          tableOnMobile ? 'block' : 'hidden lg:block',
+        )}
+      >
+        <div className="inline-block min-w-full align-middle">{desktop}</div>
       </div>
     </div>
   );
