@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { ClassesService } from '../classes/classes.service';
 
 @Injectable()
 export class StudentsService {
   constructor(
     private prisma: PrismaService,
     private uploadsService: UploadsService,
+    private classesService: ClassesService,
   ) {}
 
   async create(data: any, file?: Express.Multer.File) {
@@ -219,8 +221,8 @@ export class StudentsService {
     rows: {
       firstName: string;
       lastName: string;
-      classId: string;
-      sectionId: string;
+      className: string;
+      sectionName: string;
       parentName: string;
       address: string;
       rollNumber: string;
@@ -242,44 +244,46 @@ export class StudentsService {
       throw new BadRequestException('You can only import students for your school');
     }
 
-    const classes = await this.prisma.class.findMany({
-      where: { schoolId, deletedAt: null },
-      include: { sections: { where: { deletedAt: null } } },
-    });
-
-    const classIds = new Set(classes.map((c) => c.id));
-    const sectionKeys = new Set(
-      classes.flatMap((c) => c.sections.map((s) => `${c.id}:${s.id}`)),
-    );
+    const classSectionCache = await this.classesService.buildClassSectionCache(schoolId);
 
     let created = 0;
     let failed = 0;
+    let classesCreated = 0;
+    let sectionsCreated = 0;
     const results: { index: number; success: boolean; message?: string }[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        if (!classIds.has(row.classId) || !sectionKeys.has(`${row.classId}:${row.sectionId}`)) {
-          throw new BadRequestException('Invalid class or section for this school');
-        }
-
         const rollNumber = String(row.rollNumber).trim();
         const firstName = String(row.firstName).trim();
         const lastName = String(row.lastName).trim();
         const parentName = String(row.parentName).trim();
         const address = String(row.address).trim();
+        const className = String(row.className).trim();
+        const sectionName = String(row.sectionName).trim();
 
-        if (!rollNumber || !firstName || !lastName || !parentName || !address) {
+        if (!rollNumber || !firstName || !lastName || !parentName || !address || !className || !sectionName) {
           throw new BadRequestException('Missing required fields');
         }
+
+        const { classId, sectionId, createdClass, createdSection } =
+          await this.classesService.findOrCreateClassSection(
+            schoolId,
+            className,
+            sectionName,
+            classSectionCache,
+          );
+        if (createdClass) classesCreated += 1;
+        if (createdSection) sectionsCreated += 1;
 
         const admissionNumber = `ADM-${rollNumber}`;
 
         await this.prisma.student.create({
           data: {
             schoolId,
-            classId: row.classId,
-            sectionId: row.sectionId,
+            classId,
+            sectionId,
             firstName,
             lastName,
             rollNumber,
@@ -306,7 +310,7 @@ export class StudentsService {
       }
     }
 
-    return { created, failed, total: rows.length, results };
+    return { created, failed, total: rows.length, classesCreated, sectionsCreated, results };
   }
 
   async getClassWiseStats(schoolId: string) {

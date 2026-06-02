@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileSpreadsheet, Loader2, Upload, X, Download, CheckCircle2, AlertCircle } from 'lucide-react';
+import { FileSpreadsheet, Loader2, Upload, X, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -43,14 +43,26 @@ export function StudentExcelImportDialog({
 
   const importMutation = useMutation({
     mutationFn: async (students: ReturnType<typeof toImportPayload>) => {
-      const { data } = await api.post<{ created: number; failed: number }>('/students/bulk-import', {
+      const { data } = await api.post<{
+        created: number;
+        failed: number;
+        classesCreated?: number;
+        sectionsCreated?: number;
+      }>('/students/bulk-import', {
         schoolId,
         students,
       });
       return data;
     },
     onSuccess: (data) => {
-      toast.success(`Imported ${data.created} student(s)${data.failed ? `, ${data.failed} failed` : ''}`);
+      const extras: string[] = [];
+      if (data.classesCreated) extras.push(`${data.classesCreated} class(es) created`);
+      if (data.sectionsCreated) extras.push(`${data.sectionsCreated} section(s) created`);
+      toast.success(
+        `Imported ${data.created} student(s)${data.failed ? `, ${data.failed} failed` : ''}${
+          extras.length ? ` · ${extras.join(', ')}` : ''
+        }`,
+      );
       void queryClient.invalidateQueries({ queryKey: ['students'] });
       void queryClient.invalidateQueries({ queryKey: ['classes', schoolId] });
       handleClose();
@@ -87,10 +99,6 @@ export function StudentExcelImportDialog({
       toast.error('Loading classes — try again in a moment');
       return;
     }
-    if (!classes.length) {
-      toast.error('No classes found. Create classes and sections first.');
-      return;
-    }
 
     try {
       const XLSX = await import('xlsx');
@@ -113,7 +121,7 @@ export function StudentExcelImportDialog({
       const ready = rows.filter((r) => r.status === 'ready').length;
       const errors = rows.length - ready;
       if (ready === 0) {
-        toast.error('No valid rows — check class and section names match your school');
+        toast.error('No valid rows — check required columns and values');
       } else if (errors > 0) {
         toast.warning(`${ready} ready, ${errors} row(s) need fixes`);
       } else {
@@ -147,7 +155,7 @@ export function StudentExcelImportDialog({
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
               {schoolName
-                ? `Rows are matched to classes and sections in ${schoolName}.`
+                ? `Students are added to ${schoolName}. Missing classes and sections are created automatically.`
                 : 'Upload a sheet with student name, class, section, father name, and address.'}
             </p>
           </div>
@@ -169,7 +177,7 @@ export function StudentExcelImportDialog({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              disabled={loadingClasses || !classes.length}
+              disabled={loadingClasses}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold disabled:opacity-50"
             >
               <Upload className="h-4 w-4" />
@@ -194,7 +202,8 @@ export function StudentExcelImportDialog({
             <strong className="text-foreground">Section</strong>,{' '}
             <strong className="text-foreground">Father Name</strong>,{' '}
             <strong className="text-foreground">Address</strong>. Optional: Roll Number, Parent Phone.
-            Class and section names must match exactly (case-insensitive).
+            Existing classes are matched automatically (e.g. &quot;10&quot; matches &quot;Class 10&quot;).
+            New classes and sections are created when needed.
           </p>
 
           {fileName && (
@@ -232,6 +241,10 @@ export function StudentExcelImportDialog({
                           <span className="font-semibold text-foreground">{row.parentName}</span>
                           {row.status === 'error' && row.message ? (
                             <span className="text-[10px] text-red-600" title={row.message}>
+                              {row.message}
+                            </span>
+                          ) : row.message ? (
+                            <span className="text-[10px] text-amber-600" title={row.message}>
                               {row.message}
                             </span>
                           ) : null}

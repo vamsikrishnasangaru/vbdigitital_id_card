@@ -22,8 +22,8 @@ export interface ParsedImportRow {
 export interface ImportPayloadRow {
   firstName: string;
   lastName: string;
-  classId: string;
-  sectionId: string;
+  className: string;
+  sectionName: string;
   parentName: string;
   address: string;
   rollNumber: string;
@@ -117,21 +117,27 @@ export function resolveClassSection(
   className: string,
   sectionName: string,
   lookup: ReturnType<typeof buildClassSectionLookup>,
-): { classId?: string; sectionId?: string; error?: string } {
+): {
+  classId?: string;
+  sectionId?: string;
+  willCreateClass?: boolean;
+  willCreateSection?: boolean;
+  matchedClassName?: string;
+} {
   const cls =
     lookup.classByNorm.get(normClassName(className)) ??
     lookup.classByNorm.get(normKey(className));
   if (!cls) {
-    return { error: `Class "${className}" not found in this school` };
+    return { willCreateClass: true, willCreateSection: true };
   }
   const secMap = lookup.sectionByClass.get(cls.id);
   const sec =
     secMap?.get(normSectionName(sectionName)) ??
     secMap?.get(normKey(sectionName));
   if (!sec) {
-    return { error: `Section "${sectionName}" not found in class "${cls.name}"` };
+    return { classId: cls.id, willCreateSection: true, matchedClassName: cls.name };
   }
-  return { classId: cls.id, sectionId: sec.id };
+  return { classId: cls.id, sectionId: sec.id, matchedClassName: cls.name };
 }
 
 export function parseExcelRows(
@@ -188,8 +194,11 @@ export function parseExcelRows(
     }
 
     const resolved = resolveClassSection(row.className, row.sectionName, lookup);
-    if (resolved.error) {
-      return { ...row, firstName, lastName, message: resolved.error };
+    let message: string | undefined;
+    if (resolved.willCreateClass) {
+      message = `Will create class "${row.className}" and section "${row.sectionName}"`;
+    } else if (resolved.willCreateSection) {
+      message = `Will create section "${row.sectionName}" in ${resolved.matchedClassName ?? row.className}`;
     }
 
     let rollNumber = row.rollNumber?.trim() || '';
@@ -209,18 +218,26 @@ export function parseExcelRows(
       sectionId: resolved.sectionId,
       rollNumber,
       status: 'ready',
+      message,
     };
   });
 }
 
 export function toImportPayload(rows: ParsedImportRow[]): ImportPayloadRow[] {
   return rows
-    .filter((r) => r.status === 'ready' && r.classId && r.sectionId && r.firstName && r.lastName)
+    .filter(
+      (r) =>
+        r.status === 'ready' &&
+        r.firstName &&
+        r.lastName &&
+        r.className.trim() &&
+        r.sectionName.trim(),
+    )
     .map((r) => ({
       firstName: r.firstName!,
       lastName: r.lastName!,
-      classId: r.classId!,
-      sectionId: r.sectionId!,
+      className: r.className.trim(),
+      sectionName: r.sectionName.trim(),
       parentName: r.parentName.trim(),
       address: r.address.trim(),
       rollNumber: r.rollNumber!.trim(),

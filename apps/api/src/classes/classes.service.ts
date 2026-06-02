@@ -82,10 +82,12 @@ export class ClassesService {
       }),
     ]);
 
-    const sectionCountMap = new Map(
-      bySection.map((row) => [row.sectionId, row._count._all]),
+    const sectionCountMap = new Map<string, number>(
+      bySection.map((row) => [row.sectionId, row._count._all] as [string, number]),
     );
-    const classCountMap = new Map(byClass.map((row) => [row.classId, row._count._all]));
+    const classCountMap = new Map<string, number>(
+      byClass.map((row) => [row.classId, row._count._all] as [string, number]),
+    );
 
     return classes.map((cls) => ({
       ...cls,
@@ -242,5 +244,135 @@ export class ClassesService {
     });
     if (!assignment) throw new NotFoundException('Assignment not found');
     return this.prisma.teacherAssignment.delete({ where: { id } });
+  }
+
+  /** Match Excel class/section names (e.g. "10" ↔ "Class 10", "A" ↔ "Section A"). */
+  private normKey(value: string): string {
+    return value.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  private normClassName(value: string): string {
+    return this.normKey(value)
+      .replace(/[._-]/g, ' ')
+      .replace(/\b(class|grade|standard|std)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private normSectionName(value: string): string {
+    return this.normKey(value)
+      .replace(/[._-]/g, ' ')
+      .replace(/\b(section|sec)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private registerClassInCache(
+    cache: Map<string, { id: string; name: string; sections: Map<string, { id: string; name: string }> }>,
+    cls: { id: string; name: string },
+  ) {
+    const entry = {
+      id: cls.id,
+      name: cls.name,
+      sections: new Map<string, { id: string; name: string }>(),
+    };
+    cache.set(this.normKey(cls.name), entry);
+    cache.set(this.normClassName(cls.name), entry);
+    return entry;
+  }
+
+  private registerSectionInCache(
+    entry: { sections: Map<string, { id: string; name: string }> },
+    sec: { id: string; name: string },
+  ) {
+    entry.sections.set(this.normKey(sec.name), sec);
+    entry.sections.set(this.normSectionName(sec.name), sec);
+  }
+
+  async buildClassSectionCache(schoolId: string) {
+    const classes = await this.prisma.class.findMany({
+      where: { schoolId, deletedAt: null },
+      include: { sections: { where: { deletedAt: null } } },
+    });
+
+    const cache = new Map<
+      string,
+      { id: string; name: string; sections: Map<string, { id: string; name: string }> }
+    >();
+
+    for (const cls of classes) {
+      const entry = this.registerClassInCache(cache, cls);
+      for (const sec of cls.sections) {
+        this.registerSectionInCache(entry, sec);
+      }
+    }
+
+    return cache;
+  }
+
+  async findOrCreateClassSection(
+    schoolId: string,
+    className: string,
+    sectionName: string,
+    cache: Map<
+      string,
+      { id: string; name: string; sections: Map<string, { id: string; name: string }> }
+    >,
+  ): Promise<{ classId: string; sectionId: string; createdClass: boolean; createdSection: boolean }> {
+    const trimmedClass = className?.trim();
+    const trimmedSection = sectionName?.trim();
+    if (!trimmedClass) throw new BadRequestException('Class name is required');
+    if (!trimmedSection) throw new BadRequestException('Section name is required');
+
+    let createdClass = false;
+    let createdSection = false;
+
+    let entry =
+      cache.get(this.normClassName(trimmedClass)) ?? cache.get(this.normKey(trimmedClass));
+
+    if (!entry) {
+      try {
+        const created = await this.createClass(schoolId, trimmedClass);
+        entry = this.registerClassInCache(cache, created);
+        createdClass = true;
+      } catch (err) {
+        if (!(err instanceof ConflictException)) throw err;
+        const refreshed = await this.buildClassSectionCache(schoolId);
+        for (const [key, value] of refreshed) cache.set(key, value);
+        entry =
+          cache.get(this.normClassName(trimmedClass)) ?? cache.get(this.normKey(trimmedClass));
+        if (!entry) throw err;
+      }
+    }
+
+    let section =
+      entry.sections.get(this.normSectionName(trimmedSection)) ??
+      entry.sections.get(this.normKey(trimmedSection));
+
+    if (!section) {
+      try {
+        const created = await this.createSection(entry.id, trimmedSection, schoolId);
+        section = { id: created.id, name: created.name };
+        this.registerSectionInCache(entry, section);
+        createdSection = true;
+      } catch (err) {
+        if (!(err instanceof ConflictException)) throw err;
+        const cls = await this.prisma.class.findFirst({
+          where: { id: entry.id, deletedAt: null },
+          include: { sections: { where: { deletedAt: null } } },
+        });
+        if (!cls) throw err;
+        entry.sections.clear();
+        for (const sec of cls.sections) {
+          this.registerSectionInCache(entry, sec);
+        }
+        section =
+          entry.sections.get(this.normSectionName(trimmedSection)) ??
+          entry.sections.get(this.normKey(trimmedSection));
+        if (!section) throw err;
+      }
+    }
+
+    return { classId: entry.id, sectionId: section.id, createdClass, createdSection };
   }
 }
