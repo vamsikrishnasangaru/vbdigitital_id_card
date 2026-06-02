@@ -145,7 +145,7 @@ export function parseExcelRows(
   classes: ClassPickerOption[],
 ): ParsedImportRow[] {
   const lookup = buildClassSectionLookup(classes);
-  const usedRollNumbers = new Set<string>();
+  const usedRollKeys = new Set<string>();
 
   return sheetRows.map((raw, index) => {
     const rowNumber = index + 2;
@@ -205,10 +205,14 @@ export function parseExcelRows(
     if (!rollNumber) {
       return { ...row, message: 'Roll number is required' };
     }
-    if (usedRollNumbers.has(rollNumber)) {
-      return { ...row, message: `Duplicate roll number "${rollNumber}" in this file` };
+    const rollKey = `${normClassName(row.className)}|${normSectionName(row.sectionName)}|${rollNumber}`;
+    if (usedRollKeys.has(rollKey)) {
+      return {
+        ...row,
+        message: `Duplicate roll number "${rollNumber}" for this class and section in this file`,
+      };
     }
-    usedRollNumbers.add(rollNumber);
+    usedRollKeys.add(rollKey);
 
     return {
       ...row,

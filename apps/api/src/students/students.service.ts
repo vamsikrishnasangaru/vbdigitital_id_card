@@ -293,6 +293,47 @@ export class StudentsService {
     });
   }
 
+  /** Deterministic admission id per class + section + roll (full UUIDs — no prefix collisions). */
+  private buildImportAdmissionNumber(classId: string, sectionId: string, rollNumber: string): string {
+    return `ADM-${classId}-${sectionId}-${rollNumber}`;
+  }
+
+  /** Previous import format (6-char UUID prefixes) — kept for lookup/migration only. */
+  private buildLegacyTruncatedAdmissionNumber(
+    classId: string,
+    sectionId: string,
+    rollNumber: string,
+  ): string {
+    return `ADM-${classId.slice(0, 6)}-${sectionId.slice(0, 6)}-${rollNumber}`;
+  }
+
+  private async findStudentForImport(
+    schoolId: string,
+    classId: string,
+    sectionId: string,
+    rollNumber: string,
+    admissionNumber: string,
+  ) {
+    const legacyTruncated = this.buildLegacyTruncatedAdmissionNumber(classId, sectionId, rollNumber);
+    const matchWhere = {
+      schoolId,
+      OR: [
+        { admissionNumber },
+        { admissionNumber: legacyTruncated },
+        { classId, sectionId, rollNumber },
+      ],
+    };
+    const active = await this.prisma.student.findFirst({
+      where: { ...matchWhere, deletedAt: null },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (active) return active;
+    return this.prisma.student.findFirst({
+      where: matchWhere,
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   async bulkImport(
     schoolId: string,
     rows: {
@@ -390,10 +431,7 @@ export class StudentsService {
         if (createdClass) classesCreated += 1;
         if (createdSection) sectionsCreated += 1;
 
-        // Admission numbers must be unique across the whole school, but roll numbers often
-        // repeat across different classes/sections. Use a scoped admission number to avoid
-        // collisions while keeping it deterministic for re-import.
-        const admissionNumber = `ADM-${classId.slice(0, 6)}-${sectionId.slice(0, 6)}-${rollNumber}`;
+        const admissionNumber = this.buildImportAdmissionNumber(classId, sectionId, rollNumber);
         const studentData = {
           classId,
           sectionId,
@@ -403,53 +441,77 @@ export class StudentsService {
           parentName,
           parentPhone: row.parentPhone?.trim() || null,
           address,
+          admissionNumber,
+          deletedAt: null as Date | null,
         };
 
-        const existing = await this.prisma.student.findFirst({
-          where: {
-            schoolId,
-            deletedAt: null,
-            OR: [
-              // New deterministic import admission number.
-              { admissionNumber },
-              // Legacy admission number used by earlier imports.
-              { admissionNumber: `ADM-${rollNumber}` },
-              // Treat roll number duplicates only within the same class/section.
-              { classId, sectionId, rollNumber },
-            ],
-          },
-        });
+        const existing = await this.findStudentForImport(
+          schoolId,
+          classId,
+          sectionId,
+          rollNumber,
+          admissionNumber,
+        );
 
-        if (existing) {
-          await this.prisma.student.update({
-            where: { id: existing.id },
-            data: studentData,
-          });
-          updated += 1;
-          results.push({
-            index: i,
-            success: true,
-            updated: true,
-            message: `Updated existing student (roll ${rollNumber})`,
-          });
-        } else {
+        const saveImportRow = async (targetId?: string) => {
+          if (targetId) {
+            await this.prisma.student.update({
+              where: { id: targetId },
+              data: studentData,
+            });
+            updated += 1;
+            results.push({
+              index: i,
+              success: true,
+              updated: true,
+              message: `Updated existing student (roll ${rollNumber})`,
+            });
+            return;
+          }
           await this.prisma.student.create({
             data: {
               schoolId,
               ...studentData,
-              admissionNumber,
               status: 'DRAFT',
             },
           });
           created += 1;
           results.push({ index: i, success: true });
+        };
+
+        if (existing) {
+          await saveImportRow(existing.id);
+        } else {
+          try {
+            await saveImportRow();
+          } catch (createErr: unknown) {
+            const isUnique =
+              createErr &&
+              typeof createErr === 'object' &&
+              'code' in createErr &&
+              (createErr as { code: string }).code === 'P2002';
+            if (!isUnique) throw createErr;
+
+            const conflict = await this.findStudentForImport(
+              schoolId,
+              classId,
+              sectionId,
+              rollNumber,
+              admissionNumber,
+            );
+            if (!conflict) {
+              throw createErr;
+            }
+            await saveImportRow(conflict.id);
+          }
         }
       } catch (err: unknown) {
         failed += 1;
         let message = 'Import failed';
         if (err && typeof err === 'object') {
           if ('code' in err && (err as { code: string }).code === 'P2002') {
-            message = 'Duplicate admission or roll number';
+            message =
+              'A deleted or conflicting student record exists for this class, section, and roll number. Remove the old record or use a different roll number.';
           } else if ('message' in err) {
             message = String((err as { message: string }).message);
           }
