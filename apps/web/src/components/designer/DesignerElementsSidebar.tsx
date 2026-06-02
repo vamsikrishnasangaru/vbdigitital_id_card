@@ -70,7 +70,7 @@ export function DesignerElementsSidebar({
   return (
     <aside
       className={cn(
-        'w-[260px] shrink-0 border-r border-white/[0.08] bg-[#0d0d12] flex flex-col min-h-0',
+        'w-[260px] shrink-0 border-r border-white/[0.08] bg-[#0d0d12] flex flex-col min-h-0 h-full max-h-full overflow-hidden',
         className,
       )}
     >
@@ -78,7 +78,7 @@ export function DesignerElementsSidebar({
         <p className="text-xs font-black text-white/90">Elements</p>
         <p className="text-[10px] text-white/40 mt-0.5">Click or drag onto the card</p>
       </div>
-      <div className="flex-1 overflow-y-auto designer-scroll p-3 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain designer-scroll p-3 space-y-5 [-webkit-overflow-scrolling:touch]">
         <Section title="Basic">
           <div className="grid grid-cols-2 gap-2">
             {BASIC_ELEMENTS.map((item) => (
@@ -112,7 +112,7 @@ export function DesignerElementsSidebar({
         </Section>
 
         <Section title="Student fields">
-          <div className="space-y-1 max-h-[280px] overflow-y-auto designer-scroll pr-0.5">
+          <div className="space-y-1 pr-0.5">
             {STUDENT_FIELDS.map((item) => (
               <button
                 key={item.id}

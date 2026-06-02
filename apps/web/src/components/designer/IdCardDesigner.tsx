@@ -1041,11 +1041,12 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
 
       <div className="flex-1 flex min-h-0">
         {p.onSaveProp && (
-          <div className="hidden lg:block">
+          <div className="hidden lg:flex lg:flex-col min-h-0 h-full shrink-0">
             <DesignerElementsSidebar
               onAdd={p.addElementFromAction}
               onUploadImage={p.onUploadImage}
               onUploadAsset={p.onUploadAsset}
+              className="h-full max-h-full"
             />
           </div>
         )}
