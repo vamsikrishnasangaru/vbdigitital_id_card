@@ -29,13 +29,13 @@ export async function resolveOfflineGet(
   }
 
   if (url.includes('/classes/school/')) {
-    const schoolId = url
-      .split('/classes/school/')[1]
-      ?.split('?')[0]
-      ?.replace(/\/picker$/, '');
+    const path = url.split('/classes/school/')[1]?.split('?')[0] || '';
+    const isPicker = path.endsWith('/picker');
+    const schoolId = path.replace(/\/picker$/, '');
     if (schoolId) {
-      const hit =
-        offlineClasses.getClassesForSchool(schoolId) ?? offlineStore.getClasses(schoolId);
+      const hit = isPicker
+        ? offlineClasses.getClassesPicker(schoolId)
+        : offlineClasses.getClassesForSchool(schoolId) ?? offlineStore.getClasses(schoolId);
       if (hit) return { data: hit, status: 200, config };
     }
   }

@@ -1,6 +1,5 @@
 import api from '@/lib/api';
 import { offlineClasses } from '@/lib/offline-classes';
-import { offlineStore } from '@/lib/offline-store';
 
 export type ClassPickerOption = {
   id: string;
@@ -21,17 +20,22 @@ export function classesQueryStaleTime() {
 
 /** Read cached classes from localStorage (instant dropdown paint). */
 export function getCachedClassesForSchool(schoolId: string): ClassPickerOption[] | undefined {
-  const fromOffline =
-    offlineClasses.getClassesForSchool(schoolId) ??
-    (offlineStore.getClasses(schoolId) as ClassPickerOption[] | null);
-  if (!fromOffline?.length) return undefined;
-  return fromOffline as ClassPickerOption[];
+  const fromPicker = offlineClasses.getClassesPicker(schoolId);
+  if (fromPicker?.length) return fromPicker;
+  const fromFull = offlineClasses.getClassesForSchool(schoolId);
+  if (!fromFull?.length) return undefined;
+  return fromFull.map((c) => ({
+    id: c.id,
+    name: c.name,
+    sortOrder: c.sortOrder,
+    sections: c.sections.map((s) => ({ id: s.id, name: s.name })),
+  }));
 }
 
 /** Fast endpoint for enrollment / filter dropdowns. */
 export async function fetchClassesPicker(schoolId: string): Promise<ClassPickerOption[]> {
   const { data } = await api.get(`/classes/school/${schoolId}/picker`);
   const list = (data || []) as ClassPickerOption[];
-  offlineClasses.cacheClasses(schoolId, list);
+  offlineClasses.cacheClassesPicker(schoolId, list);
   return list;
 }

@@ -47,7 +47,7 @@ export class ClassesService {
   }
 
   async findAllClasses(schoolId: string) {
-    return this.prisma.class.findMany({
+    const classes = await this.prisma.class.findMany({
       where: { schoolId, deletedAt: null },
       include: {
         sections: {
@@ -61,6 +61,42 @@ export class ClassesService {
       },
       orderBy: { sortOrder: 'asc' },
     });
+
+    if (classes.length === 0) return classes;
+
+    const sectionIds = classes.flatMap((c) => c.sections.map((s) => s.id));
+    const classIds = classes.map((c) => c.id);
+
+    const [bySection, byClass] = await Promise.all([
+      sectionIds.length
+        ? this.prisma.student.groupBy({
+            by: ['sectionId'],
+            where: { schoolId, deletedAt: null, sectionId: { in: sectionIds } },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      this.prisma.student.groupBy({
+        by: ['classId'],
+        where: { schoolId, deletedAt: null, classId: { in: classIds } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const sectionCountMap = new Map(
+      bySection.map((row) => [row.sectionId, row._count._all]),
+    );
+    const classCountMap = new Map(byClass.map((row) => [row.classId, row._count._all]));
+
+    return classes.map((cls) => ({
+      ...cls,
+      _count: { students: classCountMap.get(cls.id) ?? cls._count.students },
+      sections: cls.sections.map((sec) => ({
+        ...sec,
+        _count: {
+          students: sectionCountMap.get(sec.id) ?? sec._count.students,
+        },
+      })),
+    }));
   }
 
   /** Lightweight list for dropdowns (enrollment, filters) — no per-section student counts. */

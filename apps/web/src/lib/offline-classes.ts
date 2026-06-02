@@ -41,6 +41,13 @@ export interface OfflineTeacherMinimal {
   schoolId?: string;
 }
 
+export interface ClassPickerOption {
+  id: string;
+  name: string;
+  sortOrder?: number;
+  sections?: { id: string; name: string; sortOrder?: number }[];
+}
+
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
   try {
@@ -192,17 +199,48 @@ export const offlineClasses = {
 
     const mergedServer = serverList.map((sc) => {
       const local = existing.find((e) => e.id === sc.id);
-      if (!local) return sc;
       const serverSectionIds = new Set(sc.sections.map((s) => s.id));
-      const pendingSections = local.sections.filter(
-        (s) => s._offline && !serverSectionIds.has(s.id),
-      );
-      if (pendingSections.length === 0) return sc;
-      return { ...sc, sections: [...sc.sections, ...pendingSections] };
+      const pendingSections = local
+        ? local.sections.filter((s) => s._offline && !serverSectionIds.has(s.id))
+        : [];
+
+      const sections = sc.sections.map((sec) => {
+        const localSec = local?.sections.find((ls) => ls.id === sec.id);
+        const students =
+          sec._count?.students ??
+          localSec?._count?.students ??
+          0;
+        return { ...sec, _count: { students } };
+      });
+
+      for (const pending of pendingSections) {
+        sections.push({
+          ...pending,
+          _count: { students: pending._count?.students ?? 0 },
+        });
+      }
+
+      const classStudents =
+        sc._count?.students ??
+        local?._count?.students ??
+        sections.reduce((sum, s) => sum + (s._count?.students ?? 0), 0);
+
+      return { ...sc, sections, _count: { students: classStudents } };
     });
 
     map[schoolId] = [...offlineOnlyClasses, ...mergedServer];
     saveClassesMap(map, false);
+  },
+
+  cacheClassesPicker(schoolId: string, pickerClasses: unknown[]) {
+    const map = readLocal<Record<string, ClassPickerOption[]>>(KEYS.classesPickerBySchool, {});
+    map[schoolId] = pickerClasses as ClassPickerOption[];
+    writeLocal(KEYS.classesPickerBySchool, map, { notify: false });
+  },
+
+  getClassesPicker(schoolId: string): ClassPickerOption[] | null {
+    const map = readLocal<Record<string, ClassPickerOption[]>>(KEYS.classesPickerBySchool, {});
+    return map[schoolId] ?? null;
   },
 
   cacheAssignments(schoolId: string, serverAssignments: unknown[]) {

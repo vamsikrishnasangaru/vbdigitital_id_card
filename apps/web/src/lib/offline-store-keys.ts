@@ -5,6 +5,7 @@ export const OFFLINE_STORAGE_KEYS = {
   studentPatches: 'vb_offline_student_patches',
   templatesBySchool: 'vb_offline_templates_by_school',
   classesBySchool: 'vb_offline_classes_by_school',
+  classesPickerBySchool: 'vb_offline_classes_picker_by_school',
   deletedClassIds: 'vb_offline_deleted_classes',
   deletedSectionIds: 'vb_offline_deleted_sections',
   deletedAssignmentIds: 'vb_offline_deleted_assignments',

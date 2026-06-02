@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useMemo, useDeferredValue, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ import {
   Plus, Trash2, Loader2, BookOpen, ChevronDown,
   Users, GraduationCap, UserPlus, X, Filter, Search,
 } from 'lucide-react';
+import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { StatCard } from '@/components/ui/stat-card';
 import { queryKeys } from '@/lib/query-keys';
@@ -60,10 +61,27 @@ interface StudentMatch {
   firstName: string;
   lastName: string;
   admissionNumber: string;
+  rollNumber?: string | null;
   classId: string;
   sectionId: string;
   class?: { id: string; name: string };
   section?: { id: string; name: string };
+}
+
+function sectionStudentCount(
+  sec: Section,
+  students: StudentMatch[],
+): number {
+  const listed = students.filter((s) => s.sectionId === sec.id).length;
+  return Math.max(sec._count?.students ?? 0, listed);
+}
+
+function classStudentCount(cls: ClassItem, students: StudentMatch[]): number {
+  const fromSections = cls.sections.reduce(
+    (sum, sec) => sum + sectionStudentCount(sec, students),
+    0,
+  );
+  return Math.max(cls._count?.students ?? 0, fromSections);
 }
 
 const SELECT_OPTION_CLASS = 'bg-popover text-popover-foreground';
@@ -133,6 +151,17 @@ export default function ClassesPage() {
       return data.data as StudentMatch[];
     },
     enabled: !!effectiveSchoolId && deferredSearch.length >= 2,
+  });
+
+  const { data: expandedClassStudents = [], isLoading: loadingExpandedStudents } = useQuery({
+    queryKey: ['students', 'by-class', effectiveSchoolId, expandedClass],
+    queryFn: async () => {
+      const { data } = await api.get('/students', {
+        params: { schoolId: effectiveSchoolId, classId: expandedClass, limit: 500 },
+      });
+      return data.data as StudentMatch[];
+    },
+    enabled: !!effectiveSchoolId && !!expandedClass,
   });
 
   const isSearchPending = search.trim() !== deferredSearch;
@@ -333,7 +362,10 @@ export default function ClassesPage() {
     return teachers.filter((t) => !assignedIds.has(t.id));
   }, [teachers, assignments, showAssign]);
 
-  const totalStudents = filteredClasses.reduce((sum, c) => sum + (c._count?.students || 0), 0);
+  const totalStudents = filteredClasses.reduce(
+    (sum, c) => sum + classStudentCount(c, expandedClass === c.id ? expandedClassStudents : []),
+    0,
+  );
   const totalSections = filteredClasses.reduce((s, c) => s + c.sections.length, 0);
 
   const jumpToStudent = (student: StudentMatch) => {
@@ -525,6 +557,8 @@ export default function ClassesPage() {
           <div className="grid gap-4">
             {filteredClasses.map((cls) => {
               const isExpanded = expandedClass === cls.id;
+              const classStudents = isExpanded ? expandedClassStudents : [];
+              const enrolledCount = classStudentCount(cls, classStudents);
               return (
                 <div key={cls.id} className={cn(
                   "group panel rounded-2xl overflow-hidden transition-all duration-300",
@@ -556,7 +590,7 @@ export default function ClassesPage() {
                             {cls.sections.length} Sections
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary uppercase tracking-tighter">
-                            {cls._count?.students || 0} Enrolled
+                            {enrolledCount} Enrolled
                           </span>
                         </div>
                       </div>
@@ -578,7 +612,7 @@ export default function ClassesPage() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const count = cls._count?.students || 0;
+                            const count = enrolledCount;
                             const msg =
                               count > 0
                                 ? `Cannot delete ${cls.name}: ${count} student(s) enrolled.`
@@ -620,8 +654,11 @@ export default function ClassesPage() {
                             <tbody className="divide-y divide-border/20">
                               {cls.sections.map((sec) => {
                                 const secAss = assignments.filter(a => a.class.id === cls.id && a.section.id === sec.id);
+                                const sectionStudents = classStudents.filter((s) => s.sectionId === sec.id);
+                                const studentCount = sectionStudentCount(sec, sectionStudents);
                                 return (
-                                  <tr key={sec.id} className="hover:bg-primary/5 transition-colors">
+                                  <Fragment key={sec.id}>
+                                  <tr className="hover:bg-primary/5 transition-colors">
                                     <td className="px-6 py-4">
                                       <div className="font-bold text-foreground flex items-center gap-2 flex-wrap">
                                         Section {sec.name}
@@ -654,8 +691,10 @@ export default function ClassesPage() {
                                       )}
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                      <span className="font-black text-foreground">{sec._count?.students || 0}</span>
-                                      <span className="text-muted-foreground ml-1">Students</span>
+                                      <span className="font-black text-foreground">{studentCount}</span>
+                                      <span className="text-muted-foreground ml-1.5">
+                                        {studentCount === 1 ? 'Student' : 'Students'}
+                                      </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                       <div className="flex items-center justify-end gap-2">
@@ -669,7 +708,7 @@ export default function ClassesPage() {
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            const count = sec._count?.students || 0;
+                                            const count = studentCount;
                                             if (count > 0) {
                                               toast.error(
                                                 `Cannot delete section ${sec.name}: ${count} student(s) enrolled.`,
@@ -689,6 +728,42 @@ export default function ClassesPage() {
                                       </div>
                                     </td>
                                   </tr>
+                                  {isExpanded && (
+                                    <tr key={`${sec.id}-students`} className="bg-muted/20">
+                                      <td colSpan={4} className="px-6 py-3">
+                                        {loadingExpandedStudents ? (
+                                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            Loading students…
+                                          </div>
+                                        ) : sectionStudents.length === 0 ? (
+                                          <p className="text-xs text-muted-foreground italic">
+                                            No students in this section yet.
+                                          </p>
+                                        ) : (
+                                          <ul className="flex flex-wrap gap-2">
+                                            {sectionStudents.map((student) => (
+                                              <li key={student.id}>
+                                                <Link
+                                                  href={`/students?classId=${cls.id}&sectionId=${sec.id}`}
+                                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold hover:bg-emerald-500/20 transition-colors"
+                                                >
+                                                  <Users className="h-3 w-3 shrink-0" />
+                                                  {student.firstName} {student.lastName}
+                                                  {student.rollNumber ? (
+                                                    <span className="font-normal opacity-70">
+                                                      · Roll {student.rollNumber}
+                                                    </span>
+                                                  ) : null}
+                                                </Link>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  )}
+                                  </Fragment>
                                 );
                               })}
                             </tbody>
