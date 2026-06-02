@@ -217,7 +217,7 @@ export function StudentExcelImportDialog({
                     <th className="text-left px-3 py-2 font-bold">Student</th>
                     <th className="text-left px-3 py-2 font-bold">Class</th>
                     <th className="text-left px-3 py-2 font-bold">Section</th>
-                    <th className="text-left px-3 py-2 font-bold">Status</th>
+                    <th className="text-left px-3 py-2 font-bold">Father Name</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
@@ -228,16 +228,14 @@ export function StudentExcelImportDialog({
                       <td className="px-3 py-2">{row.className}</td>
                       <td className="px-3 py-2">{row.sectionName}</td>
                       <td className="px-3 py-2">
-                        {row.status === 'ready' ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-600 font-bold">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Verified
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-red-600 font-medium" title={row.message}>
-                            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                            {row.message}
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-semibold text-foreground">{row.parentName}</span>
+                          {row.status === 'error' && row.message ? (
+                            <span className="text-[10px] text-red-600" title={row.message}>
+                              {row.message}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}
