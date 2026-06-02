@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   Plus, Search, Users, Loader2, Check, X,
   Eye, Trash2, Download, GraduationCap, Phone,
-  CreditCard, Building2, Layers, Pencil,
+  CreditCard, Building2, Layers, Pencil, FileSpreadsheet,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn, resolveMediaUrl } from '@/lib/utils';
@@ -30,6 +30,7 @@ import { offlineStore } from '@/lib/offline-store';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { useMergedStudents } from '@/hooks/use-merged-students';
 import { GenerateCardsDialog } from '@/components/id-cards/GenerateCardsDialog';
+import { StudentExcelImportDialog } from '@/components/students/StudentExcelImportDialog';
 import {
   generateIdCards,
   triggerIdCardDownload,
@@ -120,6 +121,7 @@ export default function StudentsPage() {
   const deferredTemplateCode = useDeferredValue(templateCode.trim());
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
   const [showCreate, setShowCreate] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
@@ -734,6 +736,20 @@ export default function StudentsPage() {
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-card hover:bg-muted border border-border text-foreground rounded-xl text-sm font-bold transition-all shadow-sm w-full sm:w-auto disabled:opacity-50"
           >
             <Download className="h-4 w-4 shrink-0" /> Export CSV
+          </button>
+          <button
+            type="button"
+            disabled={!effectiveSchoolId}
+            onClick={() => {
+              if (!effectiveSchoolId) {
+                toast.error(isSuperAdmin ? 'Select a school first' : 'School not configured');
+                return;
+              }
+              setShowImportDialog(true);
+            }}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-card hover:bg-muted border border-border text-foreground rounded-xl text-sm font-bold transition-all shadow-sm w-full sm:w-auto disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-4 w-4 shrink-0" /> Import Excel
           </button>
           <button
             type="button"
@@ -1695,6 +1711,17 @@ export default function StudentsPage() {
         driveAvailable={driveStatus?.canUpload ?? false}
         onDownload={() => generateMutation.mutate('download')}
         onGoogleDrive={() => generateMutation.mutate('drive')}
+      />
+
+      <StudentExcelImportDialog
+        open={showImportDialog}
+        onClose={() => setShowImportDialog(false)}
+        schoolId={effectiveSchoolId}
+        schoolName={
+          isSuperAdmin
+            ? schools.find((s) => s.id === effectiveSchoolId)?.name
+            : undefined
+        }
       />
 
       {/* Global CSS for custom scrollbar */}

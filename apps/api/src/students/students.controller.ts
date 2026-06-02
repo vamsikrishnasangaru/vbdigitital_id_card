@@ -63,6 +63,17 @@ export class StudentsController {
     return this.studentsService.updateStatus(id, body.status, req.user.sub);
   }
 
+  @Post('bulk-import')
+  @ApiOperation({ summary: 'Bulk import students (validated class/section IDs)' })
+  bulkImport(@Request() req: any, @Body() body: { schoolId: string; students: any[] }) {
+    const schoolId =
+      req.user.role === 'SUPER_ADMIN' ? body.schoolId : (req.user.schoolId as string);
+    return this.studentsService.bulkImport(schoolId, body.students ?? [], {
+      role: req.user.role,
+      schoolId: req.user.schoolId,
+    });
+  }
+
   @Post('bulk-status')
   @ApiOperation({ summary: 'Bulk update student status' })
   bulkUpdateStatus(@Body() body: { ids: string[]; status: string }, @Request() req: any) {

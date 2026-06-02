@@ -214,6 +214,101 @@ export class StudentsService {
     });
   }
 
+  async bulkImport(
+    schoolId: string,
+    rows: {
+      firstName: string;
+      lastName: string;
+      classId: string;
+      sectionId: string;
+      parentName: string;
+      address: string;
+      rollNumber: string;
+      parentPhone?: string;
+    }[],
+    actor?: { role?: string; schoolId?: string },
+  ) {
+    if (!schoolId?.trim()) {
+      throw new BadRequestException('schoolId is required');
+    }
+    if (!rows?.length) {
+      throw new BadRequestException('No students to import');
+    }
+    if (rows.length > 500) {
+      throw new BadRequestException('Maximum 500 students per import');
+    }
+
+    if (actor?.role && actor.role !== 'SUPER_ADMIN' && actor.schoolId !== schoolId) {
+      throw new BadRequestException('You can only import students for your school');
+    }
+
+    const classes = await this.prisma.class.findMany({
+      where: { schoolId, deletedAt: null },
+      include: { sections: { where: { deletedAt: null } } },
+    });
+
+    const classIds = new Set(classes.map((c) => c.id));
+    const sectionKeys = new Set(
+      classes.flatMap((c) => c.sections.map((s) => `${c.id}:${s.id}`)),
+    );
+
+    let created = 0;
+    let failed = 0;
+    const results: { index: number; success: boolean; message?: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        if (!classIds.has(row.classId) || !sectionKeys.has(`${row.classId}:${row.sectionId}`)) {
+          throw new BadRequestException('Invalid class or section for this school');
+        }
+
+        const rollNumber = String(row.rollNumber).trim();
+        const firstName = String(row.firstName).trim();
+        const lastName = String(row.lastName).trim();
+        const parentName = String(row.parentName).trim();
+        const address = String(row.address).trim();
+
+        if (!rollNumber || !firstName || !lastName || !parentName || !address) {
+          throw new BadRequestException('Missing required fields');
+        }
+
+        const admissionNumber = `ADM-${rollNumber}`;
+
+        await this.prisma.student.create({
+          data: {
+            schoolId,
+            classId: row.classId,
+            sectionId: row.sectionId,
+            firstName,
+            lastName,
+            rollNumber,
+            admissionNumber,
+            parentName,
+            parentPhone: row.parentPhone?.trim() || null,
+            address,
+            status: 'DRAFT',
+          },
+        });
+        created += 1;
+        results.push({ index: i, success: true });
+      } catch (err: unknown) {
+        failed += 1;
+        let message = 'Import failed';
+        if (err && typeof err === 'object') {
+          if ('code' in err && (err as { code: string }).code === 'P2002') {
+            message = 'Duplicate admission or roll number';
+          } else if ('message' in err) {
+            message = String((err as { message: string }).message);
+          }
+        }
+        results.push({ index: i, success: false, message });
+      }
+    }
+
+    return { created, failed, total: rows.length, results };
+  }
+
   async getClassWiseStats(schoolId: string) {
     const classes = await this.prisma.class.findMany({
       where: { schoolId, deletedAt: null },
