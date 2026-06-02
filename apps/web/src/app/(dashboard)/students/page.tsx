@@ -1478,12 +1478,6 @@ export default function StudentsPage() {
                         </select>
                       </div>
                     )}
-                    <p className="md:col-span-2 text-xs text-muted-foreground font-medium">
-                      Only <span className="text-red-500 font-bold">First name</span>,{' '}
-                      <span className="text-red-500 font-bold">Roll number</span>,{' '}
-                      <span className="text-red-500 font-bold">Parent mobile</span>, and{' '}
-                      <span className="text-red-500 font-bold">Address</span> are required.
-                    </p>
 
                     {/* Academic placement (optional) */}
                     <div className="space-y-2">
