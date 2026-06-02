@@ -252,7 +252,6 @@ export default function StudentsPage() {
       const params: Record<string, string | number> = { limit: 100 };
       if (effectiveSchoolId) params.schoolId = effectiveSchoolId;
       if (deferredSearch) params.search = deferredSearch;
-      if (statusFilter === 'DRAFT') params.status = 'DRAFT';
       if (statusFilter === 'COMPLETE') params.completion = 'COMPLETE';
       if (statusFilter === 'INCOMPLETE') params.completion = 'INCOMPLETE';
       if (classFilter) params.classId = classFilter;
@@ -269,7 +268,7 @@ export default function StudentsPage() {
       schoolId: effectiveSchoolId,
       classId: classFilter || undefined,
       sectionId: sectionFilter || undefined,
-      status: statusFilter === 'DRAFT' ? 'DRAFT' : undefined,
+      status: undefined,
       search: deferredSearch || undefined,
     }),
     [effectiveSchoolId, classFilter, sectionFilter, statusFilter, deferredSearch],
@@ -719,7 +718,6 @@ export default function StudentsPage() {
 
   const statuses = [
     { value: '', label: 'All Records' },
-    { value: 'DRAFT', label: 'Draft' },
     { value: 'INCOMPLETE', label: 'Incomplete' },
     { value: 'COMPLETE', label: 'Verified' },
   ];
