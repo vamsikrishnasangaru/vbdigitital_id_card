@@ -77,6 +77,16 @@ function latestTemplateLabel(student: { idCards?: { template?: { id: string; nam
   return { name: tpl.name, code: templateShortId(tpl) };
 }
 
+function resolveStudentTemplateLabel(
+  student: { idCards?: { template?: { id: string; name: string; code?: string | null } }[] },
+  activeTemplate?: { id: string; name: string; code?: string | null } | null,
+) {
+  const generated = latestTemplateLabel(student);
+  if (generated) return generated;
+  if (!activeTemplate) return null;
+  return { name: activeTemplate.name, code: templateShortId(activeTemplate) };
+}
+
 interface TeacherAssignment {
   id: string;
   class: { id: string; name: string };
@@ -325,6 +335,7 @@ export default function StudentsPage() {
       const list = data as {
         id: string;
         name: string;
+        code?: string | null;
         orientation: string;
         frontBgUrl?: string;
         frontConfig?: unknown;
@@ -1081,7 +1092,7 @@ export default function StudentsPage() {
                     {safeLabel(s.class?.name, 'Unassigned')} · {safeLabel(s.section?.name, 'N/A')}
                   </span>
                   {(() => {
-                    const tpl = latestTemplateLabel(s);
+                    const tpl = resolveStudentTemplateLabel(s, selectedTemplate);
                     if (!tpl) return null;
                     return (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-muted border border-border font-mono text-[10px] font-black">
@@ -1213,9 +1224,9 @@ export default function StudentsPage() {
                   </td>
                   <td className="p-6">
                     {(() => {
-                      const tpl = latestTemplateLabel(s);
+                      const tpl = resolveStudentTemplateLabel(s, selectedTemplate);
                       if (!tpl) {
-                        return <span className="text-xs text-muted-foreground font-bold">No card yet</span>;
+                        return <span className="text-xs text-muted-foreground font-bold">No template</span>;
                       }
                       return (
                         <div className="space-y-1">
@@ -1354,11 +1365,12 @@ export default function StudentsPage() {
                 </div>
               )}
               {(() => {
-                const tpl = latestTemplateLabel(viewStudent);
+                const tpl = resolveStudentTemplateLabel(viewStudent, selectedTemplate);
                 if (!tpl) return null;
+                const generated = latestTemplateLabel(viewStudent);
                 return (
                   <p className="text-xs text-muted-foreground font-bold">
-                    Latest ID card: {tpl.name} · {tpl.code}
+                    {generated ? 'Latest ID card' : 'Template'}: {tpl.name} · {tpl.code}
                   </p>
                 );
               })()}
