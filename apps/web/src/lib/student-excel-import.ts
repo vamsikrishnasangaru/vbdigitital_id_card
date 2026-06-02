@@ -58,6 +58,22 @@ function normKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function normClassName(value: string): string {
+  return normKey(value)
+    .replace(/[._-]/g, ' ')
+    .replace(/\b(class|grade|standard|std)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normSectionName(value: string): string {
+  return normKey(value)
+    .replace(/[._-]/g, ' ')
+    .replace(/\b(section|sec)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function cellString(value: unknown): string {
   if (value == null) return '';
   return String(value).trim();
@@ -82,10 +98,14 @@ export function buildClassSectionLookup(classes: ClassPickerOption[]) {
   const sectionByClass = new Map<string, Map<string, { id: string; name: string }>>();
 
   for (const cls of classes) {
+    // Allow matching "10" with "Class 10", "Grade 10", etc.
     classByNorm.set(normKey(cls.name), cls);
+    classByNorm.set(normClassName(cls.name), cls);
     const secMap = new Map<string, { id: string; name: string }>();
     for (const sec of cls.sections ?? []) {
+      // Allow matching "A" with "Section A", etc.
       secMap.set(normKey(sec.name), sec);
+      secMap.set(normSectionName(sec.name), sec);
     }
     sectionByClass.set(cls.id, secMap);
   }
@@ -98,12 +118,16 @@ export function resolveClassSection(
   sectionName: string,
   lookup: ReturnType<typeof buildClassSectionLookup>,
 ): { classId?: string; sectionId?: string; error?: string } {
-  const cls = lookup.classByNorm.get(normKey(className));
+  const cls =
+    lookup.classByNorm.get(normClassName(className)) ??
+    lookup.classByNorm.get(normKey(className));
   if (!cls) {
     return { error: `Class "${className}" not found in this school` };
   }
   const secMap = lookup.sectionByClass.get(cls.id);
-  const sec = secMap?.get(normKey(sectionName));
+  const sec =
+    secMap?.get(normSectionName(sectionName)) ??
+    secMap?.get(normKey(sectionName));
   if (!sec) {
     return { error: `Section "${sectionName}" not found in class "${cls.name}"` };
   }
