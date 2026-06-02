@@ -21,6 +21,30 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     this.frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
   }
 
+  private isTransientBrowserError(error: unknown): boolean {
+    const msg = error instanceof Error ? error.message : String(error ?? '');
+    return (
+      msg.includes('Connection closed') ||
+      msg.includes('Target closed') ||
+      msg.includes('Session closed') ||
+      msg.includes('Browser has disconnected') ||
+      msg.includes('Navigation failed because browser has disconnected') ||
+      msg.includes('Protocol error')
+    );
+  }
+
+  private async restartBrowser(reason: string) {
+    this.logger.warn(`Restarting Puppeteer browser: ${reason}`);
+    try {
+      if (this.browser) await this.browser.close();
+    } catch {
+      // ignore close errors
+    } finally {
+      this.browser = null;
+    }
+    await this.ensureBrowser();
+  }
+
   async onModuleInit() {
     await this.ensureBrowser();
   }
@@ -119,24 +143,35 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async capturePdf(url: string, options: Record<string, unknown>): Promise<Buffer> {
-    if (!this.browser) await this.ensureBrowser();
-    const page = await this.browser!.newPage();
+    const attemptOnce = async (): Promise<Buffer> => {
+      if (!this.browser) await this.ensureBrowser();
+      const page = await this.browser!.newPage();
+      try {
+        this.logger.log(`Navigating to ${url}...`);
+        page.setDefaultNavigationTimeout(90000);
+        page.setDefaultTimeout(90000);
+        await page.goto(url, { waitUntil: 'networkidle0', timeout: 90000 });
+        await this.waitForRenderReady(page);
+
+        const pdfBuffer = await page.pdf({
+          printBackground: true,
+          margin: { top: 0, right: 0, bottom: 0, left: 0 },
+          preferCSSPageSize: true,
+          ...options,
+        });
+
+        return Buffer.from(pdfBuffer);
+      } finally {
+        await page.close();
+      }
+    };
 
     try {
-      this.logger.log(`Navigating to ${url}...`);
-      await page.goto(url, { waitUntil: 'networkidle0', timeout: 90000 });
-      await this.waitForRenderReady(page);
-
-      const pdfBuffer = await page.pdf({
-        printBackground: true,
-        margin: { top: 0, right: 0, bottom: 0, left: 0 },
-        preferCSSPageSize: true,
-        ...options,
-      });
-
-      return Buffer.from(pdfBuffer);
-    } finally {
-      await page.close();
+      return await attemptOnce();
+    } catch (err) {
+      if (!this.isTransientBrowserError(err)) throw err;
+      await this.restartBrowser(err instanceof Error ? err.message : 'transient browser error');
+      return await attemptOnce();
     }
   }
 
@@ -146,35 +181,47 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     token?: string,
     orientation: 'HORIZONTAL' | 'VERTICAL' = 'HORIZONTAL',
   ): Promise<Buffer> {
-    if (!this.browser) await this.ensureBrowser();
+    const attemptOnce = async (): Promise<Buffer> => {
+      if (!this.browser) await this.ensureBrowser();
 
-    const size = CARD_SIZES[orientation];
-    const page = await this.browser!.newPage();
+      const size = CARD_SIZES[orientation];
+      const page = await this.browser!.newPage();
+      try {
+        const url = `${this.frontendUrl}/render/${templateId}/${studentId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+
+        page.setDefaultNavigationTimeout(90000);
+        page.setDefaultTimeout(90000);
+        await page.setViewport({
+          width: size.width + 80,
+          height: size.height + 80,
+          deviceScaleFactor: 1,
+        });
+
+        await page.goto(url, { waitUntil: 'networkidle0', timeout: 90000 });
+        await this.waitForRenderReady(page);
+
+        const dataUrl = await page.evaluate(() => {
+          const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
+          if (!canvas?.width || !canvas?.height) {
+            throw new Error('Konva canvas not found');
+          }
+          return canvas.toDataURL('image/png');
+        });
+
+        const base64 = dataUrl.split(',')[1];
+        if (!base64) throw new Error('Failed to export card PNG');
+        return Buffer.from(base64, 'base64');
+      } finally {
+        await page.close();
+      }
+    };
+
     try {
-      const url = `${this.frontendUrl}/render/${templateId}/${studentId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-
-      await page.setViewport({
-        width: size.width + 80,
-        height: size.height + 80,
-        deviceScaleFactor: 1,
-      });
-
-      await page.goto(url, { waitUntil: 'networkidle0', timeout: 90000 });
-      await this.waitForRenderReady(page);
-
-      const dataUrl = await page.evaluate(() => {
-        const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
-        if (!canvas?.width || !canvas?.height) {
-          throw new Error('Konva canvas not found');
-        }
-        return canvas.toDataURL('image/png');
-      });
-
-      const base64 = dataUrl.split(',')[1];
-      if (!base64) throw new Error('Failed to export card PNG');
-      return Buffer.from(base64, 'base64');
-    } finally {
-      await page.close();
+      return await attemptOnce();
+    } catch (err) {
+      if (!this.isTransientBrowserError(err)) throw err;
+      await this.restartBrowser(err instanceof Error ? err.message : 'transient browser error');
+      return await attemptOnce();
     }
   }
 }
