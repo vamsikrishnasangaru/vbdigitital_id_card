@@ -11,11 +11,35 @@ const CARD_SIZES = {
   VERTICAL: { width: Math.round(2.125 * CARD_PPI), height: Math.round(3.375 * CARD_PPI) },
 } as const;
 
+class Semaphore {
+  private active = 0;
+  private queue: Array<() => void> = [];
+
+  constructor(private readonly limit: number) {}
+
+  async acquire(): Promise<() => void> {
+    if (this.active < this.limit) {
+      this.active += 1;
+      return () => this.release();
+    }
+    await new Promise<void>((resolve) => this.queue.push(resolve));
+    this.active += 1;
+    return () => this.release();
+  }
+
+  private release() {
+    this.active = Math.max(0, this.active - 1);
+    const next = this.queue.shift();
+    if (next) next();
+  }
+}
+
 @Injectable()
 export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IdCardRendererService.name);
   private browser: puppeteer.Browser | null = null;
   private readonly frontendUrl: string;
+  private readonly renderSemaphore = new Semaphore(1);
 
   constructor(private configService: ConfigService) {
     this.frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
@@ -62,6 +86,10 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
     try {
       this.browser = await puppeteer.launch(launchOptions);
+      this.browser.on('disconnected', () => {
+        this.logger.warn('Puppeteer browser disconnected; will re-launch on next render.');
+        this.browser = null;
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
@@ -143,6 +171,8 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async capturePdf(url: string, options: Record<string, unknown>): Promise<Buffer> {
+    const release = await this.renderSemaphore.acquire();
+    try {
     const attemptOnce = async (): Promise<Buffer> => {
       if (!this.browser) await this.ensureBrowser();
       const page = await this.browser!.newPage();
@@ -173,6 +203,9 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       await this.restartBrowser(err instanceof Error ? err.message : 'transient browser error');
       return await attemptOnce();
     }
+    } finally {
+      release();
+    }
   }
 
   async renderCard(
@@ -181,6 +214,8 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     token?: string,
     orientation: 'HORIZONTAL' | 'VERTICAL' = 'HORIZONTAL',
   ): Promise<Buffer> {
+    const release = await this.renderSemaphore.acquire();
+    try {
     const attemptOnce = async (): Promise<Buffer> => {
       if (!this.browser) await this.ensureBrowser();
 
@@ -222,6 +257,9 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       if (!this.isTransientBrowserError(err)) throw err;
       await this.restartBrowser(err instanceof Error ? err.message : 'transient browser error');
       return await attemptOnce();
+    }
+    } finally {
+      release();
     }
   }
 }
