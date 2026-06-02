@@ -173,7 +173,12 @@ export class StudentsService {
     return student;
   }
 
-  async update(id: string, data: any, actor?: { role?: string; userId?: string }) {
+  async update(
+    id: string,
+    data: any,
+    actor?: { role?: string; userId?: string },
+    file?: Express.Multer.File,
+  ) {
     const current = await this.findOne(id);
     if (current.status === 'APPROVED' && actor?.role !== 'SUPER_ADMIN') {
       throw new ForbiddenException('Approved student records cannot be modified');
@@ -226,7 +231,14 @@ export class StudentsService {
     if (transportDetails !== undefined) {
       payload.transportDetails = transportDetails ? String(transportDetails).trim() : null;
     }
-    if (photoUrl !== undefined) payload.photoUrl = photoUrl;
+    if (file) {
+      payload.photoUrl = await this.uploadsService.saveFile(
+        file,
+        `schools/${current.schoolId}/students`,
+      );
+    } else if (photoUrl !== undefined) {
+      payload.photoUrl = photoUrl;
+    }
     if (dateOfBirth !== undefined) {
       payload.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
     }

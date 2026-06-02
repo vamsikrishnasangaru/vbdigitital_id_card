@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn, resolveMediaUrl } from '@/lib/utils';
+import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
 import { StudentPhotoPicker } from '@/components/ui/student-photo-picker';
@@ -475,17 +476,28 @@ export default function StudentsPage() {
   const updateMutation = useMutation({
     mutationFn: async ({
       id,
+      formData,
       payload,
     }: {
       id: string;
-      payload: Record<string, unknown>;
-    }) => api.put(`/students/${id}`, payload),
+      formData?: FormData;
+      payload?: Record<string, unknown>;
+    }) => {
+      if (formData) return api.put(`/students/${id}`, formData);
+      return api.put(`/students/${id}`, payload);
+    },
     onSuccess: () => {
       toast.success('Student updated successfully');
       closeEnrollModal();
       queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: (err: any) => {
+      if (err.response?.status === 413) {
+        toast.error(
+          'Photo is too large for the server. Ask your host to set nginx client_max_body_size 15M, or use a smaller image.',
+        );
+        return;
+      }
       toast.error(err.response?.data?.message || 'Failed to update student');
     },
   });
@@ -635,37 +647,32 @@ export default function StudentsPage() {
     }
 
     if (editingStudentId) {
-      let photoUrl: string | undefined;
+      const formData = new FormData();
+      formData.append('schoolId', schoolId);
+      formData.append('firstName', form.firstName.trim());
+      formData.append('lastName', form.lastName.trim() || '-');
+      formData.append('rollNumber', form.rollNumber.trim());
+      formData.append('parentPhone', form.parentPhone.trim());
+      formData.append('address', form.address.trim());
+      if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
+      if (form.classId.trim()) formData.append('classId', form.classId.trim());
+      if (form.sectionId.trim()) formData.append('sectionId', form.sectionId.trim());
+      if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
+      if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
+      if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
+      if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
+      if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
+
       if (photo) {
-        const uploadData = new FormData();
-        uploadData.append('file', photo);
-        const { data } = await api.post<{ url: string }>(
-          `/uploads?dir=schools/${schoolId}/students`,
-          uploadData,
-        );
-        photoUrl = data.url;
+        try {
+          const compressed = await compressImageForUpload(photo, STUDENT_PHOTO_UPLOAD_OPTS);
+          formData.append('photo', compressed);
+        } catch {
+          formData.append('photo', photo);
+        }
       }
 
-      updateMutation.mutate({
-        id: editingStudentId,
-        payload: {
-          schoolId,
-          firstName: form.firstName.trim(),
-          rollNumber: form.rollNumber.trim(),
-          parentPhone: form.parentPhone.trim(),
-          address: form.address.trim(),
-          bloodGroup: form.bloodGroup?.trim() || null,
-          aadharCard: form.aadharCard?.trim() || null,
-          dateOfBirth: form.dateOfBirth || null,
-          emergencyContact: form.emergencyContact?.trim() || null,
-          transportDetails: form.transportDetails?.trim() || null,
-          ...(form.classId.trim() ? { classId: form.classId.trim() } : {}),
-          ...(form.sectionId.trim() ? { sectionId: form.sectionId.trim() } : {}),
-          ...(form.lastName.trim() ? { lastName: form.lastName.trim() } : { lastName: '-' }),
-          ...(form.parentName.trim() ? { parentName: form.parentName.trim() } : { parentName: null }),
-          ...(photoUrl ? { photoUrl } : {}),
-        },
-      });
+      updateMutation.mutate({ id: editingStudentId, formData });
       return;
     }
 
@@ -684,7 +691,14 @@ export default function StudentsPage() {
     if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
     if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
     if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
-    if (photo) formData.append('photo', photo);
+    if (photo) {
+      try {
+        const compressed = await compressImageForUpload(photo, STUDENT_PHOTO_UPLOAD_OPTS);
+        formData.append('photo', compressed);
+      } catch {
+        formData.append('photo', photo);
+      }
+    }
     createMutation.mutate(formData);
   };
 
@@ -865,9 +879,6 @@ export default function StudentsPage() {
                   No class assigned yet. Ask your school admin to assign you under Classes.
                 </p>
               )}
-              <p className="text-xs text-muted-foreground mt-2">
-                Use the filters below to view <span className="font-bold text-foreground">all classes and sections</span> when substituting for an absent teacher.
-              </p>
             </div>
           </div>
           {teacherAssignments.length > 0 && (

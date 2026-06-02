@@ -1,0 +1,6 @@
+# Add inside your server { } block for the API (and web if proxying uploads).
+# Then: sudo nginx -t && sudo systemctl reload nginx
+#
+# Without this, large student photos return HTTP 413 before NestJS sees the request.
+
+client_max_body_size 15M;

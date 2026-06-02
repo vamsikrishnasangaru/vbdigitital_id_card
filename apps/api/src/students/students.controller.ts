@@ -53,9 +53,16 @@ export class StudentsController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update student' })
-  update(@Param('id') id: string, @Body() body: any, @Request() req: any) {
-    return this.studentsService.update(id, body, { role: req.user.role, userId: req.user.sub });
+  @ApiOperation({ summary: 'Update student with optional photo' })
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: 15 * 1024 * 1024 } }))
+  update(
+    @Param('id') id: string,
+    @Body() body: any,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Request() req: any,
+  ) {
+    return this.studentsService.update(id, body, { role: req.user.role, userId: req.user.sub }, file);
   }
 
   @Put(':id/status')

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# If student photo uploads return HTTP 413, add to nginx server block:
+#   client_max_body_size 15M;
+# See scripts/nginx-upload-limit.snippet — then: sudo nginx -t && sudo systemctl reload nginx
 # Rebuild web + sync standalone assets + restart PM2 (run on VPS from repo root).
 set -euo pipefail
 
@@ -67,3 +70,7 @@ ss -lntp | grep ":$PORT" || true
 echo "Health:"
 curl -sI "http://127.0.0.1:$PORT/" | head -n1
 curl -sI "http://127.0.0.1:$PORT/students" | head -n1
+echo ""
+echo "Deployed web revision: ${RELEASE_REVISION}"
+echo "After deploy: hard-refresh browser (Ctrl+Shift+R)."
+echo "Student edit should use PUT /api/v1/students/:id — NOT POST /api/v1/uploads."

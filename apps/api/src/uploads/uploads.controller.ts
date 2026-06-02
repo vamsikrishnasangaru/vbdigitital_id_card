@@ -65,7 +65,7 @@ export class UploadsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload a file' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
   async upload(@UploadedFile() file: Express.Multer.File, @Query('dir') dir?: string) {
     console.log('[UploadsController] Received file:', file ? {
       originalname: file.originalname,

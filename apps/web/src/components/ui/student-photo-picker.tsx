@@ -3,16 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, Upload, X, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 
 interface StudentPhotoPickerProps {
   preview: string | null;
   onPhotoChange: (file: File | null, previewUrl: string | null) => void;
 }
 
-function readFileAsPreview(file: File, onPhotoChange: StudentPhotoPickerProps['onPhotoChange']) {
+async function readFileAsPreview(
+  file: File,
+  onPhotoChange: StudentPhotoPickerProps['onPhotoChange'],
+) {
+  const compressed = await compressImageForUpload(file, STUDENT_PHOTO_UPLOAD_OPTS);
   const reader = new FileReader();
-  reader.onloadend = () => onPhotoChange(file, reader.result as string);
-  reader.readAsDataURL(file);
+  reader.onloadend = () => onPhotoChange(compressed, reader.result as string);
+  reader.readAsDataURL(compressed);
 }
 
 export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPickerProps) {
@@ -85,24 +90,26 @@ export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPicke
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
 
+    const maxDim = STUDENT_PHOTO_UPLOAD_OPTS.maxWidth;
+    const scale = Math.min(1, maxDim / video.videoWidth, maxDim / video.videoHeight);
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob(
       (blob) => {
         if (!blob) return;
         const file = new File([blob], `student-photo-${Date.now()}.jpg`, {
           type: 'image/jpeg',
         });
-        readFileAsPreview(file, onPhotoChange);
+        void readFileAsPreview(file, onPhotoChange);
         setCameraOpen(false);
       },
       'image/jpeg',
-      0.92,
+      0.78,
     );
   };
 
