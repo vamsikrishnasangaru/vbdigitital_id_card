@@ -14,12 +14,8 @@ export class StudentsService {
   async create(data: any, file?: Express.Multer.File) {
     const requiredFields = [
       'schoolId',
-      'classId',
-      'sectionId',
       'firstName',
-      'lastName',
       'rollNumber',
-      'parentName',
       'parentPhone',
       'address',
     ] as const;
@@ -37,7 +33,24 @@ export class StudentsService {
     }
 
     const { photo, ...rest } = data;
+
+    // Allow creating a student without class/section selection.
+    // We map those to an "Unassigned / N/A" bucket per school.
+    let classId = typeof rest.classId === 'string' ? rest.classId.trim() : '';
+    let sectionId = typeof rest.sectionId === 'string' ? rest.sectionId.trim() : '';
+    if (!classId || !sectionId) {
+      const fallback = await this.classesService.findOrCreateClassSection(
+        String(rest.schoolId),
+        'Unassigned',
+        'N/A',
+        await this.classesService.buildClassSectionCache(String(rest.schoolId)),
+      );
+      classId = fallback.classId;
+      sectionId = fallback.sectionId;
+    }
+
     const rollNumber = String(rest.rollNumber).trim();
+    const lastName = typeof rest.lastName === 'string' ? rest.lastName.trim() : '';
     const admissionNumber =
       (typeof rest.admissionNumber === 'string' && rest.admissionNumber.trim()) ||
       `ADM-${rollNumber}`;
@@ -45,12 +58,15 @@ export class StudentsService {
     return this.prisma.student.create({
       data: {
         ...rest,
+        classId,
+        sectionId,
         rollNumber,
         admissionNumber,
         parentName: String(rest.parentName).trim(),
         parentPhone: String(rest.parentPhone).trim(),
         address: String(rest.address).trim(),
         photoUrl,
+        lastName: lastName || '-',
       },
       include: { class: true, section: true, school: true },
     });
@@ -185,8 +201,14 @@ export class StudentsService {
     const payload: Record<string, unknown> = { ...rest };
 
     if (schoolId !== undefined) payload.schoolId = schoolId;
-    if (classId !== undefined) payload.classId = classId;
-    if (sectionId !== undefined) payload.sectionId = sectionId;
+    if (classId !== undefined) {
+      const trimmed = String(classId).trim();
+      payload.classId = trimmed ? trimmed : null;
+    }
+    if (sectionId !== undefined) {
+      const trimmed = String(sectionId).trim();
+      payload.sectionId = trimmed ? trimmed : null;
+    }
     if (firstName !== undefined) payload.firstName = String(firstName).trim();
     if (lastName !== undefined) payload.lastName = String(lastName).trim();
     if (rollNumber !== undefined) {
@@ -211,7 +233,24 @@ export class StudentsService {
 
     return this.prisma.student.update({
       where: { id },
-      data: payload,
+      data: {
+        ...payload,
+        ...(payload.classId == null || payload.sectionId == null
+          ? await (async () => {
+              const resolved = await this.classesService.findOrCreateClassSection(
+                current.schoolId,
+                'Unassigned',
+                'N/A',
+                await this.classesService.buildClassSectionCache(current.schoolId),
+              );
+              return {
+                classId: resolved.classId,
+                sectionId: resolved.sectionId,
+              };
+            })()
+          : {}),
+        ...(typeof payload.lastName === 'string' && !payload.lastName.trim() ? { lastName: '-' } : {}),
+      },
       include: { class: true, section: true, school: true },
     });
   }

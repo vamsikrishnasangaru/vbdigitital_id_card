@@ -63,6 +63,8 @@ function isStudentIncomplete(s: any): boolean {
     !String(s?.rollNumber || '').trim() ||
     !String(s?.classId || s?.class?.id || '').trim() ||
     !String(s?.sectionId || s?.section?.id || '').trim() ||
+    String(s?.class?.name || '').trim().toLowerCase() === 'unassigned' ||
+    String(s?.section?.name || '').trim().toLowerCase() === 'n/a' ||
     !String(s?.parentName || '').trim() ||
     !String(s?.parentPhone || '').trim()
   );
@@ -649,12 +651,8 @@ export default function StudentsPage() {
         id: editingStudentId,
         payload: {
           schoolId,
-          classId: form.classId,
-          sectionId: form.sectionId,
           firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
           rollNumber: form.rollNumber.trim(),
-          parentName: form.parentName.trim(),
           parentPhone: form.parentPhone.trim(),
           address: form.address.trim(),
           bloodGroup: form.bloodGroup?.trim() || null,
@@ -662,6 +660,10 @@ export default function StudentsPage() {
           dateOfBirth: form.dateOfBirth || null,
           emergencyContact: form.emergencyContact?.trim() || null,
           transportDetails: form.transportDetails?.trim() || null,
+          ...(form.classId.trim() ? { classId: form.classId.trim() } : {}),
+          ...(form.sectionId.trim() ? { sectionId: form.sectionId.trim() } : {}),
+          ...(form.lastName.trim() ? { lastName: form.lastName.trim() } : { lastName: '-' }),
+          ...(form.parentName.trim() ? { parentName: form.parentName.trim() } : { parentName: null }),
           ...(photoUrl ? { photoUrl } : {}),
         },
       });
@@ -670,14 +672,14 @@ export default function StudentsPage() {
 
     const formData = new FormData();
     formData.append('schoolId', schoolId);
-    formData.append('classId', form.classId);
-    formData.append('sectionId', form.sectionId);
     formData.append('firstName', form.firstName.trim());
-    formData.append('lastName', form.lastName.trim());
+    formData.append('lastName', form.lastName.trim() || '-');
     formData.append('rollNumber', form.rollNumber.trim());
-    formData.append('parentName', form.parentName.trim());
+    if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
     formData.append('parentPhone', form.parentPhone.trim());
     formData.append('address', form.address.trim());
+    if (form.classId.trim()) formData.append('classId', form.classId.trim());
+    if (form.sectionId.trim()) formData.append('sectionId', form.sectionId.trim());
     if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
     if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
     if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
@@ -1478,13 +1480,16 @@ export default function StudentsPage() {
                       </div>
                     )}
                     <p className="md:col-span-2 text-xs text-muted-foreground font-medium">
-                      Fields marked with <span className="text-red-500 font-bold">*</span> are required.
+                      Only <span className="text-red-500 font-bold">First name</span>,{' '}
+                      <span className="text-red-500 font-bold">Roll number</span>,{' '}
+                      <span className="text-red-500 font-bold">Parent mobile</span>, and{' '}
+                      <span className="text-red-500 font-bold">Address</span> are required.
                     </p>
 
-                    {/* Academic placement (required) */}
+                    {/* Academic placement (optional) */}
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Class <span className="text-red-500">*</span>
+                        Class
                       </label>
                       <select
                         value={form.classId}
@@ -1494,7 +1499,6 @@ export default function StudentsPage() {
                           const cls = enrollClasses.find((c: { id: string }) => c.id === cid);
                           setSections(cls?.sections || []);
                         }}
-                        required
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
                       >
                         <option value="">
@@ -1507,12 +1511,11 @@ export default function StudentsPage() {
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Section <span className="text-red-500">*</span>
+                        Section
                       </label>
                       <select
                         value={form.sectionId}
                         onChange={(e) => setForm({ ...form, sectionId: e.target.value })}
-                        required
                         disabled={!form.classId}
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm disabled:opacity-50"
                       >
@@ -1538,12 +1541,11 @@ export default function StudentsPage() {
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Last name <span className="text-red-500">*</span>
+                        Last name
                       </label>
                       <input
                         value={form.lastName}
                         onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                        required
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
                         placeholder="e.g. Kumari"
                       />
@@ -1562,15 +1564,14 @@ export default function StudentsPage() {
                       />
                     </div>
 
-                    {/* Parent / guardian (required) */}
+                    {/* Parent / guardian */}
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Parent / guardian name <span className="text-red-500">*</span>
+                        Parent / guardian name
                       </label>
                       <input
                         value={form.parentName}
                         onChange={(e) => setForm({ ...form, parentName: e.target.value })}
-                        required
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
                         placeholder="Full name"
                       />
