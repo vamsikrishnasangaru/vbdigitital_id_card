@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { ClassesService } from '../classes/classes.service';
@@ -59,15 +59,32 @@ export class StudentsService {
   async findAll(query: {
     schoolId?: string; classId?: string; sectionId?: string;
     status?: string; search?: string; templateCode?: string;
+    completion?: string;
     page?: number; limit?: number;
   }) {
-    const { schoolId, classId, sectionId, status, search, templateCode, page = 1, limit = 20 } = query;
+    const { schoolId, classId, sectionId, status, completion, search, templateCode, page = 1, limit = 20 } = query;
     const where: any = { deletedAt: null };
 
     if (schoolId) where.schoolId = schoolId;
     if (classId) where.classId = classId;
     if (sectionId) where.sectionId = sectionId;
     if (status) where.status = status;
+    if (completion === 'INCOMPLETE') {
+      where.OR = [
+        ...(where.OR ?? []),
+        { photoUrl: null },
+        { rollNumber: null },
+        { parentName: null },
+        { parentPhone: null },
+        { parentPhone: '' },
+      ];
+    } else if (completion === 'COMPLETE') {
+      where.photoUrl = { not: null };
+      where.rollNumber = { not: null };
+      where.parentName = { not: null };
+      where.parentPhone = { not: null };
+      where.NOT = [{ parentPhone: '' }];
+    }
     if (search) {
       where.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },
@@ -137,8 +154,11 @@ export class StudentsService {
     return student;
   }
 
-  async update(id: string, data: any) {
-    await this.findOne(id);
+  async update(id: string, data: any, actor?: { role?: string; userId?: string }) {
+    const current = await this.findOne(id);
+    if (current.status === 'APPROVED' && actor?.role !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Approved student records cannot be modified');
+    }
     const {
       photo,
       dateOfBirth,

@@ -27,13 +27,14 @@ export class StudentsController {
     @Query('classId') classId?: string,
     @Query('sectionId') sectionId?: string,
     @Query('status') status?: string,
+    @Query('completion') completion?: string,
     @Query('search') search?: string,
     @Query('templateCode') templateCode?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.studentsService.findAll({
-      schoolId, classId, sectionId, status, search, templateCode,
+      schoolId, classId, sectionId, status, completion, search, templateCode,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
     });
@@ -53,8 +54,8 @@ export class StudentsController {
 
   @Put(':id')
   @ApiOperation({ summary: 'Update student' })
-  update(@Param('id') id: string, @Body() body: any) {
-    return this.studentsService.update(id, body);
+  update(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.studentsService.update(id, body, { role: req.user.role, userId: req.user.sub });
   }
 
   @Put(':id/status')

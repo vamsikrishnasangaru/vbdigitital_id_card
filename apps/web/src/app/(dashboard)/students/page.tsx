@@ -57,6 +57,17 @@ function safeLabel(value: unknown, fallback: string) {
   return s;
 }
 
+function isStudentIncomplete(s: any): boolean {
+  return (
+    !s?.photoUrl ||
+    !String(s?.rollNumber || '').trim() ||
+    !String(s?.classId || s?.class?.id || '').trim() ||
+    !String(s?.sectionId || s?.section?.id || '').trim() ||
+    !String(s?.parentName || '').trim() ||
+    !String(s?.parentPhone || '').trim()
+  );
+}
+
 function latestTemplateLabel(student: { idCards?: { template?: { id: string; name: string; code?: string | null } }[] }) {
   const tpl = student.idCards?.[0]?.template;
   if (!tpl) return null;
@@ -239,7 +250,9 @@ export default function StudentsPage() {
       const params: Record<string, string | number> = { limit: 100 };
       if (effectiveSchoolId) params.schoolId = effectiveSchoolId;
       if (deferredSearch) params.search = deferredSearch;
-      if (statusFilter) params.status = statusFilter;
+      if (statusFilter === 'DRAFT') params.status = 'DRAFT';
+      if (statusFilter === 'COMPLETE') params.completion = 'COMPLETE';
+      if (statusFilter === 'INCOMPLETE') params.completion = 'INCOMPLETE';
       if (classFilter) params.classId = classFilter;
       if (sectionFilter) params.sectionId = sectionFilter;
       if (deferredTemplateCode) params.templateCode = deferredTemplateCode;
@@ -254,7 +267,7 @@ export default function StudentsPage() {
       schoolId: effectiveSchoolId,
       classId: classFilter || undefined,
       sectionId: sectionFilter || undefined,
-      status: statusFilter || undefined,
+      status: statusFilter === 'DRAFT' ? 'DRAFT' : undefined,
       search: deferredSearch || undefined,
     }),
     [effectiveSchoolId, classFilter, sectionFilter, statusFilter, deferredSearch],
@@ -705,9 +718,8 @@ export default function StudentsPage() {
   const statuses = [
     { value: '', label: 'All Records' },
     { value: 'DRAFT', label: 'Draft' },
-    { value: 'SUBMITTED', label: 'Pending' },
-    { value: 'APPROVED', label: 'Verified' },
-    { value: 'REJECTED', label: 'Incomplete' }
+    { value: 'INCOMPLETE', label: 'Incomplete' },
+    { value: 'COMPLETE', label: 'Verified' },
   ];
 
   return (
@@ -1069,35 +1081,23 @@ export default function StudentsPage() {
                   <span
                     className={cn(
                       'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase',
-                      s.status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-500' :
-                      s.status === 'SUBMITTED' ? 'bg-blue-500/10 text-blue-500' :
-                      s.status === 'REJECTED' ? 'bg-red-500/10 text-red-500' :
-                      'bg-muted text-muted-foreground',
+                      isStudentIncomplete(s) ? 'bg-red-500/10 text-red-500' :
+                      'bg-emerald-500/10 text-emerald-500',
                     )}
                   >
-                    {s.status === 'SUBMITTED' ? 'PENDING' : s.status}
+                    {isStudentIncomplete(s) ? 'INCOMPLETE' : 'VERIFIED'}
                   </span>
                 </div>
                 <div className={cn(rowActionsClass(), 'flex-wrap justify-start pt-1')}>
-                  {s.status === 'SUBMITTED' && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => statusMutation.mutate({ id: s.id, status: 'APPROVED' })}
-                        className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500"
-                        aria-label="Approve"
-                      >
-                        <Check className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => statusMutation.mutate({ id: s.id, status: 'REJECTED' })}
-                        className="p-2.5 rounded-xl bg-red-500/10 text-red-500"
-                        aria-label="Reject"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </>
+                  {isSuperAdmin && !isStudentIncomplete(s) && s.status !== 'APPROVED' && (
+                    <button
+                      type="button"
+                      onClick={() => statusMutation.mutate({ id: s.id, status: 'APPROVED' })}
+                      className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500"
+                      aria-label="Approve"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
                   )}
                   <button
                     type="button"
@@ -1218,40 +1218,27 @@ export default function StudentsPage() {
                   <td className="p-6">
                     <div className={cn(
                       "inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider shadow-sm",
-                      s.status === 'APPROVED' ? "bg-emerald-500/10 text-emerald-500 ring-1 ring-emerald-500/20" :
-                      s.status === 'SUBMITTED' ? "bg-blue-500/10 text-blue-500 ring-1 ring-blue-500/20" :
-                      s.status === 'REJECTED' ? "bg-red-500/10 text-red-500 ring-1 ring-red-500/20" :
-                      "bg-muted text-muted-foreground ring-1 ring-border"
+                      isStudentIncomplete(s)
+                        ? "bg-red-500/10 text-red-500 ring-1 ring-red-500/20"
+                        : "bg-emerald-500/10 text-emerald-500 ring-1 ring-emerald-500/20"
                     )}>
                       <div className={cn(
                         "h-1.5 w-1.5 rounded-full",
-                        s.status === 'APPROVED' ? "bg-emerald-500 animate-pulse" :
-                        s.status === 'SUBMITTED' ? "bg-blue-500 animate-pulse" :
-                        s.status === 'REJECTED' ? "bg-red-500" :
-                        "bg-muted-foreground"
+                        isStudentIncomplete(s) ? "bg-red-500" : "bg-emerald-500 animate-pulse"
                       )} />
-                      {s.status === 'SUBMITTED' ? 'PENDING REVIEW' : s.status}
+                      {isStudentIncomplete(s) ? 'INCOMPLETE' : 'VERIFIED'}
                     </div>
                   </td>
                   <td className="p-6 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {s.status === 'SUBMITTED' && (
-                        <>
-                          <button 
-                            onClick={() => statusMutation.mutate({ id: s.id, status: 'APPROVED' })} 
-                            className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all shadow-sm" 
-                            title="Verify Identity"
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                          <button 
-                            onClick={() => statusMutation.mutate({ id: s.id, status: 'REJECTED' })} 
-                            className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm" 
-                            title="Decline Record"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </>
+                      {isSuperAdmin && !isStudentIncomplete(s) && s.status !== 'APPROVED' && (
+                        <button
+                          onClick={() => statusMutation.mutate({ id: s.id, status: 'APPROVED' })}
+                          className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
+                          title="Approve student"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
                       )}
                       <button
                         type="button"
@@ -1373,14 +1360,16 @@ export default function StudentsPage() {
               >
                 Remove
               </button>
-              <button
-                type="button"
-                onClick={() => openEditStudent(viewStudent)}
-                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-card border border-border hover:bg-muted transition-colors flex items-center gap-2"
-              >
-                <Pencil className="h-4 w-4" />
-                Edit
-              </button>
+              {!(viewStudent.status === 'APPROVED' && !isSuperAdmin) && (
+                <button
+                  type="button"
+                  onClick={() => openEditStudent(viewStudent)}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-card border border-border hover:bg-muted transition-colors flex items-center gap-2"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => openCardPreview(viewStudent)}
