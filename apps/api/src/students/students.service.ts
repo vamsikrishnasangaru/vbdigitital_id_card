@@ -221,8 +221,10 @@ export class StudentsService {
     rows: {
       firstName: string;
       lastName: string;
-      className: string;
-      sectionName: string;
+      classId?: string;
+      sectionId?: string;
+      className?: string;
+      sectionName?: string;
       parentName: string;
       address: string;
       rollNumber: string;
@@ -252,28 +254,61 @@ export class StudentsService {
     let sectionsCreated = 0;
     const results: { index: number; success: boolean; message?: string }[] = [];
 
+    const reqString = (value: unknown, label: string): string => {
+      if (typeof value !== 'string') {
+        throw new BadRequestException(`${label} is required`);
+      }
+      const trimmed = value.trim();
+      if (!trimmed) throw new BadRequestException(`${label} is required`);
+      const lowered = trimmed.toLowerCase();
+      if (lowered === 'undefined' || lowered === 'null') {
+        throw new BadRequestException(`${label} is required`);
+      }
+      return trimmed;
+    };
+
+    const optId = (value: unknown): string => {
+      if (value == null) return '';
+      const trimmed = String(value).trim();
+      const lowered = trimmed.toLowerCase();
+      if (!trimmed || lowered === 'undefined' || lowered === 'null') return '';
+      return trimmed;
+    };
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        const rollNumber = String(row.rollNumber).trim();
-        const firstName = String(row.firstName).trim();
-        const lastName = String(row.lastName).trim();
-        const parentName = String(row.parentName).trim();
-        const address = String(row.address).trim();
-        const className = String(row.className).trim();
-        const sectionName = String(row.sectionName).trim();
+        const rollNumber = reqString(row.rollNumber, 'Roll number');
+        const firstName = reqString(row.firstName, 'First name');
+        const lastName = reqString(row.lastName, 'Last name');
+        const parentName = reqString(row.parentName, 'Father / parent name');
+        const address = reqString(row.address, 'Address');
 
-        if (!rollNumber || !firstName || !lastName || !parentName || !address || !className || !sectionName) {
-          throw new BadRequestException('Missing required fields');
-        }
+        const classIdFromRow = optId(row.classId);
+        const sectionIdFromRow = optId(row.sectionId);
 
-        const { classId, sectionId, createdClass, createdSection } =
-          await this.classesService.findOrCreateClassSection(
+        let classId = classIdFromRow;
+        let sectionId = sectionIdFromRow;
+        let createdClass = false;
+        let createdSection = false;
+
+        // Backward-compatible: accept either {classId, sectionId} OR {className, sectionName}.
+        // Older web builds may still send IDs; newer builds send names for auto-create.
+        if (!classId || !sectionId) {
+          const className = reqString(row.className, 'Class');
+          const sectionName = reqString(row.sectionName, 'Section');
+          const resolved = await this.classesService.findOrCreateClassSection(
             schoolId,
             className,
             sectionName,
             classSectionCache,
           );
+          classId = resolved.classId;
+          sectionId = resolved.sectionId;
+          createdClass = resolved.createdClass;
+          createdSection = resolved.createdSection;
+        }
+
         if (createdClass) classesCreated += 1;
         if (createdSection) sectionsCreated += 1;
 

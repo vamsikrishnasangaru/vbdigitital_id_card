@@ -49,6 +49,14 @@ function templateShortId(tpl: { id: string; code?: string | null }) {
   return tpl.code?.trim() || tpl.id.slice(0, 8).toUpperCase();
 }
 
+function safeLabel(value: unknown, fallback: string) {
+  const s = typeof value === 'string' ? value.trim() : '';
+  if (!s) return fallback;
+  const lowered = s.toLowerCase();
+  if (lowered === 'undefined' || lowered === 'null') return fallback;
+  return s;
+}
+
 function latestTemplateLabel(student: { idCards?: { template?: { id: string; name: string; code?: string | null } }[] }) {
   const tpl = student.idCards?.[0]?.template;
   if (!tpl) return null;
@@ -1046,7 +1054,7 @@ export default function StudentsPage() {
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span className="flex items-center gap-1 text-muted-foreground font-bold">
                     <GraduationCap className="h-3.5 w-3.5 text-primary" />
-                    {s.class?.name || 'Unassigned'} · {s.section?.name || 'N/A'}
+                    {safeLabel(s.class?.name, 'Unassigned')} · {safeLabel(s.section?.name, 'N/A')}
                   </span>
                   {(() => {
                     const tpl = latestTemplateLabel(s);
@@ -1184,10 +1192,10 @@ export default function StudentsPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-sm font-black text-foreground">
                         <GraduationCap className="h-3.5 w-3.5 text-primary" />
-                        {s.class?.name || 'Unassigned'}
+                        {safeLabel(s.class?.name, 'Unassigned')}
                       </div>
                       <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest pl-5">
-                        Section {s.section?.name || 'N/A'}
+                        Section {safeLabel(s.section?.name, 'N/A')}
                       </div>
                     </div>
                   </td>
