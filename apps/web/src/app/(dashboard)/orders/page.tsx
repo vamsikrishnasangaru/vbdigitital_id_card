@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { 
   ShoppingCart, Plus, Loader2, Eye, Search, Filter, 
   Calendar, Building2, CreditCard, ChevronRight,
-  Package, CheckCircle2, Clock, Truck
+  Package, CheckCircle2, Clock
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -44,11 +44,29 @@ export default function OrdersPage() {
 
   const statuses = [
     { value: '', label: 'All Orders', icon: Package },
-    { value: 'PENDING', label: 'Queued', icon: Clock },
+    { value: 'SUBMITTED', label: 'Submitted', icon: Clock },
+    { value: 'APPROVED', label: 'Approved', icon: CheckCircle2 },
     { value: 'PROCESSING', label: 'In Production', icon: Loader2 },
-    { value: 'SHIPPED', label: 'Dispatched', icon: Truck },
-    { value: 'COMPLETED', label: 'Fulfilled', icon: CheckCircle2 }
+    { value: 'COMPLETED', label: 'Fulfilled', icon: CheckCircle2 },
+    { value: 'CANCELLED', label: 'Cancelled', icon: Package },
   ];
+
+  const statusStyle = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'bg-emerald-500/10 text-emerald-500';
+      case 'PROCESSING':
+        return 'bg-amber-500/10 text-amber-500';
+      case 'APPROVED':
+        return 'bg-blue-500/10 text-blue-500';
+      case 'SUBMITTED':
+        return 'bg-muted text-muted-foreground';
+      case 'CANCELLED':
+        return 'bg-red-500/10 text-red-500';
+      default:
+        return 'bg-muted text-muted-foreground';
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -142,10 +160,7 @@ export default function OrdersPage() {
                   <span
                     className={cn(
                       'text-[10px] px-3 py-1 rounded-full font-black uppercase',
-                      o.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-500' :
-                      o.status === 'PROCESSING' ? 'bg-amber-500/10 text-amber-500' :
-                      o.status === 'SHIPPED' ? 'bg-blue-500/10 text-blue-500' :
-                      'bg-muted text-muted-foreground',
+                      statusStyle(o.status),
                     )}
                   >
                     {o.status}
@@ -242,16 +257,13 @@ export default function OrdersPage() {
                   </td>
                   <td className="p-6">
                     <div className={cn(
-                      "inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider shadow-sm",
-                      o.status === 'COMPLETED' ? "bg-emerald-500/10 text-emerald-500 ring-1 ring-emerald-500/20" :
-                      o.status === 'PROCESSING' ? "bg-amber-500/10 text-amber-500 ring-1 ring-amber-500/20" :
-                      o.status === 'SHIPPED' ? "bg-blue-500/10 text-blue-500 ring-1 ring-blue-500/20" :
-                      "bg-muted text-muted-foreground ring-1 ring-border"
+                      "inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider shadow-sm ring-1 ring-border",
+                      statusStyle(o.status),
                     )}>
                       <div className={cn(
                         "h-1.5 w-1.5 rounded-full",
                         o.status === 'PROCESSING' ? "bg-amber-500 animate-pulse" :
-                        o.status === 'SHIPPED' ? "bg-blue-500 animate-pulse" :
+                        o.status === 'APPROVED' ? "bg-blue-500 animate-pulse" :
                         o.status === 'COMPLETED' ? "bg-emerald-500" :
                         "bg-muted-foreground"
                       )} />

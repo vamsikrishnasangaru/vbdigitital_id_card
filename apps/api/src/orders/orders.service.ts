@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeOrderStatusFilter, normalizeOrderStatusUpdate } from './order-status.util';
 
 @Injectable()
 export class OrdersService {
@@ -29,7 +30,15 @@ export class OrdersService {
     const { schoolId, status, page = 1, limit = 20 } = query;
     const where: any = { deletedAt: null };
     if (schoolId) where.schoolId = schoolId;
-    if (status) where.status = status;
+    if (status) {
+      const normalized = normalizeOrderStatusFilter(status);
+      if (!normalized) {
+        throw new BadRequestException(
+          `Invalid order status filter "${status}". Use DRAFT, SUBMITTED, APPROVED, PROCESSING, COMPLETED, or CANCELLED.`,
+        );
+      }
+      where.status = normalized;
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({
@@ -62,9 +71,20 @@ export class OrdersService {
   }
 
   async updateStatus(id: string, status: string, approvedBy?: string) {
-    const update: any = { status };
-    if (status === 'SUBMITTED') update.submittedAt = new Date();
-    if (status === 'APPROVED') { update.approvedAt = new Date(); update.approvedBy = approvedBy; }
+    let normalized: ReturnType<typeof normalizeOrderStatusUpdate>;
+    try {
+      normalized = normalizeOrderStatusUpdate(status);
+    } catch {
+      throw new BadRequestException(
+        `Invalid order status "${status}". Use DRAFT, SUBMITTED, APPROVED, PROCESSING, COMPLETED, or CANCELLED.`,
+      );
+    }
+    const update: any = { status: normalized };
+    if (normalized === 'SUBMITTED') update.submittedAt = new Date();
+    if (normalized === 'APPROVED') {
+      update.approvedAt = new Date();
+      update.approvedBy = approvedBy;
+    }
     return this.prisma.order.update({ where: { id }, data: update });
   }
 }
