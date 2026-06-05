@@ -75,7 +75,18 @@ function sectionStudentCount(sec: Section): number {
 }
 
 function classStudentCount(cls: ClassItem): number {
+  if (cls._count?.students != null) return cls._count.students;
   return cls.sections.reduce((sum, sec) => sum + sectionStudentCount(sec), 0);
+}
+
+function visibleSections(cls: ClassItem): Section[] {
+  return cls.sections.filter(
+    (sec) => !isPlaceholderSectionName(sec.name) || sectionStudentCount(sec) > 0,
+  );
+}
+
+function sectionDisplayName(name: string): string {
+  return isPlaceholderSectionName(name) ? 'No section' : name;
 }
 
 type DeleteConfirmState =
@@ -356,7 +367,7 @@ export default function ClassesPage() {
 
   const totalStudents = filteredClasses.reduce((sum, c) => sum + classStudentCount(c), 0);
   const totalSections = filteredClasses.reduce(
-    (s, c) => s + c.sections.filter((sec) => !isPlaceholderSectionName(sec.name)).length,
+    (s, c) => s + visibleSections(c).length,
     0,
   );
 
@@ -590,7 +601,7 @@ export default function ClassesPage() {
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-muted text-muted-foreground uppercase tracking-tighter">
-                            {cls.sections.filter((sec) => !isPlaceholderSectionName(sec.name)).length} Sections
+                            {visibleSections(cls).length} Sections
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary uppercase tracking-tighter">
                             {enrolledCount} Enrolled
@@ -638,10 +649,14 @@ export default function ClassesPage() {
                   {isExpanded && (
                     <div className="px-3 sm:px-5 pb-5 animate-in slide-in-from-top-4 duration-300">
                       <div className="bg-muted/30 rounded-2xl border border-border overflow-hidden">
-                        {cls.sections.filter((sec) => !isPlaceholderSectionName(sec.name)).length === 0 ? (
+                        {visibleSections(cls).length === 0 ? (
                           <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
                             <Filter className="h-8 w-8 opacity-20" />
-                            <p>No sections identified for this class yet.</p>
+                            <p>
+                              {enrolledCount > 0
+                                ? `${enrolledCount} student${enrolledCount === 1 ? '' : 's'} enrolled — add a section or open Students to manage them.`
+                                : 'No sections identified for this class yet.'}
+                            </p>
                           </div>
                         ) : (
                           <div className="overflow-x-auto overscroll-x-contain max-h-[min(70vh,32rem)] overflow-y-auto">
@@ -655,19 +670,20 @@ export default function ClassesPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border/20">
-                              {cls.sections.filter((sec) => !isPlaceholderSectionName(sec.name)).map((sec) => {
+                              {visibleSections(cls).map((sec) => {
                                 const secAss = assignments.filter(a => a.class.id === cls.id && a.section.id === sec.id);
                                 const studentCount = sectionStudentCount(sec);
+                                const displayName = sectionDisplayName(sec.name);
                                 return (
                                   <tr
                                     key={sec.id}
                                     className="hover:bg-primary/5 transition-colors cursor-pointer group/section"
                                     onClick={() => openStudentsForSection(cls.id, sec.id)}
-                                    title={`View students in ${cls.name} — Section ${sec.name}`}
+                                    title={`View students in ${cls.name} — ${displayName}`}
                                   >
                                     <td className="px-4 sm:px-6 py-4">
                                       <div className="font-bold text-foreground group-hover/section:text-primary transition-colors flex items-center gap-2 flex-wrap">
-                                        Section {sec.name}
+                                        {isPlaceholderSectionName(sec.name) ? displayName : `Section ${displayName}`}
                                         {sec._offline && (
                                           <span className="text-[8px] font-black uppercase px-1 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
                                             Offline
