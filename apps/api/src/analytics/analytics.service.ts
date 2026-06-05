@@ -41,7 +41,7 @@ export class AnalyticsService {
 
     const monthlyStudents = await this.prisma.student.groupBy({
       by: ['createdAt'],
-      where: { createdAt: { gte: sixMonthsAgo } },
+      where: { createdAt: { gte: sixMonthsAgo }, deletedAt: null },
       _count: true,
     });
 
@@ -52,7 +52,7 @@ export class AnalyticsService {
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 5,
-        include: { _count: { select: { students: true } } },
+        include: { _count: { select: { students: { where: { deletedAt: null } } } } },
       }),
       recentStudents: await this.getRecentStudents({}),
     };

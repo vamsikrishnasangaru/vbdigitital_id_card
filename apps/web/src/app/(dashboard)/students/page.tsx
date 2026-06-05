@@ -131,6 +131,8 @@ function emptyStudentForm(schoolId = ''): StudentFormState {
   };
 }
 
+const EDIT_STUDENT_STORAGE_KEY = 'vb_edit_student_id';
+
 export default function StudentsPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -463,6 +465,36 @@ export default function StudentsPage() {
     setViewStudent(null);
     setShowCreate(true);
   };
+
+  useEffect(() => {
+    const editId = sessionStorage.getItem(EDIT_STUDENT_STORAGE_KEY);
+    if (!editId) return;
+
+    const fromList = studentsData.find((s: { id: string }) => s.id === editId);
+    if (fromList) {
+      sessionStorage.removeItem(EDIT_STUDENT_STORAGE_KEY);
+      openEditStudent(fromList);
+      return;
+    }
+
+    if (!effectiveSchoolId) return;
+
+    let cancelled = false;
+    void api
+      .get(`/students/${editId}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        sessionStorage.removeItem(EDIT_STUDENT_STORAGE_KEY);
+        openEditStudent(data);
+      })
+      .catch(() => {
+        sessionStorage.removeItem(EDIT_STUDENT_STORAGE_KEY);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [studentsData, effectiveSchoolId]);
 
   // Mutations
   const createMutation = useMutation({

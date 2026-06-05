@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { 
-  CreditCard, Loader2, Play, Users, Eye, 
+  CreditCard, Loader2, Play, Users,
   Settings, Layers,
-  ShieldCheck, Zap, X, Building2,
+  Zap, X, Building2, Pencil, Phone, GraduationCap,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -41,6 +42,11 @@ const IdCardDesigner = dynamic(
 
 const ALL_CLASSES = '__all__';
 const ALL_SECTIONS = '__all__';
+const EDIT_STUDENT_STORAGE_KEY = 'vb_edit_student_id';
+
+function safeLabel(value: string | null | undefined, fallback: string) {
+  return value?.trim() ? value : fallback;
+}
 
 async function fetchStudentsForBatch(params: {
   schoolId: string;
@@ -71,6 +77,7 @@ async function fetchStudentsForBatch(params: {
 }
 
 export default function IdCardsPage() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { isOffline, pendingCount, offlineStudentCount } = useOfflineSync();
@@ -81,8 +88,8 @@ export default function IdCardsPage() {
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [viewStudent, setViewStudent] = useState<any | null>(null);
+  const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<{
     name: string;
     frontBgUrl?: string;
@@ -222,6 +229,51 @@ export default function IdCardsPage() {
     enabled: isSuperAdmin,
     staleTime: 60_000,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => api.delete(`/students/${id}`),
+    onSuccess: () => {
+      toast.success('Student removed');
+      setViewStudent(null);
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['students-batch'] });
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.error(err.response?.data?.message || 'Failed to remove student');
+    },
+  });
+
+  const handleDeleteStudent = (s: { id: string; firstName?: string; lastName?: string }) => {
+    if (!confirm(`Remove ${s.firstName ?? ''} ${s.lastName ?? ''}? This cannot be undone.`)) return;
+    deleteMutation.mutate(s.id);
+  };
+
+  const openEditStudent = (student: { id: string }) => {
+    sessionStorage.setItem(EDIT_STUDENT_STORAGE_KEY, student.id);
+    setViewStudent(null);
+    router.push('/students');
+  };
+
+  const openCardPreview = async () => {
+    if (!selectedTemplate) {
+      toast.error('Select a template to preview');
+      return;
+    }
+    try {
+      const tpl = await fetchTemplateWithConfig<{
+        name: string;
+        frontBgUrl?: string;
+        orientation: string;
+        frontConfig?: unknown;
+      }>(selectedTemplate);
+      setPreviewTemplate(tpl);
+      setCardPreviewOpen(true);
+    } catch {
+      toast.error('Failed to load template for preview');
+    }
+  };
+
+  const studentPhotoSrc = (photoUrl?: string | null) => (photoUrl ? resolveMediaUrl(photoUrl) : '');
 
   const canGenerate =
     isSuperAdmin &&
@@ -433,7 +485,7 @@ export default function IdCardsPage() {
                 <p className="text-[10px] font-medium text-muted-foreground text-center">
                   {isSuperAdmin
                     ? 'Super admin: PNG images render and upload to Google Drive.'
-                    : 'Use the eye icon on each student to preview their ID card.'}
+                    : 'Use View on each student to preview their ID card.'}
                 </p>
                 {isSuperAdmin ? (
                   <button
@@ -507,9 +559,10 @@ export default function IdCardsPage() {
                     <thead>
                       <tr className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
                         <th className="p-4 sm:p-6 whitespace-nowrap">Student Name</th>
-                        <th className="p-4 sm:p-6 whitespace-nowrap">Student ID</th>
-                        <th className="p-4 sm:p-6 whitespace-nowrap">Photo Status</th>
-                        <th className="p-4 sm:p-6 text-right whitespace-nowrap">Actions</th>
+                        <th className="p-4 sm:p-6 whitespace-nowrap">Roll No</th>
+                        <th className="p-4 sm:p-6 whitespace-nowrap">Class</th>
+                        <th className="p-4 sm:p-6 whitespace-nowrap">Section</th>
+                        <th className="p-4 sm:p-6 text-right whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/30">
@@ -520,7 +573,7 @@ export default function IdCardsPage() {
                               <div className="h-10 w-10 rounded-xl overflow-hidden shadow-sm border border-border bg-muted">
                                 {s.photoUrl ? (
                                   <img 
-                                    src={resolveMediaUrl(s.photoUrl)} 
+                                    src={studentPhotoSrc(s.photoUrl)} 
                                     alt="" 
                                     className="h-full w-full object-cover" 
                                   />
@@ -535,45 +588,27 @@ export default function IdCardsPage() {
                           </td>
                           <td className="p-4 sm:p-6 whitespace-nowrap">
                             <span className="font-mono text-xs font-black text-muted-foreground px-3 py-1.5 rounded-lg bg-muted border border-border whitespace-nowrap">
-                              {s.admissionNumber}
+                              {s.rollNumber || '—'}
                             </span>
                           </td>
                           <td className="p-4 sm:p-6 whitespace-nowrap">
-                            <div className={cn(
-                              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap",
-                              s.photoUrl ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
-                            )}>
-                              {s.photoUrl ? <ShieldCheck className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                              {s.photoUrl ? 'Has Photo' : 'No Photo'}
+                            <div className="flex items-center gap-2 text-sm font-black text-foreground">
+                              <GraduationCap className="h-3.5 w-3.5 text-primary shrink-0" />
+                              {safeLabel(s.class?.name, 'Unassigned')}
                             </div>
                           </td>
+                          <td className="p-4 sm:p-6 whitespace-nowrap">
+                            <span className="text-sm font-bold text-foreground">
+                              {safeLabel(s.section?.name, '—')}
+                            </span>
+                          </td>
                           <td className="p-4 sm:p-6 text-right whitespace-nowrap">
-                            <button 
-                              onClick={() => {
-                                void (async () => {
-                                  if (!selectedTemplate) {
-                                    toast.error('Select a template to preview');
-                                    return;
-                                  }
-                                  try {
-                                    const tpl = await fetchTemplateWithConfig<{
-                                      name: string;
-                                      frontBgUrl?: string;
-                                      orientation: string;
-                                      frontConfig?: unknown;
-                                    }>(selectedTemplate);
-                                    setPreviewTemplate(tpl);
-                                    setSelectedStudent(s);
-                                    setPreviewOpen(true);
-                                  } catch {
-                                    toast.error('Failed to load template for preview');
-                                  }
-                                })();
-                              }}
-                              className="p-3 rounded-xl bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-lg transition-all"
-                              title="Preview Card"
+                            <button
+                              type="button"
+                              onClick={() => setViewStudent(s)}
+                              className="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/30 hover:shadow-lg transition-all"
                             >
-                              <Eye className="h-4 w-4" />
+                              View
                             </button>
                           </td>
                         </tr>
@@ -587,20 +622,131 @@ export default function IdCardsPage() {
         </div>
       </div>
 
+      {/* Student detail */}
+      {viewStudent && !cardPreviewOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-xl"
+            onClick={() => setViewStudent(null)}
+          />
+          <div className="relative bg-card border border-border w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-border flex justify-between items-start gap-4">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="h-16 w-16 shrink-0 rounded-2xl overflow-hidden border border-border bg-muted">
+                  {viewStudent.photoUrl ? (
+                    <img src={studentPhotoSrc(viewStudent.photoUrl)} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-lg font-black text-primary/40">
+                      {viewStudent.firstName?.[0]}{viewStudent.lastName?.[0]}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-xl font-black text-foreground truncate">
+                    {viewStudent.firstName} {viewStudent.lastName}
+                  </h3>
+                  <p className="font-mono text-xs font-bold text-muted-foreground mt-1">
+                    Roll {viewStudent.rollNumber || '—'} · Adm {viewStudent.admissionNumber || '—'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewStudent(null)}
+                className="p-2 hover:bg-muted rounded-xl transition-colors shrink-0"
+              >
+                <X className="h-5 w-5 text-muted-foreground" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Class</p>
+                  <p className="font-bold text-foreground">{viewStudent.class?.name || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Section</p>
+                  <p className="font-bold text-foreground">{viewStudent.section?.name || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Status</p>
+                  <p className="font-bold text-foreground">{viewStudent.status || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Blood group</p>
+                  <p className="font-bold text-foreground">{viewStudent.bloodGroup || '—'}</p>
+                </div>
+              </div>
+              {(viewStudent.parentName || viewStudent.parentPhone) && (
+                <div className="p-4 rounded-2xl bg-muted/50 border border-border">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">Parent / guardian</p>
+                  <p className="font-bold text-foreground">{viewStudent.parentName || '—'}</p>
+                  {viewStudent.parentPhone && (
+                    <p className="flex items-center gap-1.5 text-muted-foreground font-medium mt-1">
+                      <Phone className="h-3.5 w-3.5" /> {viewStudent.parentPhone}
+                    </p>
+                  )}
+                </div>
+              )}
+              {viewStudent.address && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Address</p>
+                  <p className="font-medium text-foreground">{viewStudent.address}</p>
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-border flex flex-wrap gap-3 justify-end bg-muted/30">
+              <button
+                type="button"
+                onClick={() => handleDeleteStudent(viewStudent)}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+              >
+                Remove
+              </button>
+              {!(viewStudent.status === 'APPROVED' && !isSuperAdmin) && (
+                <button
+                  type="button"
+                  onClick={() => openEditStudent(viewStudent)}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-card border border-border hover:bg-muted transition-colors flex items-center gap-2"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void openCardPreview()}
+                disabled={!selectedTemplate}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+              >
+                Preview ID card
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewStudent(null)}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-card border border-border hover:bg-muted transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Designer Preview Overlay */}
-      {previewOpen && previewTemplate && selectedStudent && (
+      {cardPreviewOpen && previewTemplate && viewStudent && (
         <div className="fixed inset-0 z-[110] bg-background">
           <IdCardDesigner
             bgUrl={previewTemplate.frontBgUrl || ''}
             elements={normalizeFrontConfig(previewTemplate.frontConfig)}
-            templateName={`${previewTemplate.name} - ${selectedStudent.firstName} (PREVIEW)`}
+            templateName={`${previewTemplate.name} - ${viewStudent.firstName} (PREVIEW)`}
             orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
-            student={selectedStudent}
+            student={viewStudent}
             restrictedPreview={!isSuperAdmin}
             onClose={() => {
-              setPreviewOpen(false);
+              setCardPreviewOpen(false);
               setPreviewTemplate(null);
-              setSelectedStudent(null);
             }}
           />
         </div>

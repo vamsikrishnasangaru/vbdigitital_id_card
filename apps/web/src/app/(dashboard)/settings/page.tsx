@@ -19,6 +19,8 @@ import {
   Mail,
   Phone,
   GraduationCap,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 type SettingsTab = 'profile' | 'password' | 'account';
@@ -54,6 +56,10 @@ export default function SettingsPage() {
     lastName: '',
     phone: '',
   });
+
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -314,41 +320,85 @@ export default function SettingsPage() {
                   <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
                     Current password
                   </label>
-                  <input
-                    type="password"
-                    value={passwordForm.currentPassword}
-                    onChange={(e) =>
-                      setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))
-                    }
-                    className={inputClass}
-                    autoComplete="current-password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      value={passwordForm.currentPassword}
+                      onChange={(e) =>
+                        setPasswordForm((f) => ({ ...f, currentPassword: e.target.value }))
+                      }
+                      className={cn(inputClass, 'pr-11')}
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showCurrentPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
                     New password
                   </label>
-                  <input
-                    type="password"
-                    value={passwordForm.newPassword}
-                    onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))}
-                    className={inputClass}
-                    autoComplete="new-password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={passwordForm.newPassword}
+                      onChange={(e) =>
+                        setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))
+                      }
+                      className={cn(inputClass, 'pr-11')}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showNewPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
                     Confirm new password
                   </label>
-                  <input
-                    type="password"
-                    value={passwordForm.confirmPassword}
-                    onChange={(e) =>
-                      setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))
-                    }
-                    className={inputClass}
-                    autoComplete="new-password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) =>
+                        setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))
+                      }
+                      className={cn(inputClass, 'pr-11')}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
               <button

@@ -62,7 +62,7 @@ export function StatCard({
   const card = (
     <div
       className={cn(
-        'stat-card group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300',
+        'stat-card group h-full hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300',
         href && 'cursor-pointer',
         className,
       )}
@@ -104,7 +104,7 @@ export function StatCard({
 
   if (href) {
     return (
-      <Link href={href} className="block">
+      <Link href={href} className="block h-full">
         {card}
       </Link>
     );
