@@ -1,7 +1,24 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, RotateCcw, X, Crop, SlidersHorizontal } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  Loader2,
+  RotateCcw,
+  X,
+  Crop,
+  SlidersHorizontal,
+  Sparkles,
+  Wand2,
+  Sun,
+  CircleDot,
+  Contrast,
+  SunDim,
+  Moon,
+  Pipette,
+  Thermometer,
+  Droplet,
+  Gem,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DEFAULT_PHOTO_ADJUSTMENTS,
@@ -15,8 +32,14 @@ import {
   renderEditedPhoto,
   type PhotoAdjustments,
   type PhotoCropState,
+  hasPhotoAdjustments,
 } from '@/lib/photo-editor-utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
+import {
+  PHOTO_FILTER_PRESETS,
+  computeAutoEnhanceAdjustments,
+  type PhotoFilterId,
+} from '@/lib/photo-editor-filters';
 
 interface StudentPhotoEditorProps {
   open: boolean;
@@ -25,32 +48,52 @@ interface StudentPhotoEditorProps {
   onSave: (file: File, previewUrl: string) => void;
 }
 
-type EditorTab = 'crop' | 'adjust';
+type EditorTab = 'crop' | 'adjust' | 'filters';
+type AdjustmentKey = keyof PhotoAdjustments;
+type ActiveFilter = PhotoFilterId | 'auto' | null;
 
 /** CSS display size of the crop canvas (internal canvas is PHOTO_EDITOR_VIEWPORT). */
 const PREVIEW_DISPLAY_PX = 152;
 const PREVIEW_DRAG_SCALE = PHOTO_EDITOR_VIEWPORT / PREVIEW_DISPLAY_PX;
 
+const LIGHT_CONTROLS: { key: AdjustmentKey; label: string; icon: ReactNode }[] = [
+  { key: 'brightness', label: 'Brightness', icon: <Sun className="h-3.5 w-3.5" /> },
+  { key: 'exposure', label: 'Exposure', icon: <CircleDot className="h-3.5 w-3.5" /> },
+  { key: 'contrast', label: 'Contrast', icon: <Contrast className="h-3.5 w-3.5" /> },
+  { key: 'highlights', label: 'Highlights', icon: <SunDim className="h-3.5 w-3.5" /> },
+  { key: 'shadows', label: 'Shadows', icon: <Moon className="h-3.5 w-3.5" /> },
+];
+
+const COLOR_CONTROLS: { key: AdjustmentKey; label: string; icon: ReactNode }[] = [
+  { key: 'saturation', label: 'Saturation', icon: <Pipette className="h-3.5 w-3.5" /> },
+  { key: 'warmth', label: 'Warmth', icon: <Thermometer className="h-3.5 w-3.5" /> },
+  { key: 'tint', label: 'Tint', icon: <Droplet className="h-3.5 w-3.5" /> },
+  { key: 'sharpness', label: 'Sharpness', icon: <Gem className="h-3.5 w-3.5" /> },
+];
+
 function AdjustmentSlider({
   label,
+  icon,
   value,
-  min,
-  max,
+  min = -100,
+  max = 100,
   onChange,
-  compact = false,
 }: {
   label: string;
+  icon: ReactNode;
   value: number;
-  min: number;
-  max: number;
+  min?: number;
+  max?: number;
   onChange: (value: number) => void;
-  compact?: boolean;
 }) {
   return (
-    <div className={cn(compact ? 'space-y-0.5' : 'space-y-1.5')}>
-      <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-muted-foreground">
-        <span>{label}</span>
-        <span className="tabular-nums text-foreground">{value > 0 ? `+${value}` : value}</span>
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 text-foreground">
+          <span className="text-muted-foreground shrink-0">{icon}</span>
+          <span className="text-[11px] font-medium truncate">{label}</span>
+        </div>
+        <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">{value}</span>
       </div>
       <input
         type="range"
@@ -58,9 +101,71 @@ function AdjustmentSlider({
         max={max}
         value={value}
         onInput={(e) => onChange(Number(e.currentTarget.value))}
-        className="w-full accent-primary h-1.5 cursor-pointer"
+        className="w-full accent-primary h-1 cursor-pointer"
       />
     </div>
+  );
+}
+
+function AdjustmentSection({
+  title,
+  controls,
+  adjustments,
+  onChange,
+}: {
+  title: string;
+  controls: { key: AdjustmentKey; label: string; icon: ReactNode }[];
+  adjustments: PhotoAdjustments;
+  onChange: (key: AdjustmentKey, value: number) => void;
+}) {
+  return (
+    <div className="space-y-2.5">
+      <h5 className="text-[11px] font-semibold text-foreground">{title}</h5>
+      <div className="space-y-3">
+        {controls.map(({ key, label, icon }) => (
+          <AdjustmentSlider
+            key={key}
+            label={label}
+            icon={icon}
+            value={adjustments[key]}
+            onChange={(v) => onChange(key, v)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FilterChip({
+  name,
+  swatch,
+  selected,
+  onClick,
+}: {
+  name: string;
+  swatch: [string, string, string];
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex flex-col items-center gap-1.5 rounded-xl p-1.5 transition-all text-left',
+        selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-card' : 'hover:bg-muted/60',
+      )}
+    >
+      <div
+        className="w-full aspect-square rounded-lg border border-border/60 shadow-inner"
+        style={{
+          background: `linear-gradient(135deg, ${swatch[0]} 0%, ${swatch[1]} 50%, ${swatch[2]} 100%)`,
+        }}
+      />
+      <span className="text-[9px] font-semibold text-foreground text-center leading-tight px-0.5">
+        {name}
+      </span>
+    </button>
   );
 }
 
@@ -72,6 +177,8 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   const [activeTab, setActiveTab] = useState<EditorTab>('crop');
   const [crop, setCrop] = useState<PhotoCropState>(DEFAULT_PHOTO_CROP);
   const [adjustments, setAdjustments] = useState<PhotoAdjustments>(DEFAULT_PHOTO_ADJUSTMENTS);
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>(null);
+  const [autoEnhancing, setAutoEnhancing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,6 +212,7 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
       setActiveTab('crop');
       setCrop(DEFAULT_PHOTO_CROP);
       setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
+      setActiveFilter(null);
       return;
     }
 
@@ -118,6 +226,7 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
         setActiveTab('crop');
         setCrop(DEFAULT_PHOTO_CROP);
         setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
+        setActiveFilter(null);
       })
       .catch(() => {
         if (!cancelled) setError('Could not load photo for editing');
@@ -169,6 +278,35 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   const resetAll = () => {
     setCrop(DEFAULT_PHOTO_CROP);
     setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
+    setActiveFilter(null);
+  };
+
+  const applyFilter = (filterId: PhotoFilterId) => {
+    const preset = PHOTO_FILTER_PRESETS.find((f) => f.id === filterId);
+    if (!preset) return;
+    setAdjustments(preset.adjustments);
+    setActiveFilter(filterId);
+  };
+
+  const applyAutoEnhance = () => {
+    if (!image) return;
+    setAutoEnhancing(true);
+    requestAnimationFrame(() => {
+      const enhanced = computeAutoEnhanceAdjustments(image, crop);
+      setAdjustments(enhanced);
+      setActiveFilter('auto');
+      setAutoEnhancing(false);
+    });
+  };
+
+  const clearFilter = () => {
+    setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
+    setActiveFilter(null);
+  };
+
+  const setAdjustment = (key: AdjustmentKey, value: number) => {
+    setAdjustments((a) => ({ ...a, [key]: value }));
+    setActiveFilter(null);
   };
 
   const handleSave = async () => {
@@ -218,7 +356,6 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
           <div className="text-center py-12 text-red-600 text-sm font-medium flex-1">{error}</div>
         ) : image ? (
           <>
-            {/* Preview stays fixed — updates live while adjusting sliders below */}
             <div className="shrink-0 px-4 pt-2 pb-2 border-b border-border bg-card flex justify-center">
               <div className="relative rounded-xl overflow-hidden border border-border bg-black shadow-inner w-[152px] h-[152px]">
                 <canvas
@@ -243,84 +380,106 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
                   type="button"
                   onClick={() => setActiveTab('crop')}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[10px] font-black uppercase tracking-wider transition-all',
+                    'flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-[9px] font-black uppercase tracking-wider transition-all',
                     activeTab === 'crop'
                       ? 'bg-card text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <Crop className="h-3.5 w-3.5" />
+                  <Crop className="h-3.5 w-3.5 shrink-0" />
                   Crop
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('adjust')}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[10px] font-black uppercase tracking-wider transition-all',
+                    'flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-[9px] font-black uppercase tracking-wider transition-all',
                     activeTab === 'adjust'
                       ? 'bg-card text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
                   Color
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('filters')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-[9px] font-black uppercase tracking-wider transition-all',
+                    activeTab === 'filters'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                  Filters
                 </button>
               </div>
             </div>
 
-            <div className="shrink-0 px-4 py-2">
+            <div className="shrink-0 px-4 py-2 max-h-[38vh] overflow-y-auto">
               {activeTab === 'crop' ? (
                 <AdjustmentSlider
-                  compact
                   label="Zoom"
+                  icon={<Crop className="h-3.5 w-3.5" />}
                   value={Math.round((crop.zoom - 1) * 100)}
                   min={0}
                   max={150}
                   onChange={onZoomChange}
                 />
+              ) : activeTab === 'adjust' ? (
+                <div className="space-y-5 pb-1">
+                  <AdjustmentSection
+                    title="Light"
+                    controls={LIGHT_CONTROLS}
+                    adjustments={adjustments}
+                    onChange={setAdjustment}
+                  />
+                  <AdjustmentSection
+                    title="Color"
+                    controls={COLOR_CONTROLS}
+                    adjustments={adjustments}
+                    onChange={setAdjustment}
+                  />
+                </div>
               ) : (
-                <div className="space-y-2">
-                  <AdjustmentSlider
-                    compact
-                    label="Brightness"
-                    value={adjustments.brightness}
-                    min={-100}
-                    max={100}
-                    onChange={(v) => setAdjustments((a) => ({ ...a, brightness: v }))}
-                  />
-                  <AdjustmentSlider
-                    compact
-                    label="Contrast"
-                    value={adjustments.contrast}
-                    min={-100}
-                    max={100}
-                    onChange={(v) => setAdjustments((a) => ({ ...a, contrast: v }))}
-                  />
-                  <div className="grid grid-cols-3 gap-2 pt-0.5">
-                    <AdjustmentSlider
-                      compact
-                      label="Red"
-                      value={adjustments.red}
-                      min={-100}
-                      max={100}
-                      onChange={(v) => setAdjustments((a) => ({ ...a, red: v }))}
+                <div className="space-y-3 pb-1">
+                  <button
+                    type="button"
+                    onClick={applyAutoEnhance}
+                    disabled={autoEnhancing}
+                    className={cn(
+                      'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border transition-all',
+                      activeFilter === 'auto'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-muted/40 hover:bg-muted text-foreground',
+                    )}
+                  >
+                    {autoEnhancing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-4 w-4" />
+                    )}
+                    Auto Enhance
+                  </button>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <FilterChip
+                      name="Original"
+                      swatch={['#94a3b8', '#cbd5e1', '#f1f5f9']}
+                      selected={activeFilter === null && !hasPhotoAdjustments(adjustments)}
+                      onClick={clearFilter}
                     />
-                    <AdjustmentSlider
-                      compact
-                      label="Green"
-                      value={adjustments.green}
-                      min={-100}
-                      max={100}
-                      onChange={(v) => setAdjustments((a) => ({ ...a, green: v }))}
-                    />
-                    <AdjustmentSlider
-                      compact
-                      label="Blue"
-                      value={adjustments.blue}
-                      min={-100}
-                      max={100}
-                      onChange={(v) => setAdjustments((a) => ({ ...a, blue: v }))}
-                    />
+                    {PHOTO_FILTER_PRESETS.map((filter) => (
+                      <FilterChip
+                        key={filter.id}
+                        name={filter.name}
+                        swatch={filter.swatch}
+                        selected={activeFilter === filter.id}
+                        onClick={() => applyFilter(filter.id)}
+                      />
+                    ))}
                   </div>
                 </div>
               )}

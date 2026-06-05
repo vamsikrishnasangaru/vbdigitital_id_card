@@ -11,7 +11,7 @@ type CameraFacing = 'user' | 'environment';
 interface StudentPhotoPickerProps {
   preview: string | null;
   onPhotoChange: (file: File | null, previewUrl: string | null) => void;
-  /** Crop, RGB balance & adjustments (all roles in add/edit student modal) */
+  /** Crop, light/color adjustments (all roles in add/edit student modal) */
   enablePhotoEditor?: boolean;
 }
 
