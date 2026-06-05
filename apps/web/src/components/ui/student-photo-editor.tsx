@@ -27,22 +27,28 @@ interface StudentPhotoEditorProps {
 
 type EditorTab = 'crop' | 'adjust';
 
+/** CSS display size of the crop canvas (internal canvas is PHOTO_EDITOR_VIEWPORT). */
+const PREVIEW_DISPLAY_PX = 152;
+const PREVIEW_DRAG_SCALE = PHOTO_EDITOR_VIEWPORT / PREVIEW_DISPLAY_PX;
+
 function AdjustmentSlider({
   label,
   value,
   min,
   max,
   onChange,
+  compact = false,
 }: {
   label: string;
   value: number;
   min: number;
   max: number;
   onChange: (value: number) => void;
+  compact?: boolean;
 }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+    <div className={cn(compact ? 'space-y-0.5' : 'space-y-1.5')}>
+      <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-muted-foreground">
         <span>{label}</span>
         <span className="tabular-nums text-foreground">{value > 0 ? `+${value}` : value}</span>
       </div>
@@ -52,7 +58,7 @@ function AdjustmentSlider({
         max={max}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-primary h-2 cursor-pointer"
+        className="w-full accent-primary h-1.5 cursor-pointer"
       />
     </div>
   );
@@ -137,9 +143,11 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging || !image) return;
+    const dx = (e.clientX - dragStart.current.x) * PREVIEW_DRAG_SCALE;
+    const dy = (e.clientY - dragStart.current.y) * PREVIEW_DRAG_SCALE;
     const next = {
-      panX: dragStart.current.panX + (e.clientX - dragStart.current.x),
-      panY: dragStart.current.panY + (e.clientY - dragStart.current.y),
+      panX: dragStart.current.panX + dx,
+      panY: dragStart.current.panY + dy,
       zoom: crop.zoom,
     };
     setCrop(clampPhotoCrop(image.naturalWidth, image.naturalHeight, next));
@@ -186,10 +194,10 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   return (
     <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div
-        className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-sm max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
           <h4 className="font-black text-foreground">Edit photo</h4>
           <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-muted" aria-label="Close">
             <X className="h-5 w-5" />
@@ -206,14 +214,14 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
         ) : image ? (
           <>
             {/* Preview stays fixed — updates live while adjusting sliders below */}
-            <div className="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-card">
-              <div className="relative mx-auto rounded-2xl overflow-hidden border border-border bg-black shadow-inner max-w-[280px]">
+            <div className="shrink-0 px-4 pt-2 pb-2 border-b border-border bg-card flex justify-center">
+              <div className="relative rounded-xl overflow-hidden border border-border bg-black shadow-inner w-[152px] h-[152px]">
                 <canvas
                   ref={previewCanvasRef}
                   width={PHOTO_EDITOR_VIEWPORT}
                   height={PHOTO_EDITOR_VIEWPORT}
                   className={cn(
-                    'w-full block touch-none',
+                    'w-full h-full block touch-none',
                     activeTab === 'crop' && (dragging ? 'cursor-grabbing' : 'cursor-grab'),
                   )}
                   onPointerDown={onPointerDown}
@@ -224,40 +232,41 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
               </div>
             </div>
 
-            <div className="shrink-0 px-5 pt-3">
-              <div className="flex p-1 rounded-xl bg-muted/60 border border-border">
+            <div className="shrink-0 px-4 pt-2 pb-1">
+              <div className="flex p-0.5 rounded-lg bg-muted/60 border border-border">
                 <button
                   type="button"
                   onClick={() => setActiveTab('crop')}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all',
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[10px] font-black uppercase tracking-wider transition-all',
                     activeTab === 'crop'
                       ? 'bg-card text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <Crop className="h-4 w-4" />
+                  <Crop className="h-3.5 w-3.5" />
                   Crop
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('adjust')}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all',
+                    'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[10px] font-black uppercase tracking-wider transition-all',
                     activeTab === 'adjust'
                       ? 'bg-card text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <SlidersHorizontal className="h-4 w-4" />
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
                   Color
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 custom-scrollbar">
+            <div className="shrink-0 px-4 py-2">
               {activeTab === 'crop' ? (
                 <AdjustmentSlider
+                  compact
                   label="Zoom"
                   value={Math.round((crop.zoom - 1) * 100)}
                   min={0}
@@ -265,8 +274,9 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
                   onChange={onZoomChange}
                 />
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-2">
                   <AdjustmentSlider
+                    compact
                     label="Brightness"
                     value={adjustments.brightness}
                     min={-100}
@@ -274,54 +284,60 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
                     onChange={(v) => setAdjustments((a) => ({ ...a, brightness: v }))}
                   />
                   <AdjustmentSlider
+                    compact
                     label="Contrast"
                     value={adjustments.contrast}
                     min={-100}
                     max={100}
                     onChange={(v) => setAdjustments((a) => ({ ...a, contrast: v }))}
                   />
-                  <AdjustmentSlider
-                    label="Red"
-                    value={adjustments.red}
-                    min={-100}
-                    max={100}
-                    onChange={(v) => setAdjustments((a) => ({ ...a, red: v }))}
-                  />
-                  <AdjustmentSlider
-                    label="Green"
-                    value={adjustments.green}
-                    min={-100}
-                    max={100}
-                    onChange={(v) => setAdjustments((a) => ({ ...a, green: v }))}
-                  />
-                  <AdjustmentSlider
-                    label="Blue"
-                    value={adjustments.blue}
-                    min={-100}
-                    max={100}
-                    onChange={(v) => setAdjustments((a) => ({ ...a, blue: v }))}
-                  />
+                  <div className="grid grid-cols-3 gap-2 pt-0.5">
+                    <AdjustmentSlider
+                      compact
+                      label="Red"
+                      value={adjustments.red}
+                      min={-100}
+                      max={100}
+                      onChange={(v) => setAdjustments((a) => ({ ...a, red: v }))}
+                    />
+                    <AdjustmentSlider
+                      compact
+                      label="Green"
+                      value={adjustments.green}
+                      min={-100}
+                      max={100}
+                      onChange={(v) => setAdjustments((a) => ({ ...a, green: v }))}
+                    />
+                    <AdjustmentSlider
+                      compact
+                      label="Blue"
+                      value={adjustments.blue}
+                      min={-100}
+                      max={100}
+                      onChange={(v) => setAdjustments((a) => ({ ...a, blue: v }))}
+                    />
+                  </div>
                 </div>
               )}
             </div>
           </>
         ) : null}
 
-        <div className="p-5 border-t border-border flex flex-wrap gap-2 justify-end bg-muted/30 shrink-0">
+        <div className="px-4 py-3 border-t border-border flex flex-wrap gap-2 justify-end bg-muted/30 shrink-0">
           <button
             type="button"
             onClick={resetAll}
             disabled={loading || saving || !image}
-            className="px-4 py-2.5 rounded-xl text-sm font-bold border border-border hover:bg-muted disabled:opacity-50 flex items-center gap-2"
+            className="px-3 py-2 rounded-xl text-xs font-bold border border-border hover:bg-muted disabled:opacity-50 flex items-center gap-1.5"
           >
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className="h-3.5 w-3.5" />
             Reset
           </button>
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2.5 rounded-xl text-sm font-bold border border-border hover:bg-muted disabled:opacity-50"
+            className="px-3 py-2 rounded-xl text-xs font-bold border border-border hover:bg-muted disabled:opacity-50"
           >
             Cancel
           </button>
@@ -329,7 +345,7 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
             type="button"
             onClick={() => void handleSave()}
             disabled={loading || saving || !image}
-            className="px-6 py-2.5 rounded-xl text-sm font-black bg-primary text-primary-foreground disabled:opacity-50 flex items-center gap-2"
+            className="px-5 py-2 rounded-xl text-xs font-black bg-primary text-primary-foreground disabled:opacity-50 flex items-center gap-2"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Apply photo
