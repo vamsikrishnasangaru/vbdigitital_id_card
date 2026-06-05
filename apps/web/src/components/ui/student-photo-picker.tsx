@@ -1,13 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Upload, X, ImageIcon } from 'lucide-react';
+import { Camera, Upload, X, ImageIcon, SlidersHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
+import { StudentPhotoEditor } from '@/components/ui/student-photo-editor';
 
 interface StudentPhotoPickerProps {
   preview: string | null;
   onPhotoChange: (file: File | null, previewUrl: string | null) => void;
+  /** Super Admin edit flow — crop & color adjustments */
+  enablePhotoEditor?: boolean;
 }
 
 async function readFileAsPreview(
@@ -20,13 +23,26 @@ async function readFileAsPreview(
   reader.readAsDataURL(compressed);
 }
 
-export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPickerProps) {
+export function StudentPhotoPicker({
+  preview,
+  onPhotoChange,
+  enablePhotoEditor = false,
+}: StudentPhotoPickerProps) {
   const [showOptions, setShowOptions] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorSource, setEditorSource] = useState<string | File | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const openEditor = useCallback((source: string | File) => {
+    setEditorSource(source);
+    setEditorOpen(true);
+    setShowOptions(false);
+    setCameraOpen(false);
+  }, []);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -67,11 +83,19 @@ export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPicke
     return () => stopCamera();
   }, [cameraOpen, startCamera, stopCamera]);
 
+  const finishWithFile = (file: File) => {
+    if (enablePhotoEditor) {
+      openEditor(file);
+      return;
+    }
+    void readFileAsPreview(file, onPhotoChange);
+    setShowOptions(false);
+  };
+
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      readFileAsPreview(file, onPhotoChange);
-      setShowOptions(false);
+      finishWithFile(file);
     }
     e.target.value = '';
   };
@@ -105,7 +129,7 @@ export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPicke
         const file = new File([blob], `student-photo-${Date.now()}.jpg`, {
           type: 'image/jpeg',
         });
-        void readFileAsPreview(file, onPhotoChange);
+        finishWithFile(file);
         setCameraOpen(false);
       },
       'image/jpeg',
@@ -117,6 +141,20 @@ export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPicke
     onPhotoChange(null, null);
     setShowOptions(false);
   };
+
+  const handleMainAction = () => {
+    if (enablePhotoEditor && preview) {
+      openEditor(preview);
+      return;
+    }
+    setShowOptions(true);
+  };
+
+  const overlayLabel = preview
+    ? enablePhotoEditor
+      ? 'EDIT PHOTO'
+      : 'CHANGE PHOTO'
+    : 'ADD PHOTO';
 
   return (
     <>
@@ -150,7 +188,7 @@ export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPicke
 
         <button
           type="button"
-          onClick={() => setShowOptions(true)}
+          onClick={handleMainAction}
           className={cn(
             'absolute inset-0 flex items-center justify-center transition-all duration-300',
             'bg-black/40 opacity-0 group-hover:opacity-100 focus:opacity-100',
@@ -158,7 +196,7 @@ export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPicke
           )}
         >
           <span className="bg-background text-foreground px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg border border-border">
-            {preview ? 'CHANGE PHOTO' : 'ADD PHOTO'}
+            {overlayLabel}
           </span>
         </button>
       </div>
@@ -184,6 +222,21 @@ export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPicke
               </button>
             </div>
             <div className="p-4 grid gap-3">
+              {enablePhotoEditor && preview && (
+                <button
+                  type="button"
+                  onClick={() => openEditor(preview)}
+                  className="flex items-center gap-4 w-full p-4 rounded-2xl border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all text-left"
+                >
+                  <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+                    <SlidersHorizontal className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-foreground">Edit photo</div>
+                    <div className="text-xs text-muted-foreground">Crop, brightness, contrast &amp; color</div>
+                  </div>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={openCamera}
@@ -275,6 +328,20 @@ export function StudentPhotoPicker({ preview, onPhotoChange }: StudentPhotoPicke
           )}
         </div>
       )}
+
+      <StudentPhotoEditor
+        open={editorOpen}
+        source={editorSource}
+        onClose={() => {
+          setEditorOpen(false);
+          setEditorSource(null);
+        }}
+        onSave={(file, previewUrl) => {
+          onPhotoChange(file, previewUrl);
+          setEditorOpen(false);
+          setEditorSource(null);
+        }}
+      />
     </>
   );
 }
