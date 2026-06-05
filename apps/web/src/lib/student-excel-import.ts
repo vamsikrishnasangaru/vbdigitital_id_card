@@ -23,7 +23,7 @@ export interface ImportPayloadRow {
   firstName: string;
   lastName: string;
   className: string;
-  sectionName: string;
+  sectionName?: string;
   parentName: string;
   address: string;
   rollNumber: string;
