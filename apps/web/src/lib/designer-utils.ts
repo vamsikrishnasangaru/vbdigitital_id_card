@@ -156,10 +156,11 @@ export function getDashPattern(style: BorderStyle | undefined, width: number): n
   return undefined;
 }
 
-/** Border color without width still draws at 1px in the designer. */
+/** Border draws only when color and an explicit width > 0 are set. */
 export function getEffectiveBorderWidth(el: Pick<DesignerElement, 'borderColor' | 'borderWidth'>): number {
   if (!el.borderColor?.trim()) return 0;
-  return Math.max(el.borderWidth ?? 0, 1);
+  if (el.borderWidth == null || el.borderWidth <= 0) return 0;
+  return el.borderWidth;
 }
 
 export function resolveStudentField(
@@ -562,12 +563,12 @@ export function sanitizeElement(el: DesignerElement, orientation: 'HORIZONTAL' |
     }
   }
 
-  if (next.type === 'text' && next.borderColor?.trim() && getEffectiveBorderWidth(next) !== (next.borderWidth ?? 0)) {
-    next = { ...next, borderWidth: getEffectiveBorderWidth(next) };
+  if (next.type === 'text' && next.borderColor?.trim() && (next.borderWidth == null || next.borderWidth <= 0)) {
+    next = { ...next, borderColor: undefined, borderStyle: undefined };
   }
 
-  if (isMediaElement(next) && next.borderColor?.trim() && getEffectiveBorderWidth(next) !== (next.borderWidth ?? 0)) {
-    next = { ...next, borderWidth: getEffectiveBorderWidth(next) };
+  if (isMediaElement(next) && next.borderColor?.trim() && (next.borderWidth == null || next.borderWidth <= 0)) {
+    next = { ...next, borderColor: undefined, borderStyle: undefined };
   }
 
   return clampElementToCard(next, orientation);

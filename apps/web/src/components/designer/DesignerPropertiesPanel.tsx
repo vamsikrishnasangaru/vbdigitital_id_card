@@ -1,11 +1,11 @@
 'use client';
 
 import { Crop, Trash2, Upload } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { DesignerElement } from '@/lib/designer-utils';
 import {
   getCardSize,
   getDragClampSize,
-  getEffectiveBorderWidth,
   getElementSize,
   getSquarePhotoSize,
 } from '@/lib/designer-utils';
@@ -56,14 +56,91 @@ function parseNumInput(raw: string): number | undefined {
 }
 
 function borderWidthInputValue(el: DesignerElement): string {
-  const w = el.borderWidth ?? (el.borderColor ? getEffectiveBorderWidth(el) : undefined);
-  return numInputValue(w);
+  return numInputValue(el.borderWidth);
 }
 
 function borderWidthPatch(width: number | undefined): Partial<DesignerElement> {
   if (width === undefined) return { borderWidth: undefined };
-  if (width <= 0) return { borderWidth: undefined, borderColor: undefined, borderStyle: undefined };
+  if (width <= 0) {
+    return { borderWidth: undefined, borderColor: undefined, borderStyle: undefined };
+  }
   return { borderWidth: width };
+}
+
+function strokeWidthPatch(width: number | undefined): Partial<DesignerElement> {
+  if (width === undefined) return { strokeWidth: undefined };
+  if (width <= 0) return { strokeWidth: undefined, stroke: undefined };
+  return { strokeWidth: width };
+}
+
+function borderStyleSelectValue(el: DesignerElement): string {
+  if (!el.borderColor?.trim() || el.borderWidth == null || el.borderWidth <= 0) return 'none';
+  return el.borderStyle ?? 'solid';
+}
+
+function borderStylePatch(style: string): Partial<DesignerElement> {
+  if (style === 'none') {
+    return { borderColor: undefined, borderWidth: undefined, borderStyle: undefined };
+  }
+  return { borderStyle: style as DesignerElement['borderStyle'] };
+}
+
+const FONT_STYLE_OPTIONS: {
+  value: DesignerElement['fontStyle'] | '';
+  label: string;
+  previewClass: string;
+}[] = [
+  { value: '', label: 'Regular', previewClass: 'font-normal not-italic' },
+  { value: 'bold', label: 'Bold', previewClass: 'font-bold not-italic' },
+  { value: 'italic', label: 'Italic', previewClass: 'font-normal italic' },
+  { value: 'bold italic', label: 'Bold Italic', previewClass: 'font-bold italic' },
+];
+
+function FontStylePicker({
+  value,
+  onChange,
+}: {
+  value: DesignerElement['fontStyle'] | undefined;
+  onChange: (style: DesignerElement['fontStyle'] | undefined) => void;
+}) {
+  const current = value ?? '';
+  return (
+    <div className="grid grid-cols-2 gap-1.5">
+      {FONT_STYLE_OPTIONS.map((opt) => (
+        <button
+          key={opt.label}
+          type="button"
+          onClick={() => onChange(opt.value || undefined)}
+          className={cn(
+            'rounded-lg border px-2 py-2 text-xs text-white transition-colors',
+            opt.previewClass,
+            current === opt.value
+              ? 'border-primary bg-primary/15 text-white'
+              : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BorderStyleSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (patch: Partial<DesignerElement>) => void;
+}) {
+  return (
+    <Select value={value} onChange={(e) => onChange(borderStylePatch(e.target.value))}>
+      <option value="none" className="bg-zinc-900">None — border remove</option>
+      {BORDER_STYLES.map((b) => (
+        <option key={b.id} value={b.id} className="bg-zinc-900">{b.label}</option>
+      ))}
+    </Select>
+  );
 }
 
 function SizeRow({
@@ -248,26 +325,14 @@ function PositionControls({
   );
 }
 
-function colorPatchWithBorder(
-  color: string | undefined,
-  currentWidth?: number,
-): Partial<DesignerElement> {
-  if (!color) return { borderColor: undefined, borderWidth: undefined };
-  return {
-    borderColor: color,
-    borderWidth: Math.max(currentWidth ?? 0, 1),
-  };
+function colorPatchWithBorder(color: string | undefined): Partial<DesignerElement> {
+  if (!color) return { borderColor: undefined, borderWidth: undefined, borderStyle: undefined };
+  return { borderColor: color };
 }
 
-function colorPatchWithStroke(
-  color: string | undefined,
-  currentWidth?: number,
-): Partial<DesignerElement> {
+function colorPatchWithStroke(color: string | undefined): Partial<DesignerElement> {
   if (!color) return { stroke: undefined, strokeWidth: undefined };
-  return {
-    stroke: color,
-    strokeWidth: Math.max(currentWidth ?? 0, 1),
-  };
+  return { stroke: color };
 }
 
 function ColorRow({
@@ -373,15 +438,10 @@ export function DesignerPropertiesPanel({
             </div>
             <div className="space-y-1.5">
               <Label>Style</Label>
-              <Select
-                value={selected.fontStyle ?? ''}
-                onChange={(e) => onUpdate({ fontStyle: (e.target.value || undefined) as DesignerElement['fontStyle'] })}
-              >
-                <option value="" className="bg-zinc-900">Regular</option>
-                <option value="bold" className="bg-zinc-900">Bold</option>
-                <option value="italic" className="bg-zinc-900">Italic</option>
-                <option value="bold italic" className="bg-zinc-900">Bold Italic</option>
-              </Select>
+              <FontStylePicker
+                value={selected.fontStyle}
+                onChange={(fontStyle) => onUpdate({ fontStyle })}
+              />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -396,7 +456,7 @@ export function DesignerPropertiesPanel({
           <ColorRow
             label="Text stroke"
             value={selected.stroke ?? ''}
-            onChange={(v) => onUpdate(colorPatchWithStroke(v, selected.strokeWidth))}
+            onChange={(v) => onUpdate(colorPatchWithStroke(v))}
           />
           <div className="space-y-1.5">
             <Label>Text box width (px)</Label>
@@ -417,15 +477,15 @@ export function DesignerPropertiesPanel({
               min={0}
               max={10}
               step={0.5}
-              placeholder="0"
+              placeholder="Width"
               value={numInputValue(selected.strokeWidth)}
-              onChange={(e) => onUpdate({ strokeWidth: parseNumInput(e.target.value) })}
+              onChange={(e) => onUpdate(strokeWidthPatch(parseNumInput(e.target.value)))}
             />
           </div>
           <ColorRow
             label="Border color"
             value={selected.borderColor ?? ''}
-            onChange={(v) => onUpdate(colorPatchWithBorder(v, selected.borderWidth))}
+            onChange={(v) => onUpdate(colorPatchWithBorder(v))}
           />
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
@@ -434,24 +494,17 @@ export function DesignerPropertiesPanel({
                 type="number"
                 min={0}
                 max={20}
-                placeholder="1"
+                placeholder="Width"
                 value={borderWidthInputValue(selected)}
                 onChange={(e) => onUpdate(borderWidthPatch(parseNumInput(e.target.value)))}
               />
             </div>
             <div className="space-y-1.5">
               <Label>Border style</Label>
-              <Select
-                value={selected.borderStyle ?? ''}
-                onChange={(e) =>
-                  onUpdate({ borderStyle: (e.target.value || undefined) as DesignerElement['borderStyle'] })
-                }
-              >
-                <option value="" className="bg-zinc-900">Default</option>
-                {BORDER_STYLES.map((b) => (
-                  <option key={b.id} value={b.id} className="bg-zinc-900">{b.label}</option>
-                ))}
-              </Select>
+              <BorderStyleSelect
+                value={borderStyleSelectValue(selected)}
+                onChange={onUpdate}
+              />
             </div>
           </div>
         </>
@@ -525,7 +578,7 @@ export function DesignerPropertiesPanel({
           <ColorRow
             label="Border color"
             value={selected.borderColor ?? ''}
-            onChange={(v) => onUpdate(colorPatchWithBorder(v, selected.borderWidth))}
+            onChange={(v) => onUpdate(colorPatchWithBorder(v))}
           />
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
@@ -534,22 +587,17 @@ export function DesignerPropertiesPanel({
                 type="number"
                 min={0}
                 max={20}
-                placeholder="1"
+                placeholder="Width"
                 value={borderWidthInputValue(selected)}
                 onChange={(e) => onUpdate(borderWidthPatch(parseNumInput(e.target.value)))}
               />
             </div>
             <div className="space-y-1.5">
               <Label>Border style</Label>
-              <Select
-                value={selected.borderStyle ?? ''}
-                onChange={(e) => onUpdate({ borderStyle: (e.target.value || undefined) as DesignerElement['borderStyle'] })}
-              >
-                <option value="" className="bg-zinc-900">Default</option>
-                {BORDER_STYLES.map((b) => (
-                  <option key={b.id} value={b.id} className="bg-zinc-900">{b.label}</option>
-                ))}
-              </Select>
+              <BorderStyleSelect
+                value={borderStyleSelectValue(selected)}
+                onChange={onUpdate}
+              />
             </div>
           </div>
           <button type="button" onClick={onOpenCrop} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 bg-white/5 text-xs font-bold text-white hover:bg-white/10">
@@ -608,10 +656,15 @@ export function DesignerPropertiesPanel({
       )}
 
       <div className="space-y-2 pt-2 border-t border-white/10">
-        <Label>Opacity</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label>Opacity</Label>
+          <span className="text-[10px] font-bold tabular-nums text-white/55">
+            {Math.round((selected.opacity ?? 1) * 100)}%
+          </span>
+        </div>
         <input
           type="range"
-          min={0.1}
+          min={0}
           max={1}
           step={0.05}
           value={selected.opacity ?? 1}

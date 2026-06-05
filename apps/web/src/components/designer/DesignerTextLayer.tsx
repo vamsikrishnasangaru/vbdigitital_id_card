@@ -82,6 +82,7 @@ export function DesignerTextLayer({
     <Group
       ref={groupRef}
       id={el.id}
+      opacity={el.opacity ?? 1}
       draggable={draggable}
       dragBoundFunc={dragBoundFunc}
       onDragStart={onDragStart}
@@ -112,7 +113,7 @@ export function DesignerTextLayer({
         textDecoration={el.textDecoration || ''}
         fill={el.fill ?? PREVIEW_FILL}
         stroke={(el.strokeWidth ?? 0) > 0 && el.stroke ? el.stroke : undefined}
-        strokeWidth={(el.strokeWidth ?? 0) > 0 ? (el.strokeWidth ?? 1) * ppiRatio : 0}
+        strokeWidth={(el.strokeWidth ?? 0) > 0 ? el.strokeWidth! * ppiRatio : 0}
       />
       {borderW > 0 && (
         <Rect

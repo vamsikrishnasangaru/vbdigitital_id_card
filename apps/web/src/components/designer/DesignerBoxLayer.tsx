@@ -46,6 +46,7 @@ export function DesignerBoxLayer({
     <Group
       ref={groupRef}
       id={el.id}
+      opacity={el.opacity ?? 1}
       draggable={draggable && !el.locked}
       dragBoundFunc={dragBoundFunc}
       onDragStart={onDragStart}
