@@ -5,11 +5,50 @@ import { ClassesService } from '../classes/classes.service';
 
 @Injectable()
 export class StudentsService {
+  /** Stored per-class when no section is chosen; hidden in UI/cards. */
+  private readonly internalNoSectionName = '—';
+
   constructor(
     private prisma: PrismaService,
     private uploadsService: UploadsService,
     private classesService: ClassesService,
   ) {}
+
+  private async resolveStudentPlacement(
+    schoolId: string,
+    classId?: string | null,
+    sectionId?: string | null,
+  ): Promise<{ classId: string; sectionId: string }> {
+    const cache = await this.classesService.buildClassSectionCache(schoolId);
+    const cid = typeof classId === 'string' ? classId.trim() : '';
+    const sid = typeof sectionId === 'string' ? sectionId.trim() : '';
+
+    if (cid && sid) {
+      return { classId: cid, sectionId: sid };
+    }
+
+    if (cid) {
+      const cls = await this.prisma.class.findFirst({
+        where: { id: cid, schoolId, deletedAt: null },
+      });
+      if (!cls) throw new BadRequestException('Class not found');
+      const resolved = await this.classesService.findOrCreateClassSection(
+        schoolId,
+        cls.name,
+        this.internalNoSectionName,
+        cache,
+      );
+      return { classId: resolved.classId, sectionId: resolved.sectionId };
+    }
+
+    const resolved = await this.classesService.findOrCreateClassSection(
+      schoolId,
+      'Unassigned',
+      'N/A',
+      cache,
+    );
+    return { classId: resolved.classId, sectionId: resolved.sectionId };
+  }
 
   async create(data: any, file?: Express.Multer.File) {
     const requiredFields = [
@@ -34,20 +73,11 @@ export class StudentsService {
 
     const { photo, ...rest } = data;
 
-    // Allow creating a student without class/section selection.
-    // We map those to an "Unassigned / N/A" bucket per school.
     let classId = typeof rest.classId === 'string' ? rest.classId.trim() : '';
     let sectionId = typeof rest.sectionId === 'string' ? rest.sectionId.trim() : '';
-    if (!classId || !sectionId) {
-      const fallback = await this.classesService.findOrCreateClassSection(
-        String(rest.schoolId),
-        'Unassigned',
-        'N/A',
-        await this.classesService.buildClassSectionCache(String(rest.schoolId)),
-      );
-      classId = fallback.classId;
-      sectionId = fallback.sectionId;
-    }
+    const placement = await this.resolveStudentPlacement(String(rest.schoolId), classId || null, sectionId || null);
+    classId = placement.classId;
+    sectionId = placement.sectionId;
 
     const rollNumber = String(rest.rollNumber).trim();
     const parentPhone = String(rest.parentPhone).trim();
@@ -70,7 +100,7 @@ export class StudentsService {
         parentPhone,
         address: String(rest.address).trim(),
         photoUrl,
-        lastName: lastName || '-',
+        lastName: lastName || '',
       },
       include: { class: true, section: true, school: true },
     });
@@ -259,25 +289,29 @@ export class StudentsService {
       payload.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
     }
 
+    const classTouched = classId !== undefined;
+    const sectionTouched = sectionId !== undefined;
+    if (classTouched || sectionTouched) {
+      const nextClassId = classTouched
+        ? (String(classId).trim() || null)
+        : current.classId;
+      const nextSectionId = sectionTouched
+        ? (String(sectionId).trim() || null)
+        : current.sectionId;
+      const placement = await this.resolveStudentPlacement(
+        current.schoolId,
+        nextClassId,
+        nextSectionId,
+      );
+      payload.classId = placement.classId;
+      payload.sectionId = placement.sectionId;
+    }
+
     return this.prisma.student.update({
       where: { id },
       data: {
         ...payload,
-        ...(payload.classId == null || payload.sectionId == null
-          ? await (async () => {
-              const resolved = await this.classesService.findOrCreateClassSection(
-                current.schoolId,
-                'Unassigned',
-                'N/A',
-                await this.classesService.buildClassSectionCache(current.schoolId),
-              );
-              return {
-                classId: resolved.classId,
-                sectionId: resolved.sectionId,
-              };
-            })()
-          : {}),
-        ...(typeof payload.lastName === 'string' && !payload.lastName.trim() ? { lastName: '-' } : {}),
+        ...(typeof payload.lastName === 'string' && !payload.lastName.trim() ? { lastName: '' } : {}),
       },
       include: { class: true, section: true, school: true },
     });
@@ -428,20 +462,25 @@ export class StudentsService {
         let createdSection = false;
 
         // Backward-compatible: accept either {classId, sectionId} OR {className, sectionName}.
-        // Older web builds may still send IDs; newer builds send names for auto-create.
         if (!classId || !sectionId) {
-          const className = reqString(row.className, 'Class');
-          const sectionName = reqString(row.sectionName, 'Section');
-          const resolved = await this.classesService.findOrCreateClassSection(
-            schoolId,
-            className,
-            sectionName,
-            classSectionCache,
-          );
-          classId = resolved.classId;
-          sectionId = resolved.sectionId;
-          createdClass = resolved.createdClass;
-          createdSection = resolved.createdSection;
+          if (classId && !sectionId) {
+            const placement = await this.resolveStudentPlacement(schoolId, classId, null);
+            classId = placement.classId;
+            sectionId = placement.sectionId;
+          } else {
+            const className = reqString(row.className, 'Class');
+            const sectionName = typeof row.sectionName === 'string' ? row.sectionName.trim() : '';
+            const resolved = await this.classesService.findOrCreateClassSection(
+              schoolId,
+              className,
+              sectionName || this.internalNoSectionName,
+              classSectionCache,
+            );
+            classId = resolved.classId;
+            sectionId = resolved.sectionId;
+            createdClass = resolved.createdClass;
+            createdSection = resolved.createdSection;
+          }
         }
 
         if (createdClass) classesCreated += 1;

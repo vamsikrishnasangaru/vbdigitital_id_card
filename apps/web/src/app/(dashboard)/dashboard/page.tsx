@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { StatCard, type StatCardColor } from '@/components/ui/stat-card';
+import { formatClassSectionLabel, formatStudentFullName } from '@/lib/utils';
 
 type RecentStudent = {
   id: string;
@@ -33,7 +33,7 @@ type DashboardData = {
 function formatStudentActivityMeta(student: RecentStudent, showSchool: boolean) {
   const parts: string[] = [];
   if (showSchool && student.school?.name) parts.push(student.school.name);
-  const classSection = [student.class?.name, student.section?.name].filter(Boolean).join(' · ');
+  const classSection = formatClassSectionLabel(student.class?.name, student.section?.name);
   if (classSection) parts.push(classSection);
   if (student.rollNumber) parts.push(`Roll ${student.rollNumber}`);
   parts.push(student.status.replace(/_/g, ' '));
@@ -152,7 +152,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="min-w-0">
                           <div className="text-sm font-black text-foreground truncate">
-                            {student.firstName} {student.lastName}
+                            {formatStudentFullName(student.firstName, student.lastName)}
                           </div>
                           <div className="text-[10px] text-muted-foreground font-bold uppercase truncate">
                             {formatStudentActivityMeta(student, showSchoolInActivity)}

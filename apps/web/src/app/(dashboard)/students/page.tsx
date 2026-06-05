@@ -11,7 +11,17 @@ import {
   CreditCard, Building2, Layers, Pencil, FileSpreadsheet,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { cn, resolveMediaUrl, sanitizeIndianMobileInput, isTenDigitMobile } from '@/lib/utils';
+import {
+  formatClassSectionLabel,
+  formatSectionName,
+  formatStudentFullName,
+  formatStudentLastName,
+  isPlaceholderSectionName,
+  cn,
+  resolveMediaUrl,
+  sanitizeIndianMobileInput,
+  isTenDigitMobile,
+} from '@/lib/utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
@@ -64,9 +74,7 @@ function isStudentIncomplete(s: any): boolean {
     !s?.photoUrl ||
     !String(s?.rollNumber || '').trim() ||
     !String(s?.classId || s?.class?.id || '').trim() ||
-    !String(s?.sectionId || s?.section?.id || '').trim() ||
     String(s?.class?.name || '').trim().toLowerCase() === 'unassigned' ||
-    String(s?.section?.name || '').trim().toLowerCase() === 'n/a' ||
     !String(s?.parentName || '').trim() ||
     !String(s?.parentPhone || '').trim()
   );
@@ -461,7 +469,8 @@ export default function StudentsPage() {
   }) => {
     const schoolId = student.schoolId || effectiveSchoolId || '';
     const classId = student.classId || student.class?.id || '';
-    const sectionId = student.sectionId || student.section?.id || '';
+    const rawSectionId = student.sectionId || student.section?.id || '';
+    const sectionId = isPlaceholderSectionName(student.section?.name) ? '' : rawSectionId;
     const cls = classes.find((c: { id: string }) => c.id === classId);
 
     setEditingStudentId(student.id);
@@ -484,7 +493,11 @@ export default function StudentsPage() {
     });
     setPhoto(null);
     setPhotoPreview(student.photoUrl ? studentPhotoSrc(student.photoUrl) : null);
-    setSections(cls?.sections || student.class?.sections || []);
+    setSections(
+      (cls?.sections || student.class?.sections || []).filter(
+        (s: { name?: string }) => !isPlaceholderSectionName(s.name),
+      ),
+    );
     setViewStudent(null);
     setShowCreate(true);
   };
@@ -723,13 +736,15 @@ export default function StudentsPage() {
       const formData = new FormData();
       formData.append('schoolId', schoolId);
       formData.append('firstName', form.firstName.trim());
-      formData.append('lastName', form.lastName.trim() || '-');
+      formData.append('lastName', form.lastName.trim());
       formData.append('rollNumber', form.rollNumber.trim());
       formData.append('parentPhone', parentPhone);
       formData.append('address', form.address.trim());
       if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
-      if (form.classId.trim()) formData.append('classId', form.classId.trim());
-      if (form.sectionId.trim()) formData.append('sectionId', form.sectionId.trim());
+      if (form.classId.trim()) {
+        formData.append('classId', form.classId.trim());
+        formData.append('sectionId', form.sectionId.trim());
+      }
       if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
       if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
       if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
@@ -752,13 +767,15 @@ export default function StudentsPage() {
     const formData = new FormData();
     formData.append('schoolId', schoolId);
     formData.append('firstName', form.firstName.trim());
-    formData.append('lastName', form.lastName.trim() || '-');
+    formData.append('lastName', form.lastName.trim());
     formData.append('rollNumber', form.rollNumber.trim());
     if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
     formData.append('parentPhone', parentPhone);
     formData.append('address', form.address.trim());
-    if (form.classId.trim()) formData.append('classId', form.classId.trim());
-    if (form.sectionId.trim()) formData.append('sectionId', form.sectionId.trim());
+    if (form.classId.trim()) {
+      formData.append('classId', form.classId.trim());
+      formData.append('sectionId', form.sectionId.trim());
+    }
     if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
     if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
     if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
@@ -780,11 +797,11 @@ export default function StudentsPage() {
     
     const exportData = studentsData.map((s: any) => ({
       'First Name': s.firstName,
-      'Last Name': s.lastName,
+      'Last Name': formatStudentLastName(s.lastName) || '—',
       'Roll No': s.rollNumber || '—',
       'Admission No': s.admissionNumber,
       'Class': s.class?.name || '—',
-      'Section': s.section?.name || '—',
+      'Section': formatSectionName(s.section?.name) || '—',
       'Status': s.status,
       'Parent Name': s.parentName || '—',
       'Parent Phone': s.parentPhone || '—',
@@ -1127,13 +1144,13 @@ export default function StudentsPage() {
                       />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-sm font-black text-primary/40">
-                        {s.firstName?.[0]}{s.lastName?.[0]}
+                        {s.firstName?.[0]}{formatStudentLastName(s.lastName)?.[0] ?? ''}
                       </div>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-black text-foreground flex items-center gap-2 flex-wrap">
-                      {s.firstName} {s.lastName}
+                      {formatStudentFullName(s.firstName, s.lastName)}
                       {s._offline && (
                         <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/25">
                           Offline
@@ -1151,7 +1168,8 @@ export default function StudentsPage() {
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span className="flex items-center gap-1 text-muted-foreground font-bold">
                     <GraduationCap className="h-3.5 w-3.5 text-primary" />
-                    {safeLabel(s.class?.name, 'Unassigned')} · {safeLabel(s.section?.name, 'N/A')}
+                    {formatClassSectionLabel(s.class?.name, s.section?.name) ||
+                      safeLabel(s.class?.name, 'Unassigned')}
                   </span>
                   {(() => {
                     const tpl = resolveStudentTemplateLabel(s, selectedTemplate);
@@ -1255,13 +1273,15 @@ export default function StudentsPage() {
                           />
                         ) : (
                           <div className="h-full w-full flex items-center justify-center text-sm font-black text-primary/40">
-                            {s.firstName?.[0]}{s.lastName?.[0]}
+                            {s.firstName?.[0]}{formatStudentLastName(s.lastName)?.[0] ?? ''}
                           </div>
                         )}
                         <div className="absolute inset-0 ring-1 ring-inset ring-white/10" />
                       </div>
                       <div>
-                        <div className="font-black text-foreground text-base group-hover/row:text-primary transition-colors">{s.firstName} {s.lastName}</div>
+                        <div className="font-black text-foreground text-base group-hover/row:text-primary transition-colors">
+                          {formatStudentFullName(s.firstName, s.lastName)}
+                        </div>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-bold uppercase tracking-tight mt-0.5">
                           <Phone className="h-2.5 w-2.5" /> {s.parentPhone || 'No contact'}
                         </div>
@@ -1279,9 +1299,11 @@ export default function StudentsPage() {
                         <GraduationCap className="h-3.5 w-3.5 text-primary" />
                         {safeLabel(s.class?.name, 'Unassigned')}
                       </div>
-                      <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest pl-5">
-                        Section {safeLabel(s.section?.name, 'N/A')}
-                      </div>
+                      {formatSectionName(s.section?.name) ? (
+                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest pl-5">
+                          Section {formatSectionName(s.section?.name)}
+                        </div>
+                      ) : null}
                     </div>
                   </td>
                   <td className="p-6">
@@ -1369,13 +1391,13 @@ export default function StudentsPage() {
                     <img src={studentPhotoSrc(viewStudent.photoUrl)} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center text-lg font-black text-primary/40">
-                      {viewStudent.firstName?.[0]}{viewStudent.lastName?.[0]}
+                      {viewStudent.firstName?.[0]}{formatStudentLastName(viewStudent.lastName)?.[0] ?? ''}
                     </div>
                   )}
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-xl font-black text-foreground truncate">
-                    {viewStudent.firstName} {viewStudent.lastName}
+                    {formatStudentFullName(viewStudent.firstName, viewStudent.lastName)}
                   </h3>
                   <p className="font-mono text-xs font-bold text-muted-foreground mt-1">
                     Roll {viewStudent.rollNumber || '—'} · Adm {viewStudent.admissionNumber}
@@ -1398,7 +1420,7 @@ export default function StudentsPage() {
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Section</p>
-                  <p className="font-bold text-foreground">{viewStudent.section?.name || '—'}</p>
+                  <p className="font-bold text-foreground">{formatSectionName(viewStudent.section?.name)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Status</p>
@@ -1591,7 +1613,11 @@ export default function StudentsPage() {
                           const cid = e.target.value;
                           setForm({ ...form, classId: cid, sectionId: '' });
                           const cls = enrollClasses.find((c: { id: string }) => c.id === cid);
-                          setSections(cls?.sections || []);
+                          setSections(
+                            (cls?.sections || []).filter(
+                              (s: { name?: string }) => !isPlaceholderSectionName(s.name),
+                            ),
+                          );
                         }}
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
                       >
@@ -1605,7 +1631,7 @@ export default function StudentsPage() {
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Section
+                        Section <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
                       </label>
                       <select
                         value={form.sectionId}
@@ -1613,7 +1639,7 @@ export default function StudentsPage() {
                         disabled={!form.classId}
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm disabled:opacity-50"
                       >
-                        <option value="">Select section</option>
+                        <option value="">No section</option>
                         {sections.map((s: { id: string; name: string }) => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}

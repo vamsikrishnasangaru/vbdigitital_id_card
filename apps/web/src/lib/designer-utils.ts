@@ -1,5 +1,10 @@
 import { parseBackground } from '@/lib/background-utils';
-import { resolveMediaUrl, resolveMediaUrlAbsolute } from '@/lib/utils';
+import {
+  formatSectionName,
+  formatStudentFullName,
+  resolveMediaUrl,
+  resolveMediaUrlAbsolute,
+} from '@/lib/utils';
 
 export const DESIGN_PPI = 96;
 
@@ -191,19 +196,23 @@ export function resolveStudentField(
   switch (fieldType) {
     case 'fullName':
     case 'studentName':
-      return `${s.firstName || ''} ${s.lastName || ''}`.trim() || 'N/A';
+      return formatStudentFullName(s.firstName, s.lastName) || 'N/A';
     case 'admissionNo':
     case 'admissionNumber':
       return s.admissionNumber || 'N/A';
     case 'rollNo':
     case 'rollNumber':
       return s.rollNumber || 'N/A';
-    case 'classSection':
-      return `${s.class?.name || ''} ${s.section?.name || ''}`.trim() || 'N/A';
+    case 'classSection': {
+      const cls = s.class?.name?.trim();
+      const clsDisplay = cls && cls.toLowerCase() !== 'unassigned' ? cls : '';
+      const sec = formatSectionName(s.section?.name);
+      return [clsDisplay, sec].filter(Boolean).join(' ') || 'N/A';
+    }
     case 'className':
       return s.class?.name || 'N/A';
     case 'sectionName':
-      return s.section?.name || 'N/A';
+      return formatSectionName(s.section?.name);
     case 'schoolName':
       return s.school?.name || 'N/A';
     case 'dob':

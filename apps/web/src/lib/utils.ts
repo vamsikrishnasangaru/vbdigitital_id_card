@@ -124,3 +124,44 @@ export function sanitizeIndianMobileInput(raw: string): string {
 export function isTenDigitMobile(value: string): boolean {
   return /^\d{10}$/.test(value.trim());
 }
+
+/** True when last name is empty or the legacy "-" placeholder. */
+export function isPlaceholderLastName(lastName?: string | null): boolean {
+  const t = lastName?.trim();
+  return !t || t === '-';
+}
+
+export function formatStudentLastName(lastName?: string | null): string {
+  return isPlaceholderLastName(lastName) ? '' : lastName!.trim();
+}
+
+export function formatStudentFullName(firstName?: string | null, lastName?: string | null): string {
+  return `${firstName?.trim() || ''} ${formatStudentLastName(lastName)}`.trim();
+}
+
+/** True when section is empty or an internal placeholder (not shown on cards/lists). */
+export function isPlaceholderSectionName(name?: string | null): boolean {
+  const t = name?.trim();
+  if (!t) return true;
+  const lower = t.toLowerCase();
+  return lower === 'n/a' || t === '—' || t === '-';
+}
+
+/** Internal section name stored when a student has a class but no section selected. */
+export const INTERNAL_NO_SECTION_NAME = '—';
+
+export function formatSectionName(name?: string | null): string {
+  return isPlaceholderSectionName(name) ? '' : name!.trim();
+}
+
+export function formatClassSectionLabel(
+  className?: string | null,
+  sectionName?: string | null,
+  separator = ' · ',
+): string {
+  const cls = className?.trim();
+  const clsDisplay = cls && cls.toLowerCase() !== 'unassigned' ? cls : '';
+  const sec = formatSectionName(sectionName);
+  if (clsDisplay && sec) return `${clsDisplay}${separator}${sec}`;
+  return clsDisplay || sec;
+}

@@ -70,7 +70,7 @@ export class ClassesService {
     const [bySection, byClass] = await Promise.all([
       sectionIds.length
         ? this.prisma.student.groupBy({
-            by: ['sectionId'],
+            by: ['sectionId', 'classId'],
             where: { schoolId, deletedAt: null, sectionId: { in: sectionIds } },
             _count: { _all: true },
           })
@@ -83,7 +83,9 @@ export class ClassesService {
     ]);
 
     const sectionCountMap = new Map<string, number>(
-      bySection.map((row) => [row.sectionId, row._count._all] as [string, number]),
+      bySection.map(
+        (row) => [`${row.classId}:${row.sectionId}`, row._count._all] as [string, number],
+      ),
     );
     const classCountMap = new Map<string, number>(
       byClass.map((row) => [row.classId, row._count._all] as [string, number]),
@@ -95,7 +97,7 @@ export class ClassesService {
       sections: cls.sections.map((sec) => ({
         ...sec,
         _count: {
-          students: sectionCountMap.get(sec.id) ?? sec._count.students,
+          students: sectionCountMap.get(`${cls.id}:${sec.id}`) ?? 0,
         },
       })),
     }));
@@ -175,12 +177,16 @@ export class ClassesService {
         deletedAt: null,
         ...(schoolId ? { class: { schoolId } } : {}),
       },
-      include: { _count: { select: { students: { where: { deletedAt: null } } } } },
+      select: { id: true, name: true, classId: true },
     });
     if (!section) throw new NotFoundException('Section not found');
-    if (section._count.students > 0) {
+
+    const studentCount = await this.prisma.student.count({
+      where: { sectionId: id, classId: section.classId, deletedAt: null },
+    });
+    if (studentCount > 0) {
       throw new BadRequestException(
-        `Cannot delete section with ${section._count.students} enrolled student(s). Reassign students first.`,
+        `Cannot delete section with ${studentCount} enrolled student(s). Reassign students first.`,
       );
     }
 

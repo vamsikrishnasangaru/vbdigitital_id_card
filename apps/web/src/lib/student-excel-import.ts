@@ -89,7 +89,7 @@ export function splitStudentName(full: string): { firstName: string; lastName: s
   const trimmed = full.trim();
   if (!trimmed) return { firstName: '', lastName: '' };
   const parts = trimmed.split(/\s+/);
-  if (parts.length === 1) return { firstName: parts[0], lastName: '-' };
+  if (parts.length === 1) return { firstName: parts[0], lastName: '' };
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
@@ -128,7 +128,10 @@ export function resolveClassSection(
     lookup.classByNorm.get(normClassName(className)) ??
     lookup.classByNorm.get(normKey(className));
   if (!cls) {
-    return { willCreateClass: true, willCreateSection: true };
+    return { willCreateClass: true, willCreateSection: !sectionName.trim() };
+  }
+  if (!sectionName.trim()) {
+    return { classId: cls.id, matchedClassName: cls.name };
   }
   const secMap = lookup.sectionByClass.get(cls.id);
   const sec =
@@ -178,9 +181,6 @@ export function parseExcelRows(
     if (!row.className) {
       return { ...row, message: 'Class is required' };
     }
-    if (!row.sectionName) {
-      return { ...row, message: 'Section is required' };
-    }
     if (!row.parentName) {
       return { ...row, message: 'Father / parent name is required' };
     }
@@ -193,10 +193,12 @@ export function parseExcelRows(
       return { ...row, message: 'Invalid student name' };
     }
 
-    const resolved = resolveClassSection(row.className, row.sectionName, lookup);
+    const resolved = resolveClassSection(row.className, row.sectionName ?? '', lookup);
     let message: string | undefined;
     if (resolved.willCreateClass) {
-      message = `Will create class "${row.className}" and section "${row.sectionName}"`;
+      message = row.sectionName?.trim()
+        ? `Will create class "${row.className}" and section "${row.sectionName}"`
+        : `Will create class "${row.className}" (no section)`;
     } else if (resolved.willCreateSection) {
       message = `Will create section "${row.sectionName}" in ${resolved.matchedClassName ?? row.className}`;
     }
@@ -205,7 +207,9 @@ export function parseExcelRows(
     if (!rollNumber) {
       return { ...row, message: 'Roll number is required' };
     }
-    const rollKey = `${normClassName(row.className)}|${normSectionName(row.sectionName)}|${rollNumber}`;
+    const rollKey = row.sectionName?.trim()
+      ? `${normClassName(row.className)}|${normSectionName(row.sectionName)}|${rollNumber}`
+      : `${normClassName(row.className)}||${rollNumber}`;
     if (usedRollKeys.has(rollKey)) {
       return {
         ...row,
@@ -233,15 +237,13 @@ export function toImportPayload(rows: ParsedImportRow[]): ImportPayloadRow[] {
       (r) =>
         r.status === 'ready' &&
         r.firstName &&
-        r.lastName &&
-        r.className.trim() &&
-        r.sectionName.trim(),
+        r.className.trim(),
     )
     .map((r) => ({
       firstName: r.firstName!,
       lastName: r.lastName!,
       className: r.className.trim(),
-      sectionName: r.sectionName.trim(),
+      ...(r.sectionName?.trim() ? { sectionName: r.sectionName.trim() } : {}),
       parentName: r.parentName.trim(),
       address: r.address.trim(),
       rollNumber: r.rollNumber!.trim(),

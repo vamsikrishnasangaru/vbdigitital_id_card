@@ -10,9 +10,10 @@ import {
   Plus, Trash2, Loader2, BookOpen, ChevronDown,
   Users, GraduationCap, UserPlus, X, Filter, Search,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatSectionName, formatStudentFullName, isPlaceholderSectionName } from '@/lib/utils';
 import { saveStudentsClassSectionFilter } from '@/lib/students-navigation';
 import { StatCard } from '@/components/ui/stat-card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { queryKeys } from '@/lib/query-keys';
 import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
 import { offlineStore } from '@/lib/offline-store';
@@ -74,8 +75,12 @@ function sectionStudentCount(sec: Section): number {
 }
 
 function classStudentCount(cls: ClassItem): number {
-  return cls._count?.students ?? cls.sections.reduce((sum, sec) => sum + sectionStudentCount(sec), 0);
+  return cls.sections.reduce((sum, sec) => sum + sectionStudentCount(sec), 0);
 }
+
+type DeleteConfirmState =
+  | { kind: 'class'; id: string; name: string; studentCount: number }
+  | { kind: 'section'; id: string; name: string; className: string; studentCount: number };
 
 const SELECT_OPTION_CLASS = 'bg-popover text-popover-foreground';
 
@@ -159,6 +164,7 @@ export default function ClassesPage() {
 
   const [showAssign, setShowAssign] = useState<{ classId: string; sectionId: string } | null>(null);
   const [assignTeacherId, setAssignTeacherId] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState | null>(null);
 
   // Queries
   const { data: classes = [], isLoading: isLoadingClasses } = useQuery({
@@ -278,6 +284,7 @@ export default function ClassesPage() {
     onSuccess: (res) => {
       offlineSuccess('Class deleted', res);
       setExpandedClass(null);
+      setDeleteConfirm(null);
     },
     onError: (err: any) => {
       if (!err.response && !navigator.onLine) return;
@@ -304,6 +311,7 @@ export default function ClassesPage() {
     mutationFn: (id: string) => api.delete(`/classes/sections/${id}`),
     onSuccess: (res) => {
       offlineSuccess('Section removed', res);
+      setDeleteConfirm(null);
     },
     onError: (err: any) => {
       if (!err.response && !navigator.onLine) return;
@@ -347,7 +355,10 @@ export default function ClassesPage() {
   }, [teachers, assignments, showAssign]);
 
   const totalStudents = filteredClasses.reduce((sum, c) => sum + classStudentCount(c), 0);
-  const totalSections = filteredClasses.reduce((s, c) => s + c.sections.length, 0);
+  const totalSections = filteredClasses.reduce(
+    (s, c) => s + c.sections.filter((sec) => !isPlaceholderSectionName(sec.name)).length,
+    0,
+  );
 
   const openStudentsForSection = (classId: string, sectionId: string) => {
     saveStudentsClassSectionFilter({
@@ -477,9 +488,9 @@ export default function ClassesPage() {
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold hover:bg-emerald-500/20 transition-colors"
                 >
                   <Users className="h-3 w-3 shrink-0" />
-                  {student.firstName} {student.lastName}
+                  {formatStudentFullName(student.firstName, student.lastName)}
                   <span className="font-normal opacity-70">
-                    · {student.class?.name || 'Class'} {student.section?.name || ''}
+                    · {student.class?.name || 'Class'}{formatSectionName(student.section?.name) ? ` ${formatSectionName(student.section?.name)}` : ''}
                   </span>
                 </button>
               ))}
@@ -579,7 +590,7 @@ export default function ClassesPage() {
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-muted text-muted-foreground uppercase tracking-tighter">
-                            {cls.sections.length} Sections
+                            {cls.sections.filter((sec) => !isPlaceholderSectionName(sec.name)).length} Sections
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary uppercase tracking-tighter">
                             {enrolledCount} Enrolled
@@ -604,13 +615,12 @@ export default function ClassesPage() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const count = enrolledCount;
-                            const msg =
-                              count > 0
-                                ? `Cannot delete ${cls.name}: ${count} student(s) enrolled.`
-                                : `Delete class "${cls.name}" and all its sections?`;
-                            if (count === 0 && confirm(msg)) deleteClassMutation.mutate(cls.id);
-                            else if (count > 0) toast.error(msg);
+                            setDeleteConfirm({
+                              kind: 'class',
+                              id: cls.id,
+                              name: cls.name,
+                              studentCount: enrolledCount,
+                            });
                           }}
                           disabled={deleteClassMutation.isPending}
                           className="p-2 rounded-xl text-muted-foreground hover:bg-red-500/10 hover:text-red-500 transition-all disabled:opacity-50"
@@ -628,7 +638,7 @@ export default function ClassesPage() {
                   {isExpanded && (
                     <div className="px-3 sm:px-5 pb-5 animate-in slide-in-from-top-4 duration-300">
                       <div className="bg-muted/30 rounded-2xl border border-border overflow-hidden">
-                        {cls.sections.length === 0 ? (
+                        {cls.sections.filter((sec) => !isPlaceholderSectionName(sec.name)).length === 0 ? (
                           <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
                             <Filter className="h-8 w-8 opacity-20" />
                             <p>No sections identified for this class yet.</p>
@@ -645,7 +655,7 @@ export default function ClassesPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border/20">
-                              {cls.sections.map((sec) => {
+                              {cls.sections.filter((sec) => !isPlaceholderSectionName(sec.name)).map((sec) => {
                                 const secAss = assignments.filter(a => a.class.id === cls.id && a.section.id === sec.id);
                                 const studentCount = sectionStudentCount(sec);
                                 return (
@@ -714,16 +724,13 @@ export default function ClassesPage() {
                                           type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            const count = studentCount;
-                                            if (count > 0) {
-                                              toast.error(
-                                                `Cannot delete section ${sec.name}: ${count} student(s) enrolled.`,
-                                              );
-                                              return;
-                                            }
-                                            if (confirm(`Remove section ${sec.name}?`)) {
-                                              deleteSectionMutation.mutate(sec.id);
-                                            }
+                                            setDeleteConfirm({
+                                              kind: 'section',
+                                              id: sec.id,
+                                              name: sec.name,
+                                              className: cls.name,
+                                              studentCount,
+                                            });
                                           }}
                                           disabled={deleteSectionMutation.isPending}
                                           className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all disabled:opacity-50"
@@ -907,6 +914,44 @@ export default function ClassesPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {deleteConfirm && (
+        <ConfirmDialog
+          open
+          onClose={() => {
+            if (!deleteClassMutation.isPending && !deleteSectionMutation.isPending) {
+              setDeleteConfirm(null);
+            }
+          }}
+          title={
+            deleteConfirm.kind === 'section'
+              ? `Delete section ${deleteConfirm.name}?`
+              : `Delete class ${deleteConfirm.name}?`
+          }
+          description={
+            deleteConfirm.studentCount > 0
+              ? `This ${deleteConfirm.kind} has ${deleteConfirm.studentCount} enrolled student${deleteConfirm.studentCount === 1 ? '' : 's'}. Move or remove them first, then try again.`
+              : deleteConfirm.kind === 'section'
+                ? `Remove section "${deleteConfirm.name}" from ${deleteConfirm.className}? This cannot be undone.`
+                : `Delete class "${deleteConfirm.name}" and all its sections? This cannot be undone.`
+          }
+          variant={deleteConfirm.studentCount > 0 ? 'warning' : 'destructive'}
+          confirmLabel={deleteConfirm.kind === 'section' ? 'Delete section' : 'Delete class'}
+          cancelLabel={deleteConfirm.studentCount > 0 ? 'OK' : 'Cancel'}
+          onConfirm={
+            deleteConfirm.studentCount > 0
+              ? undefined
+              : () => {
+                  if (deleteConfirm.kind === 'section') {
+                    deleteSectionMutation.mutate(deleteConfirm.id);
+                  } else {
+                    deleteClassMutation.mutate(deleteConfirm.id);
+                  }
+                }
+          }
+          isLoading={deleteClassMutation.isPending || deleteSectionMutation.isPending}
+        />
       )}
     </div>
   );

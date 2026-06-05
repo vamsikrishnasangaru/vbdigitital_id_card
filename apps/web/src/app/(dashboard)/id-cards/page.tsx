@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOverlay';
-import { cn, resolveMediaUrl } from '@/lib/utils';
+import { cn, resolveMediaUrl, formatSectionName, formatStudentFullName, formatStudentLastName } from '@/lib/utils';
 import { normalizeFrontConfig } from '@/lib/template-utils';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
@@ -598,11 +598,13 @@ export default function IdCardsPage() {
                                   />
                                 ) : (
                                   <div className="h-full w-full flex items-center justify-center text-xs font-black text-primary/30">
-                                    {s.firstName?.[0]}{s.lastName?.[0]}
+                                    {s.firstName?.[0]}{formatStudentLastName(s.lastName)?.[0] ?? ''}
                                   </div>
                                 )}
                               </div>
-                              <div className="font-black text-foreground group-hover/row:text-primary transition-colors">{s.firstName} {s.lastName}</div>
+                              <div className="font-black text-foreground group-hover/row:text-primary transition-colors">
+                                {formatStudentFullName(s.firstName, s.lastName)}
+                              </div>
                             </div>
                           </td>
                           <td className="p-4 sm:p-6 whitespace-nowrap">
@@ -618,7 +620,7 @@ export default function IdCardsPage() {
                           </td>
                           <td className="p-4 sm:p-6 whitespace-nowrap">
                             <span className="text-sm font-bold text-foreground">
-                              {safeLabel(s.section?.name, '—')}
+                              {formatSectionName(s.section?.name)}
                             </span>
                           </td>
                           <td className="p-4 sm:p-6 text-right whitespace-nowrap">
@@ -694,7 +696,7 @@ export default function IdCardsPage() {
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Section</p>
-                  <p className="font-bold text-foreground">{viewStudent.section?.name || '—'}</p>
+                  <p className="font-bold text-foreground">{formatSectionName(viewStudent.section?.name)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Status</p>
