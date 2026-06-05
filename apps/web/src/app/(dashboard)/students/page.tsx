@@ -31,6 +31,7 @@ import { offlineStore } from '@/lib/offline-store';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { useMergedStudents } from '@/hooks/use-merged-students';
 import { GenerateCardsDialog } from '@/components/id-cards/GenerateCardsDialog';
+import { consumeStudentsClassSectionFilter } from '@/lib/students-navigation';
 import { StudentExcelImportDialog } from '@/components/students/StudentExcelImportDialog';
 import {
   generateIdCards,
@@ -141,6 +142,8 @@ export default function StudentsPage() {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isTeacher = user?.role === 'TEACHER';
   const teacherDefaultsApplied = useRef(false);
+  const skipFilterResetRef = useRef(false);
+  const classSectionNavApplied = useRef(false);
   const [selectedSchoolId, setSelectedSchoolId] = useState(() => {
     if (typeof window === 'undefined') return '';
     return localStorage.getItem('students_selected_school_id') ?? '';
@@ -194,6 +197,25 @@ export default function StudentsPage() {
   }, [isSuperAdmin, selectedSchoolId]);
 
   useEffect(() => {
+    if (classSectionNavApplied.current) return;
+    const filter = consumeStudentsClassSectionFilter();
+    if (!filter) return;
+    classSectionNavApplied.current = true;
+    skipFilterResetRef.current = true;
+    teacherDefaultsApplied.current = true;
+    if (isSuperAdmin && filter.schoolId) {
+      setSelectedSchoolId(filter.schoolId);
+      localStorage.setItem('students_selected_school_id', filter.schoolId);
+    }
+    setClassFilter(filter.classId);
+    setSectionFilter(filter.sectionId);
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (skipFilterResetRef.current) {
+      skipFilterResetRef.current = false;
+      return;
+    }
     setClassFilter('');
     setSectionFilter('');
     setTemplateCode('');

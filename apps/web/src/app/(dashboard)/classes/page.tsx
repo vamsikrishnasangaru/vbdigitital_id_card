@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useDeferredValue, Fragment } from 'react';
+import { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -9,8 +10,8 @@ import {
   Plus, Trash2, Loader2, BookOpen, ChevronDown,
   Users, GraduationCap, UserPlus, X, Filter, Search,
 } from 'lucide-react';
-import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { saveStudentsClassSectionFilter } from '@/lib/students-navigation';
 import { StatCard } from '@/components/ui/stat-card';
 import { queryKeys } from '@/lib/query-keys';
 import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
@@ -68,25 +69,18 @@ interface StudentMatch {
   section?: { id: string; name: string };
 }
 
-function sectionStudentCount(
-  sec: Section,
-  students: StudentMatch[],
-): number {
-  const listed = students.filter((s) => s.sectionId === sec.id).length;
-  return Math.max(sec._count?.students ?? 0, listed);
+function sectionStudentCount(sec: Section): number {
+  return sec._count?.students ?? 0;
 }
 
-function classStudentCount(cls: ClassItem, students: StudentMatch[]): number {
-  const fromSections = cls.sections.reduce(
-    (sum, sec) => sum + sectionStudentCount(sec, students),
-    0,
-  );
-  return Math.max(cls._count?.students ?? 0, fromSections);
+function classStudentCount(cls: ClassItem): number {
+  return cls._count?.students ?? cls.sections.reduce((sum, sec) => sum + sectionStudentCount(sec), 0);
 }
 
 const SELECT_OPTION_CLASS = 'bg-popover text-popover-foreground';
 
 export default function ClassesPage() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const [selectedSchoolId, setSelectedSchoolId] = useState('');
@@ -152,17 +146,6 @@ export default function ClassesPage() {
       return data.data as StudentMatch[];
     },
     enabled: !!effectiveSchoolId && deferredSearch.length >= 2,
-  });
-
-  const { data: expandedClassStudents = [], isLoading: loadingExpandedStudents } = useQuery({
-    queryKey: ['students', 'by-class', effectiveSchoolId, expandedClass],
-    queryFn: async () => {
-      const { data } = await api.get('/students', {
-        params: { schoolId: effectiveSchoolId, classId: expandedClass, limit: 500 },
-      });
-      return data.data as StudentMatch[];
-    },
-    enabled: !!effectiveSchoolId && !!expandedClass,
   });
 
   const isSearchPending = search.trim() !== deferredSearch;
@@ -363,16 +346,25 @@ export default function ClassesPage() {
     return teachers.filter((t) => !assignedIds.has(t.id));
   }, [teachers, assignments, showAssign]);
 
-  const totalStudents = filteredClasses.reduce(
-    (sum, c) => sum + classStudentCount(c, expandedClass === c.id ? expandedClassStudents : []),
-    0,
-  );
+  const totalStudents = filteredClasses.reduce((sum, c) => sum + classStudentCount(c), 0);
   const totalSections = filteredClasses.reduce((s, c) => s + c.sections.length, 0);
 
+  const openStudentsForSection = (classId: string, sectionId: string) => {
+    saveStudentsClassSectionFilter({
+      schoolId: effectiveSchoolId || undefined,
+      classId,
+      sectionId,
+    });
+    router.push('/students');
+  };
+
   const jumpToStudent = (student: StudentMatch) => {
-    if (student.classId) {
-      setExpandedClass(student.classId);
-    }
+    saveStudentsClassSectionFilter({
+      schoolId: effectiveSchoolId || undefined,
+      classId: student.classId,
+      sectionId: student.sectionId,
+    });
+    router.push('/students');
   };
 
   return (
@@ -558,8 +550,7 @@ export default function ClassesPage() {
           <div className="grid gap-4">
             {filteredClasses.map((cls) => {
               const isExpanded = expandedClass === cls.id;
-              const classStudents = isExpanded ? expandedClassStudents : [];
-              const enrolledCount = classStudentCount(cls, classStudents);
+              const enrolledCount = classStudentCount(cls);
               return (
                 <div key={cls.id} className={cn(
                   "group panel rounded-2xl overflow-hidden transition-all duration-300",
@@ -635,7 +626,7 @@ export default function ClassesPage() {
 
                   {/* Sections List */}
                   {isExpanded && (
-                    <div className="px-5 pb-5 animate-in slide-in-from-top-4 duration-300">
+                    <div className="px-3 sm:px-5 pb-5 animate-in slide-in-from-top-4 duration-300">
                       <div className="bg-muted/30 rounded-2xl border border-border overflow-hidden">
                         {cls.sections.length === 0 ? (
                           <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
@@ -643,25 +634,29 @@ export default function ClassesPage() {
                             <p>No sections identified for this class yet.</p>
                           </div>
                         ) : (
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="bg-muted/50 border-b border-border">
-                                <th className="text-left px-6 py-3 font-bold uppercase tracking-widest text-muted-foreground">Section Name</th>
-                                <th className="text-left px-6 py-3 font-bold uppercase tracking-widest text-muted-foreground">Teacher</th>
-                                <th className="text-right px-6 py-3 font-bold uppercase tracking-widest text-muted-foreground">Students</th>
-                                <th className="text-right px-6 py-3 font-bold uppercase tracking-widest text-muted-foreground">Actions</th>
+                          <div className="overflow-x-auto overscroll-x-contain max-h-[min(70vh,32rem)] overflow-y-auto">
+                            <table className="w-full min-w-[560px] text-xs">
+                            <thead className="sticky top-0 z-10">
+                              <tr className="bg-muted/80 backdrop-blur-sm border-b border-border">
+                                <th className="text-left px-4 sm:px-6 py-3 font-bold uppercase tracking-widest text-muted-foreground">Section Name</th>
+                                <th className="text-left px-4 sm:px-6 py-3 font-bold uppercase tracking-widest text-muted-foreground">Teacher</th>
+                                <th className="text-right px-4 sm:px-6 py-3 font-bold uppercase tracking-widest text-muted-foreground">Students</th>
+                                <th className="text-right px-4 sm:px-6 py-3 font-bold uppercase tracking-widest text-muted-foreground">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border/20">
                               {cls.sections.map((sec) => {
                                 const secAss = assignments.filter(a => a.class.id === cls.id && a.section.id === sec.id);
-                                const sectionStudents = classStudents.filter((s) => s.sectionId === sec.id);
-                                const studentCount = sectionStudentCount(sec, sectionStudents);
+                                const studentCount = sectionStudentCount(sec);
                                 return (
-                                  <Fragment key={sec.id}>
-                                  <tr className="hover:bg-primary/5 transition-colors">
-                                    <td className="px-6 py-4">
-                                      <div className="font-bold text-foreground flex items-center gap-2 flex-wrap">
+                                  <tr
+                                    key={sec.id}
+                                    className="hover:bg-primary/5 transition-colors cursor-pointer group/section"
+                                    onClick={() => openStudentsForSection(cls.id, sec.id)}
+                                    title={`View students in ${cls.name} — Section ${sec.name}`}
+                                  >
+                                    <td className="px-4 sm:px-6 py-4">
+                                      <div className="font-bold text-foreground group-hover/section:text-primary transition-colors flex items-center gap-2 flex-wrap">
                                         Section {sec.name}
                                         {sec._offline && (
                                           <span className="text-[8px] font-black uppercase px-1 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
@@ -670,8 +665,9 @@ export default function ClassesPage() {
                                         )}
                                       </div>
                                       <div className="text-[10px] text-muted-foreground font-mono mt-0.5 opacity-60 uppercase tracking-tighter">ID: {sec.id.slice(-6)}</div>
+                                      <div className="text-[10px] text-primary/70 font-bold mt-1 sm:hidden">Tap to view students</div>
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-4 sm:px-6 py-4">
                                       {secAss.length > 0 ? (
                                         <div className="flex flex-wrap gap-2">
                                           {secAss.map((a) => (
@@ -679,7 +675,11 @@ export default function ClassesPage() {
                                               <GraduationCap className="h-3 w-3" />
                                               {a.user.firstName}
                                               <button 
-                                                onClick={() => removeAssignmentMutation.mutate(a.id)}
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  removeAssignmentMutation.mutate(a.id);
+                                                }}
                                                 className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all -ml-1"
                                               >
                                                 <X className="h-3 w-3" />
@@ -691,16 +691,20 @@ export default function ClassesPage() {
                                         <span className="text-[10px] font-bold text-muted-foreground/40 italic">No Teacher</span>
                                       )}
                                     </td>
-                                    <td className="px-6 py-4 text-right">
+                                    <td className="px-4 sm:px-6 py-4 text-right">
                                       <span className="font-black text-foreground">{studentCount}</span>
                                       <span className="text-muted-foreground ml-1.5">
                                         {studentCount === 1 ? 'Student' : 'Students'}
                                       </span>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
+                                    <td className="px-4 sm:px-6 py-4 text-right">
                                       <div className="flex items-center justify-end gap-2">
                                         <button 
-                                          onClick={() => setShowAssign({ classId: cls.id, sectionId: sec.id })}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowAssign({ classId: cls.id, sectionId: sec.id });
+                                          }}
                                           className="p-1.5 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
                                           title="Assign Teacher"
                                         >
@@ -708,7 +712,8 @@ export default function ClassesPage() {
                                         </button>
                                         <button
                                           type="button"
-                                          onClick={() => {
+                                          onClick={(e) => {
+                                            e.stopPropagation();
                                             const count = studentCount;
                                             if (count > 0) {
                                               toast.error(
@@ -729,46 +734,11 @@ export default function ClassesPage() {
                                       </div>
                                     </td>
                                   </tr>
-                                  {isExpanded && (
-                                    <tr key={`${sec.id}-students`} className="bg-muted/20">
-                                      <td colSpan={4} className="px-6 py-3">
-                                        {loadingExpandedStudents ? (
-                                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                            Loading students…
-                                          </div>
-                                        ) : sectionStudents.length === 0 ? (
-                                          <p className="text-xs text-muted-foreground italic">
-                                            No students in this section yet.
-                                          </p>
-                                        ) : (
-                                          <ul className="flex flex-wrap gap-2">
-                                            {sectionStudents.map((student) => (
-                                              <li key={student.id}>
-                                                <Link
-                                                  href={`/students?classId=${cls.id}&sectionId=${sec.id}`}
-                                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold hover:bg-emerald-500/20 transition-colors"
-                                                >
-                                                  <Users className="h-3 w-3 shrink-0" />
-                                                  {student.firstName} {student.lastName}
-                                                  {student.rollNumber ? (
-                                                    <span className="font-normal opacity-70">
-                                                      · Roll {student.rollNumber}
-                                                    </span>
-                                                  ) : null}
-                                                </Link>
-                                              </li>
-                                            ))}
-                                          </ul>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  )}
-                                  </Fragment>
                                 );
                               })}
                             </tbody>
                           </table>
+                          </div>
                         )}
                       </div>
                     </div>
