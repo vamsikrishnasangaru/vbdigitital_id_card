@@ -37,7 +37,10 @@ import {
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import {
   PHOTO_FILTER_PRESETS,
+  blendPhotoAdjustments,
+  buildFilterThumbnails,
   computeAutoEnhanceAdjustments,
+  DEFAULT_FILTER_INTENSITY,
   type PhotoFilterId,
 } from '@/lib/photo-editor-filters';
 
@@ -136,14 +139,14 @@ function AdjustmentSection({
   );
 }
 
-function FilterChip({
+function FilterThumbnail({
   name,
-  swatch,
+  previewUrl,
   selected,
   onClick,
 }: {
   name: string;
-  swatch: [string, string, string];
+  previewUrl?: string;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -152,20 +155,45 @@ function FilterChip({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex flex-col items-center gap-1.5 rounded-xl p-1.5 transition-all text-left',
-        selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-card' : 'hover:bg-muted/60',
+        'flex flex-col items-center gap-1 rounded-lg p-0.5 transition-all',
+        selected ? 'ring-2 ring-primary' : 'opacity-90 hover:opacity-100',
       )}
     >
-      <div
-        className="w-full aspect-square rounded-lg border border-border/60 shadow-inner"
-        style={{
-          background: `linear-gradient(135deg, ${swatch[0]} 0%, ${swatch[1]} 50%, ${swatch[2]} 100%)`,
-        }}
-      />
-      <span className="text-[9px] font-semibold text-foreground text-center leading-tight px-0.5">
+      <div className="relative w-full aspect-square rounded-md overflow-hidden border border-border/70 bg-muted">
+        {previewUrl ? (
+          <img src={previewUrl} alt="" className="w-full h-full object-cover" draggable={false} />
+        ) : (
+          <div className="w-full h-full animate-pulse bg-muted" />
+        )}
+      </div>
+      <span
+        className={cn(
+          'text-[9px] font-semibold text-center leading-tight px-0.5 truncate w-full',
+          selected ? 'text-foreground' : 'text-muted-foreground',
+        )}
+      >
         {name}
       </span>
     </button>
+  );
+}
+
+function IntensitySlider({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  return (
+    <div className="space-y-1 pt-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-foreground">Intensity</span>
+        <span className="text-[11px] tabular-nums text-muted-foreground">{value}</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={value}
+        onInput={(e) => onChange(Number(e.currentTarget.value))}
+        className="w-full accent-primary h-1 cursor-pointer"
+      />
+    </div>
   );
 }
 
@@ -178,6 +206,9 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   const [crop, setCrop] = useState<PhotoCropState>(DEFAULT_PHOTO_CROP);
   const [adjustments, setAdjustments] = useState<PhotoAdjustments>(DEFAULT_PHOTO_ADJUSTMENTS);
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>(null);
+  const [filterIntensity, setFilterIntensity] = useState(DEFAULT_FILTER_INTENSITY);
+  const [filterBaseAdjustments, setFilterBaseAdjustments] = useState<PhotoAdjustments | null>(null);
+  const [filterThumbnails, setFilterThumbnails] = useState<Record<string, string>>({});
   const [autoEnhancing, setAutoEnhancing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
@@ -213,6 +244,9 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
       setCrop(DEFAULT_PHOTO_CROP);
       setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
       setActiveFilter(null);
+      setFilterIntensity(DEFAULT_FILTER_INTENSITY);
+      setFilterBaseAdjustments(null);
+      setFilterThumbnails({});
       return;
     }
 
@@ -227,6 +261,9 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
         setCrop(DEFAULT_PHOTO_CROP);
         setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
         setActiveFilter(null);
+        setFilterIntensity(DEFAULT_FILTER_INTENSITY);
+        setFilterBaseAdjustments(null);
+        setFilterThumbnails({});
       })
       .catch(() => {
         if (!cancelled) setError('Could not load photo for editing');
@@ -247,6 +284,33 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
     });
     return () => cancelAnimationFrame(previewRafRef.current);
   }, [drawPreview]);
+
+  useEffect(() => {
+    if (!image || !open) {
+      setFilterThumbnails({});
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      requestAnimationFrame(() => {
+        if (cancelled || !image) return;
+        setFilterThumbnails(buildFilterThumbnails(image, crop));
+      });
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [image, crop, open]);
+
+  const applyFilterAtIntensity = useCallback(
+    (base: PhotoAdjustments, intensity: number) => {
+      setAdjustments(blendPhotoAdjustments(DEFAULT_PHOTO_ADJUSTMENTS, base, intensity));
+    },
+    [],
+  );
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (!image || activeTab !== 'crop') return;
@@ -279,13 +343,18 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
     setCrop(DEFAULT_PHOTO_CROP);
     setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
     setActiveFilter(null);
+    setFilterIntensity(DEFAULT_FILTER_INTENSITY);
+    setFilterBaseAdjustments(null);
   };
 
   const applyFilter = (filterId: PhotoFilterId) => {
     const preset = PHOTO_FILTER_PRESETS.find((f) => f.id === filterId);
     if (!preset) return;
-    setAdjustments(preset.adjustments);
+    const intensity = DEFAULT_FILTER_INTENSITY;
+    setFilterBaseAdjustments(preset.adjustments);
+    setFilterIntensity(intensity);
     setActiveFilter(filterId);
+    applyFilterAtIntensity(preset.adjustments, intensity);
   };
 
   const applyAutoEnhance = () => {
@@ -293,8 +362,10 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
     setAutoEnhancing(true);
     requestAnimationFrame(() => {
       const enhanced = computeAutoEnhanceAdjustments(image, crop);
-      setAdjustments(enhanced);
+      setFilterBaseAdjustments(enhanced);
+      setFilterIntensity(100);
       setActiveFilter('auto');
+      applyFilterAtIntensity(enhanced, 100);
       setAutoEnhancing(false);
     });
   };
@@ -302,11 +373,21 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   const clearFilter = () => {
     setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
     setActiveFilter(null);
+    setFilterBaseAdjustments(null);
+    setFilterIntensity(DEFAULT_FILTER_INTENSITY);
+  };
+
+  const onFilterIntensityChange = (intensity: number) => {
+    if (!filterBaseAdjustments) return;
+    setFilterIntensity(intensity);
+    applyFilterAtIntensity(filterBaseAdjustments, intensity);
   };
 
   const setAdjustment = (key: AdjustmentKey, value: number) => {
     setAdjustments((a) => ({ ...a, [key]: value }));
     setActiveFilter(null);
+    setFilterBaseAdjustments(null);
+    setFilterIntensity(DEFAULT_FILTER_INTENSITY);
   };
 
   const handleSave = async () => {
@@ -465,22 +546,26 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
                   </button>
 
                   <div className="grid grid-cols-3 gap-2">
-                    <FilterChip
+                    <FilterThumbnail
                       name="Original"
-                      swatch={['#94a3b8', '#cbd5e1', '#f1f5f9']}
+                      previewUrl={filterThumbnails.original}
                       selected={activeFilter === null && !hasPhotoAdjustments(adjustments)}
                       onClick={clearFilter}
                     />
                     {PHOTO_FILTER_PRESETS.map((filter) => (
-                      <FilterChip
+                      <FilterThumbnail
                         key={filter.id}
                         name={filter.name}
-                        swatch={filter.swatch}
+                        previewUrl={filterThumbnails[filter.id]}
                         selected={activeFilter === filter.id}
                         onClick={() => applyFilter(filter.id)}
                       />
                     ))}
                   </div>
+
+                  {activeFilter !== null && filterBaseAdjustments ? (
+                    <IntensitySlider value={filterIntensity} onChange={onFilterIntensityChange} />
+                  ) : null}
                 </div>
               )}
             </div>

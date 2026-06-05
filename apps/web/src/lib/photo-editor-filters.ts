@@ -21,33 +21,43 @@ export type PhotoFilterId =
 export type PhotoFilterPreset = {
   id: PhotoFilterId;
   name: string;
-  swatch: [string, string, string];
   adjustments: PhotoAdjustments;
 };
 
-function preset(
-  id: PhotoFilterId,
-  name: string,
-  swatch: [string, string, string],
-  partial: Partial<PhotoAdjustments>,
-): PhotoFilterPreset {
+export const FILTER_THUMBNAIL_SIZE = 80;
+export const DEFAULT_FILTER_INTENSITY = 95;
+
+function preset(id: PhotoFilterId, name: string, partial: Partial<PhotoAdjustments>): PhotoFilterPreset {
   return {
     id,
     name,
-    swatch,
     adjustments: { ...DEFAULT_PHOTO_ADJUSTMENTS, ...partial },
   };
 }
 
+export function blendPhotoAdjustments(
+  from: PhotoAdjustments,
+  to: PhotoAdjustments,
+  intensity: number,
+): PhotoAdjustments {
+  const t = Math.max(0, Math.min(100, intensity)) / 100;
+  const keys = Object.keys(from) as (keyof PhotoAdjustments)[];
+  const result = { ...from };
+  for (const key of keys) {
+    result[key] = Math.round(from[key] + (to[key] - from[key]) * t);
+  }
+  return result;
+}
+
 export const PHOTO_FILTER_PRESETS: PhotoFilterPreset[] = [
-  preset('punch', 'Punch', ['#ff512f', '#f09819', '#ffd200'], {
+  preset('punch', 'Punch', {
     exposure: 8,
     contrast: 38,
     saturation: 42,
     shadows: 22,
     sharpness: 28,
   }),
-  preset('golden', 'Golden', ['#f7971e', '#ffd200', '#ffe259'], {
+  preset('golden', 'Golden', {
     exposure: 10,
     warmth: 42,
     saturation: 24,
@@ -55,7 +65,7 @@ export const PHOTO_FILTER_PRESETS: PhotoFilterPreset[] = [
     shadows: 18,
     contrast: 12,
   }),
-  preset('radiate', 'Radiate', ['#ff9a56', '#ff6a88', '#ffd180'], {
+  preset('radiate', 'Radiate', {
     exposure: 14,
     brightness: 10,
     highlights: 18,
@@ -63,14 +73,14 @@ export const PHOTO_FILTER_PRESETS: PhotoFilterPreset[] = [
     saturation: 35,
     shadows: 15,
   }),
-  preset('warm-contrast', 'Warm Contrast', ['#c94b4b', '#4b134f', '#f7971e'], {
+  preset('warm-contrast', 'Warm Contrast', {
     warmth: 35,
     contrast: 32,
     saturation: 18,
     shadows: 25,
     exposure: 5,
   }),
-  preset('calm', 'Calm', ['#a8c0ff', '#c2e9fb', '#e0f7fa'], {
+  preset('calm', 'Calm', {
     brightness: 6,
     contrast: -12,
     saturation: -18,
@@ -79,7 +89,7 @@ export const PHOTO_FILTER_PRESETS: PhotoFilterPreset[] = [
     shadows: 12,
     highlights: -8,
   }),
-  preset('cool-light', 'Cool Light', ['#89f7fe', '#66a6ff', '#cfd9df'], {
+  preset('cool-light', 'Cool Light', {
     exposure: 8,
     brightness: 8,
     warmth: -32,
@@ -87,7 +97,7 @@ export const PHOTO_FILTER_PRESETS: PhotoFilterPreset[] = [
     shadows: 10,
     saturation: -8,
   }),
-  preset('vivid-cool', 'Vivid Cool', ['#00c6ff', '#0072ff', '#7f7fd5'], {
+  preset('vivid-cool', 'Vivid Cool', {
     saturation: 48,
     contrast: 22,
     warmth: -28,
@@ -95,7 +105,7 @@ export const PHOTO_FILTER_PRESETS: PhotoFilterPreset[] = [
     sharpness: 18,
     shadows: 12,
   }),
-  preset('dramatic-cool', 'Dramatic Cool', ['#0f2027', '#203a43', '#2c5364'], {
+  preset('dramatic-cool', 'Dramatic Cool', {
     contrast: 45,
     warmth: -38,
     saturation: 12,
@@ -104,7 +114,7 @@ export const PHOTO_FILTER_PRESETS: PhotoFilterPreset[] = [
     exposure: -6,
     sharpness: 32,
   }),
-  preset('bw', 'B&W', ['#434343', '#888888', '#e0e0e0'], {
+  preset('bw', 'B&W', {
     saturation: -100,
     contrast: 22,
     brightness: 4,
@@ -180,11 +190,34 @@ export function computeAutoEnhanceAdjustments(
   };
 }
 
-export function adjustmentsMatchFilter(
-  adjustments: PhotoAdjustments,
-  filter: PhotoFilterPreset,
-): boolean {
-  return (Object.keys(DEFAULT_PHOTO_ADJUSTMENTS) as (keyof PhotoAdjustments)[]).every(
-    (key) => adjustments[key] === filter.adjustments[key],
+export function buildFilterThumbnails(
+  img: HTMLImageElement,
+  crop: PhotoCropState,
+): Record<string, string> {
+  const size = FILTER_THUMBNAIL_SIZE;
+  const thumbs: Record<string, string> = {};
+
+  const original = renderEditedPhoto(
+    img,
+    crop,
+    DEFAULT_PHOTO_ADJUSTMENTS,
+    size,
+    PHOTO_EDITOR_VIEWPORT,
+    PHOTO_EDITOR_CROP_INSET,
   );
+  thumbs.original = original.toDataURL('image/jpeg', 0.82);
+
+  for (const filter of PHOTO_FILTER_PRESETS) {
+    const canvas = renderEditedPhoto(
+      img,
+      crop,
+      filter.adjustments,
+      size,
+      PHOTO_EDITOR_VIEWPORT,
+      PHOTO_EDITOR_CROP_INSET,
+    );
+    thumbs[filter.id] = canvas.toDataURL('image/jpeg', 0.82);
+  }
+
+  return thumbs;
 }
