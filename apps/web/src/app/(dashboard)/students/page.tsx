@@ -20,7 +20,7 @@ import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOve
 import { normalizeFrontConfig } from '@/lib/template-utils';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
-import { fetchSchoolsPicker } from '@/lib/schools-query';
+import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
 import {
   classesQueryKey,
   classesQueryStaleTime,
@@ -174,6 +174,7 @@ export default function StudentsPage() {
   const { data: schools = [] } = useQuery({
     queryKey: queryKeys.schools.picker,
     queryFn: fetchSchoolsPicker,
+    placeholderData: getCachedSchoolsPicker,
     enabled: isSuperAdmin,
   });
 

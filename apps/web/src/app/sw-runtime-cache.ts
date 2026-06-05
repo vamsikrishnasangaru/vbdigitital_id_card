@@ -6,7 +6,6 @@ import {
   CacheFirst,
   ExpirationPlugin,
   NetworkFirst,
-  NetworkOnly,
   RangeRequestsPlugin,
   StaleWhileRevalidate,
   type RuntimeCaching,
@@ -171,16 +170,20 @@ export const runtimeCaching: RuntimeCaching[] = [
       ],
     }),
   },
-  {
-    matcher: /\/api\/auth\/.*/,
-    handler: new NetworkOnly({ networkTimeoutSeconds: 10 }),
-  },
-  /** Dynamic API data — never cache (React Query + offline store handle freshness). */
+  /** Uploaded photos / template backgrounds — cache for offline card preview. */
   {
     matcher: ({ sameOrigin, url: { pathname } }) =>
-      sameOrigin && pathname.startsWith("/api/"),
-    method: "GET",
-    handler: new NetworkOnly({ networkTimeoutSeconds: 10 }),
+      sameOrigin && /^\/api\/v\d+\/uploads\//.test(pathname),
+    handler: new CacheFirst({
+      cacheName: "api-upload-assets",
+      plugins: [
+        new ExpirationPlugin({
+          maxEntries: 256,
+          maxAgeSeconds: 30 * 24 * 60 * 60,
+          maxAgeFrom: "last-used",
+        }),
+      ],
+    }),
   },
   {
     matcher: ({ sameOrigin }) => !sameOrigin,

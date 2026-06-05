@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { StatCard } from '@/components/ui/stat-card';
 import { queryKeys } from '@/lib/query-keys';
-import { fetchSchoolsPicker } from '@/lib/schools-query';
+import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
 import { offlineStore } from '@/lib/offline-store';
 import { offlineClasses } from '@/lib/offline-classes';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
@@ -111,6 +111,7 @@ export default function ClassesPage() {
   const { data: schools = [] } = useQuery({
     queryKey: queryKeys.schools.picker,
     queryFn: fetchSchoolsPicker,
+    placeholderData: getCachedSchoolsPicker,
     enabled: isSuperAdmin,
   });
 

@@ -22,16 +22,10 @@ export function OfflineAppBanner() {
       aria-live="polite"
     >
       {isOffline ? (
-        <>
-          <div className="flex items-center gap-2 font-semibold text-amber-900 dark:text-amber-100">
-            <WifiOff className="h-4 w-4 shrink-0" />
-            You are offline
-          </div>
-          <p className="text-amber-800/90 dark:text-amber-200/90 font-medium">
-            The app keeps working with data saved on this device. Enroll students, manage classes and
-            teachers, and preview ID cards. Changes sync automatically when you reconnect.
-          </p>
-        </>
+        <div className="flex items-center gap-2 font-semibold text-amber-900 dark:text-amber-100">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          You are offline
+        </div>
       ) : (
         <>
           <div className="flex items-center gap-2 font-semibold text-blue-900 dark:text-blue-100">

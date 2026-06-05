@@ -84,7 +84,11 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config as VbAxiosConfig | undefined;
 
-    const networkFailure = !error.response;
+    const networkFailure =
+      !error.response ||
+      (typeof navigator !== 'undefined' &&
+        !navigator.onLine &&
+        error.response?.status === 503);
     const offlineMutation = shouldQueueMutation(original, networkFailure);
     const offlineGet =
       networkFailure &&

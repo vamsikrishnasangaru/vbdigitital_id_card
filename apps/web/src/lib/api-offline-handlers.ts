@@ -98,6 +98,42 @@ export async function resolveOfflineGet(
     }
   }
 
+  if (url.includes('/id-cards/drive-status')) {
+    const cached = offlineGetCache.get(url, params);
+    if (cached) return { data: cached, status: 200, config };
+    return {
+      data: { configured: false, canUpload: false },
+      status: 200,
+      config,
+    };
+  }
+
+  if (url.includes('/auth/profile')) {
+    const cached = offlineGetCache.get(url, params);
+    if (cached) return { data: cached, status: 200, config };
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('user');
+      if (raw) {
+        try {
+          const user = JSON.parse(raw) as Record<string, unknown>;
+          return {
+            data: {
+              ...user,
+              phone: user.phone ?? null,
+              avatarUrl: user.avatarUrl ?? null,
+              isActive: true,
+              createdAt: user.createdAt ?? new Date().toISOString(),
+            },
+            status: 200,
+            config,
+          };
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
   if (url.includes('/analytics/')) {
     const analyticsCached = offlineGetCache.get(url, params);
     if (analyticsCached) return { data: analyticsCached, status: 200, config };
@@ -106,6 +142,10 @@ export async function resolveOfflineGet(
   if (url.includes('/orders') || url.includes('/print') || url.includes('/deliveries') || url.includes('/notifications')) {
     const listCached = offlineGetCache.get(url, params);
     if (listCached) return { data: listCached, status: 200, config };
+    if (url.includes('/notifications')) {
+      return { data: { data: [] }, status: 200, config };
+    }
+    return { data: { data: [], meta: { total: 0 } }, status: 200, config };
   }
 
   if (url.includes('/teachers/me/assignments')) {

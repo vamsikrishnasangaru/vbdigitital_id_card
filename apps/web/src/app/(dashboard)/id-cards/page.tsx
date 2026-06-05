@@ -22,7 +22,7 @@ import {
   fetchClassesPicker,
   getCachedClassesForSchool,
 } from '@/lib/classes-query';
-import { fetchSchoolsPicker } from '@/lib/schools-query';
+import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
 import { offlineStore } from '@/lib/offline-store';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { useMergedStudents } from '@/hooks/use-merged-students';
@@ -96,6 +96,7 @@ export default function IdCardsPage() {
   const { data: schools = [] } = useQuery({
     queryKey: queryKeys.schools.picker,
     queryFn: fetchSchoolsPicker,
+    placeholderData: getCachedSchoolsPicker,
     enabled: isSuperAdmin,
   });
 

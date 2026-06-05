@@ -12,7 +12,9 @@ import {
 import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOverlay';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
-import { fetchSchoolsPicker, type SchoolPickerOption } from '@/lib/schools-query';
+import { fetchSchoolsPicker, getCachedSchoolsPicker, type SchoolPickerOption } from '@/lib/schools-query';
+import { offlineGetCache } from '@/lib/offline-get-cache';
+import { offlineStore } from '@/lib/offline-store';
 
 const IdCardDesigner = dynamic(
   () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
@@ -88,6 +90,7 @@ export default function TemplatesPage() {
   const { data: schools = [] } = useQuery({
     queryKey: queryKeys.schools.picker,
     queryFn: fetchSchoolsPicker,
+    placeholderData: getCachedSchoolsPicker,
   });
 
   useEffect(() => {
@@ -123,7 +126,25 @@ export default function TemplatesPage() {
         params.allSchools = 'true';
       }
       const { data } = await api.get('/templates', { params });
+      if (viewMode === 'school' && selectedSchoolId) {
+        offlineStore.cacheTemplates(selectedSchoolId, data as Template[]);
+      }
       return data as Template[];
+    },
+    placeholderData: () => {
+      const params: Record<string, string> = {};
+      if (viewMode === 'school' && selectedSchoolId) {
+        params.schoolId = selectedSchoolId;
+      } else {
+        params.allSchools = 'true';
+      }
+      const cached = offlineGetCache.get('/templates', params);
+      if (Array.isArray(cached)) return cached as Template[];
+      if (viewMode === 'school' && selectedSchoolId) {
+        const fromStore = offlineStore.getTemplates(selectedSchoolId);
+        if (fromStore) return fromStore as Template[];
+      }
+      return undefined;
     },
     enabled: viewMode === 'all' || !!selectedSchoolId,
   });

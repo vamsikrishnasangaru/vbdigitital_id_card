@@ -6,7 +6,12 @@
 export function shouldBypassServiceWorker(request: Request, url: URL): boolean {
   if (request.method !== 'GET') return false;
   if (url.origin !== self.location.origin) return false;
-  if (url.pathname.startsWith('/api/')) return false;
+
+  /** Same-origin API reads — axios + offline cache handle failures; Serwist NetworkOnly throws `no-response`. */
+  if (url.pathname.startsWith('/api/')) {
+    if (/^\/api\/v\d+\/uploads\//i.test(url.pathname)) return false;
+    return true;
+  }
 
   if (url.searchParams.has('_rsc')) return true;
   if (request.headers.get('RSC') === '1') return true;

@@ -24,6 +24,10 @@ const withSerwist = withSerwistInit({
           { url: "/students", revision },
           { url: "/classes", revision },
           { url: "/teachers", revision },
+          { url: "/dashboard", revision },
+          { url: "/id-cards", revision },
+          { url: "/templates", revision },
+          { url: "/settings", revision },
         ];
       })(),
 });
