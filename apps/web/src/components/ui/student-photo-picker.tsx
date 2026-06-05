@@ -1,10 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Upload, X, ImageIcon, SlidersHorizontal, RefreshCw } from 'lucide-react';
+import { Camera, Upload, X, ImageIcon, SlidersHorizontal, RefreshCw, SwitchCamera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import { StudentPhotoEditor } from '@/components/ui/student-photo-editor';
+
+type CameraFacing = 'user' | 'environment';
 
 interface StudentPhotoPickerProps {
   preview: string | null;
@@ -33,6 +35,7 @@ export function StudentPhotoPicker({
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorSource, setEditorSource] = useState<string | File | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraFacing, setCameraFacing] = useState<CameraFacing>('user');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -52,7 +55,7 @@ export function StudentPhotoPicker({
     }
   }, []);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (facing: CameraFacing) => {
     setCameraError(null);
     stopCamera();
     try {
@@ -60,28 +63,45 @@ export function StudentPhotoPicker({
         setCameraError('Camera is not supported on this device.');
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
-        audio: false,
-      });
+      const videoConstraints = {
+        facingMode: { ideal: facing },
+        width: { ideal: 1280 },
+        height: { ideal: 960 },
+      };
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints,
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } },
+          audio: false,
+        });
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
     } catch {
-      setCameraError('Could not open camera. Allow camera access or upload a photo instead.');
+      setCameraError(
+        facing === 'environment'
+          ? 'Back camera unavailable. Try switching to front camera or upload a photo.'
+          : 'Could not open camera. Allow camera access or upload a photo instead.',
+      );
     }
   }, [stopCamera]);
 
   useEffect(() => {
     if (cameraOpen) {
-      startCamera();
+      void startCamera(cameraFacing);
     } else {
       stopCamera();
     }
     return () => stopCamera();
-  }, [cameraOpen, startCamera, stopCamera]);
+  }, [cameraOpen, cameraFacing, startCamera, stopCamera]);
 
   const finishWithFile = (file: File) => {
     if (enablePhotoEditor) {
@@ -107,7 +127,13 @@ export function StudentPhotoPicker({
 
   const openCamera = () => {
     setShowOptions(false);
+    setCameraFacing('user');
+    setCameraError(null);
     setCameraOpen(true);
+  };
+
+  const toggleCameraFacing = () => {
+    setCameraFacing((prev) => (prev === 'user' ? 'environment' : 'user'));
   };
 
   const capturePhoto = () => {
@@ -310,15 +336,30 @@ export function StudentPhotoPicker({
       {cameraOpen && (
         <div className="fixed inset-0 z-[120] flex flex-col bg-black">
           <div className="flex items-center justify-between p-4 text-white shrink-0">
-            <span className="font-bold">Take photo</span>
-            <button
-              type="button"
-              onClick={() => setCameraOpen(false)}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20"
-              aria-label="Close camera"
-            >
-              <X className="h-6 w-6" />
-            </button>
+            <span className="font-bold">
+              {cameraFacing === 'user' ? 'Front camera' : 'Back camera'}
+            </span>
+            <div className="flex items-center gap-2">
+              {!cameraError && (
+                <button
+                  type="button"
+                  onClick={toggleCameraFacing}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 flex items-center gap-2 text-sm font-bold"
+                  aria-label="Switch camera"
+                >
+                  <SwitchCamera className="h-5 w-5" />
+                  <span className="hidden sm:inline">Switch</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setCameraOpen(false)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20"
+                aria-label="Close camera"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 relative flex items-center justify-center min-h-0 px-4 pb-4">
@@ -326,13 +367,24 @@ export function StudentPhotoPicker({
               <div className="text-center text-white/90 max-w-sm px-6">
                 <ImageIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p className="text-sm font-medium">{cameraError}</p>
-                <button
-                  type="button"
-                  onClick={openGallery}
-                  className="mt-6 px-6 py-3 bg-white text-black rounded-2xl text-sm font-bold"
-                >
-                  Upload instead
-                </button>
+                <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+                  {cameraFacing === 'environment' && (
+                    <button
+                      type="button"
+                      onClick={() => setCameraFacing('user')}
+                      className="px-6 py-3 bg-white/15 text-white rounded-2xl text-sm font-bold hover:bg-white/25"
+                    >
+                      Use front camera
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={openGallery}
+                    className="px-6 py-3 bg-white text-black rounded-2xl text-sm font-bold"
+                  >
+                    Upload instead
+                  </button>
+                </div>
               </div>
             ) : (
               <video
@@ -340,20 +392,29 @@ export function StudentPhotoPicker({
                 autoPlay
                 playsInline
                 muted
-                className="max-h-full max-w-full rounded-2xl object-cover mirror"
-                style={{ transform: 'scaleX(-1)' }}
+                className="max-h-full max-w-full rounded-2xl object-cover"
+                style={cameraFacing === 'user' ? { transform: 'scaleX(-1)' } : undefined}
               />
             )}
           </div>
 
           {!cameraError && (
-            <div className="p-6 pb-10 flex justify-center shrink-0">
+            <div className="p-6 pb-10 flex items-center justify-center gap-8 shrink-0">
+              <button
+                type="button"
+                onClick={toggleCameraFacing}
+                className="p-3 rounded-full bg-white/15 hover:bg-white/25 text-white"
+                aria-label="Switch camera"
+              >
+                <SwitchCamera className="h-6 w-6" />
+              </button>
               <button
                 type="button"
                 onClick={capturePhoto}
                 className="h-16 w-16 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 transition-all ring-4 ring-white/30"
                 aria-label="Capture photo"
               />
+              <div className="w-12" aria-hidden />
             </div>
           )}
         </div>
