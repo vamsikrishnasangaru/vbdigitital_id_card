@@ -241,7 +241,7 @@ export function toImportPayload(rows: ParsedImportRow[]): ImportPayloadRow[] {
     )
     .map((r) => ({
       firstName: r.firstName!,
-      lastName: r.lastName!,
+      lastName: r.lastName ?? '',
       className: r.className.trim(),
       ...(r.sectionName?.trim() ? { sectionName: r.sectionName.trim() } : {}),
       parentName: r.parentName.trim(),
