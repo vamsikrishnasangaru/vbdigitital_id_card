@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { StatCard, type StatCardColor } from '@/components/ui/stat-card';
 import { formatClassSectionLabel, formatStudentFullName } from '@/lib/utils';
 
 type RecentStudent = {
