@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Upload, X, ImageIcon, SlidersHorizontal } from 'lucide-react';
+import { Camera, Upload, X, ImageIcon, SlidersHorizontal, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import { StudentPhotoEditor } from '@/components/ui/student-photo-editor';
@@ -9,7 +9,7 @@ import { StudentPhotoEditor } from '@/components/ui/student-photo-editor';
 interface StudentPhotoPickerProps {
   preview: string | null;
   onPhotoChange: (file: File | null, previewUrl: string | null) => void;
-  /** Super Admin edit flow — crop & color adjustments */
+  /** Crop, RGB balance & adjustments (all roles in add/edit student modal) */
   enablePhotoEditor?: boolean;
 }
 
@@ -143,10 +143,6 @@ export function StudentPhotoPicker({
   };
 
   const handleMainAction = () => {
-    if (enablePhotoEditor && preview) {
-      openEditor(preview);
-      return;
-    }
     setShowOptions(true);
   };
 
@@ -223,46 +219,80 @@ export function StudentPhotoPicker({
             </div>
             <div className="p-4 grid gap-3">
               {enablePhotoEditor && preview && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openEditor(preview)}
+                    className="flex items-center gap-4 w-full p-4 rounded-2xl border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all text-left"
+                  >
+                    <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+                      <SlidersHorizontal className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-foreground">Edit photo</div>
+                      <div className="text-xs text-muted-foreground">Crop, brightness, contrast &amp; RGB</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openGallery}
+                    className="flex items-center gap-4 w-full p-4 rounded-2xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all text-left"
+                  >
+                    <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                      <RefreshCw className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-foreground">Change photo</div>
+                      <div className="text-xs text-muted-foreground">Replace with a new upload or camera shot</div>
+                    </div>
+                  </button>
+                </>
+              )}
+              {(!enablePhotoEditor || !preview) && (
+                <>
+                  <button
+                    type="button"
+                    onClick={openCamera}
+                    className="flex items-center gap-4 w-full p-4 rounded-2xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all text-left"
+                  >
+                    <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                      <Camera className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-foreground">Open camera</div>
+                      <div className="text-xs text-muted-foreground">Take a live portrait</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openGallery}
+                    className="flex items-center gap-4 w-full p-4 rounded-2xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all text-left"
+                  >
+                    <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                      <Upload className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-foreground">Upload photo</div>
+                      <div className="text-xs text-muted-foreground">Choose from gallery or files</div>
+                    </div>
+                  </button>
+                </>
+              )}
+              {enablePhotoEditor && preview && (
                 <button
                   type="button"
-                  onClick={() => openEditor(preview)}
-                  className="flex items-center gap-4 w-full p-4 rounded-2xl border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all text-left"
+                  onClick={openCamera}
+                  className="flex items-center gap-4 w-full p-4 rounded-2xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all text-left"
                 >
-                  <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
-                    <SlidersHorizontal className="h-6 w-6 text-primary" />
+                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <Camera className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <div className="font-bold text-foreground">Edit photo</div>
-                    <div className="text-xs text-muted-foreground">Crop, brightness, contrast &amp; color</div>
+                    <div className="font-bold text-foreground">Take new photo</div>
+                    <div className="text-xs text-muted-foreground">Replace current portrait with camera</div>
                   </div>
                 </button>
               )}
-              <button
-                type="button"
-                onClick={openCamera}
-                className="flex items-center gap-4 w-full p-4 rounded-2xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all text-left"
-              >
-                <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                  <Camera className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <div className="font-bold text-foreground">Open camera</div>
-                  <div className="text-xs text-muted-foreground">Take a live portrait</div>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={openGallery}
-                className="flex items-center gap-4 w-full p-4 rounded-2xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all text-left"
-              >
-                <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center shrink-0">
-                  <Upload className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <div>
-                  <div className="font-bold text-foreground">Upload photo</div>
-                  <div className="text-xs text-muted-foreground">Choose from gallery or files</div>
-                </div>
-              </button>
               {preview && (
                 <button
                   type="button"

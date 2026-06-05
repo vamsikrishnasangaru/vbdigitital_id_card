@@ -1467,7 +1467,7 @@ export default function StudentsPage() {
                   <StudentPhotoPicker
                     preview={photoPreview}
                     onPhotoChange={handlePhotoSelected}
-                    enablePhotoEditor={isSuperAdmin && !!editingStudentId}
+                    enablePhotoEditor={showCreate}
                   />
                 </div>
 

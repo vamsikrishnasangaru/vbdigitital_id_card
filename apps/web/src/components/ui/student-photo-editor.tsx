@@ -187,7 +187,7 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
         <div className="p-5 border-b border-border flex items-center justify-between shrink-0">
           <div>
             <h4 className="font-black text-foreground">Edit photo</h4>
-            <p className="text-xs text-muted-foreground mt-0.5">Crop, brightness, contrast &amp; color</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Crop, brightness, contrast &amp; RGB balance</p>
           </div>
           <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-muted" aria-label="Close">
             <X className="h-5 w-5" />
@@ -248,19 +248,29 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
                   max={100}
                   onChange={(v) => setAdjustments((a) => ({ ...a, contrast: v }))}
                 />
+                <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground pt-1">
+                  Color balance (RGB)
+                </p>
                 <AdjustmentSlider
-                  label="Color balance"
-                  value={adjustments.saturation}
+                  label="Red"
+                  value={adjustments.red}
                   min={-100}
                   max={100}
-                  onChange={(v) => setAdjustments((a) => ({ ...a, saturation: v }))}
+                  onChange={(v) => setAdjustments((a) => ({ ...a, red: v }))}
                 />
                 <AdjustmentSlider
-                  label="Warmth"
-                  value={adjustments.warmth}
+                  label="Green"
+                  value={adjustments.green}
                   min={-100}
                   max={100}
-                  onChange={(v) => setAdjustments((a) => ({ ...a, warmth: v }))}
+                  onChange={(v) => setAdjustments((a) => ({ ...a, green: v }))}
+                />
+                <AdjustmentSlider
+                  label="Blue"
+                  value={adjustments.blue}
+                  min={-100}
+                  max={100}
+                  onChange={(v) => setAdjustments((a) => ({ ...a, blue: v }))}
                 />
               </div>
             </>

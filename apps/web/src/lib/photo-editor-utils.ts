@@ -1,8 +1,9 @@
 export type PhotoAdjustments = {
   brightness: number;
   contrast: number;
-  saturation: number;
-  warmth: number;
+  red: number;
+  green: number;
+  blue: number;
 };
 
 export type PhotoCropState = {
@@ -14,8 +15,9 @@ export type PhotoCropState = {
 export const DEFAULT_PHOTO_ADJUSTMENTS: PhotoAdjustments = {
   brightness: 0,
   contrast: 0,
-  saturation: 0,
-  warmth: 0,
+  red: 0,
+  green: 0,
+  blue: 0,
 };
 
 export const DEFAULT_PHOTO_CROP: PhotoCropState = {
@@ -76,26 +78,22 @@ function clamp255(value: number): number {
 
 function applyAdjustmentsToImageData(
   data: ImageData,
-  { brightness, contrast, saturation, warmth }: PhotoAdjustments,
+  { brightness, contrast, red, green, blue }: PhotoAdjustments,
 ) {
   const br = brightness * 1.2;
   const contrastFactor = 1 + contrast / 100;
-  const satFactor = 1 + saturation / 100;
-  const warm = warmth * 0.6;
+  const rShift = red * 1.2;
+  const gShift = green * 1.2;
+  const bShift = blue * 1.2;
 
   for (let i = 0; i < data.data.length; i += 4) {
     let r = data.data[i];
     let g = data.data[i + 1];
     let b = data.data[i + 2];
 
-    r = (r - 128) * contrastFactor + 128 + br + warm;
-    g = (g - 128) * contrastFactor + 128 + br;
-    b = (b - 128) * contrastFactor + 128 + br - warm;
-
-    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-    r = gray + (r - gray) * satFactor;
-    g = gray + (g - gray) * satFactor;
-    b = gray + (b - gray) * satFactor;
+    r = (r - 128) * contrastFactor + 128 + br + rShift;
+    g = (g - 128) * contrastFactor + 128 + br + gShift;
+    b = (b - 128) * contrastFactor + 128 + br + bShift;
 
     data.data[i] = clamp255(r);
     data.data[i + 1] = clamp255(g);
@@ -179,8 +177,9 @@ export function renderEditedPhoto(
   const hasAdjustments =
     adjustments.brightness !== 0 ||
     adjustments.contrast !== 0 ||
-    adjustments.saturation !== 0 ||
-    adjustments.warmth !== 0;
+    adjustments.red !== 0 ||
+    adjustments.green !== 0 ||
+    adjustments.blue !== 0;
 
   if (hasAdjustments) {
     const imageData = ctx.getImageData(0, 0, outputSize, outputSize);
