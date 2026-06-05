@@ -31,8 +31,8 @@ export interface OfflineStudentRecord {
   transportDetails?: string | null;
   photoUrl?: string | null;
   status: string;
-  class?: { id: string; name: string };
-  section?: { id: string; name: string };
+  class?: { id: string; name: string; sortOrder?: number };
+  section?: { id: string; name: string; sortOrder?: number };
   createdAt: string;
 }
 
@@ -86,9 +86,19 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-function getClassesForSchool(schoolId: string): { id: string; name: string; sections?: { id: string; name: string }[] }[] {
+function getClassesForSchool(schoolId: string): {
+  id: string;
+  name: string;
+  sortOrder?: number;
+  sections?: { id: string; name: string; sortOrder?: number }[];
+}[] {
   const map = readLocal<Record<string, unknown[]>>(OFFLINE_STORAGE_KEYS.classesBySchool, {});
-  return (map[schoolId] as { id: string; name: string; sections?: { id: string; name: string }[] }[]) || [];
+  return (map[schoolId] as {
+    id: string;
+    name: string;
+    sortOrder?: number;
+    sections?: { id: string; name: string; sortOrder?: number }[];
+  }[]) || [];
 }
 
 function resolveClassSection(
@@ -100,8 +110,12 @@ function resolveClassSection(
   const cls = classes.find((c) => c.id === classId);
   const section = cls?.sections?.find((s) => s.id === sectionId);
   return {
-    class: cls ? { id: cls.id, name: cls.name } : { id: classId, name: '—' },
-    section: section ? { id: section.id, name: section.name } : { id: sectionId, name: '—' },
+    class: cls
+      ? { id: cls.id, name: cls.name, sortOrder: cls.sortOrder }
+      : { id: classId, name: '—' },
+    section: section
+      ? { id: section.id, name: section.name, sortOrder: section.sortOrder }
+      : { id: sectionId, name: '—' },
   };
 }
 

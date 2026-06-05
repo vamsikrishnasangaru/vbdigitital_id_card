@@ -173,6 +173,7 @@ export default function IdCardsPage() {
         selectedSection && selectedSection !== ALL_SECTIONS ? selectedSection : undefined,
     },
     offlineRefreshKey,
+    classes,
   );
 
   // Mutations

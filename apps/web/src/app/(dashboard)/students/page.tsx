@@ -277,6 +277,14 @@ export default function StudentsPage() {
     enabled: !!effectiveSchoolId,
   });
 
+  const { data: classes = [], isPending: classesPending } = useQuery({
+    queryKey: classesQueryKey(effectiveSchoolId),
+    queryFn: () => fetchClassesPicker(effectiveSchoolId),
+    enabled: !!effectiveSchoolId,
+    staleTime: classesQueryStaleTime(),
+    placeholderData: () => getCachedClassesForSchool(effectiveSchoolId),
+  });
+
   const studentListFilters = useMemo(
     () => ({
       schoolId: effectiveSchoolId,
@@ -292,18 +300,11 @@ export default function StudentsPage() {
     studentsResponse?.data,
     studentListFilters,
     offlineRefreshKey,
+    classes,
   );
   const studentsTotal = studentsResponse?._offline
     ? studentsData.length
     : Math.max(studentsData.length, studentsResponse?.total ?? 0);
-
-  const { data: classes = [], isPending: classesPending } = useQuery({
-    queryKey: classesQueryKey(effectiveSchoolId),
-    queryFn: () => fetchClassesPicker(effectiveSchoolId),
-    enabled: !!effectiveSchoolId,
-    staleTime: classesQueryStaleTime(),
-    placeholderData: () => getCachedClassesForSchool(effectiveSchoolId),
-  });
 
   const enrollSchoolId = showCreate ? (form.schoolId || effectiveSchoolId) : '';
 

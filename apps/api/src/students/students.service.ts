@@ -136,8 +136,8 @@ export class StudentsService {
       this.prisma.student.findMany({
         where,
         include: {
-          class: { select: { id: true, name: true } },
-          section: { select: { id: true, name: true } },
+          class: { select: { id: true, name: true, sortOrder: true } },
+          section: { select: { id: true, name: true, sortOrder: true } },
           school: { select: { id: true, name: true, code: true } },
           idCards: {
             where: { deletedAt: null },
@@ -151,7 +151,13 @@ export class StudentsService {
           },
           _count: { select: { idCards: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [
+          { class: { sortOrder: 'asc' } },
+          { section: { sortOrder: 'asc' } },
+          { rollNumber: 'asc' },
+          { firstName: 'asc' },
+          { lastName: 'asc' },
+        ],
         skip: (page - 1) * limit,
         take: limit,
       }),
