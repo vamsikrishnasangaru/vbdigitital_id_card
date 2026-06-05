@@ -115,3 +115,12 @@ export function getStatusColor(status: string) {
   };
   return map[status] || 'status-draft';
 }
+
+/** Keep digits only, max 10 — for Indian mobile input fields. */
+export function sanitizeIndianMobileInput(raw: string): string {
+  return raw.replace(/\D/g, '').slice(0, 10);
+}
+
+export function isTenDigitMobile(value: string): boolean {
+  return /^\d{10}$/.test(value.trim());
+}

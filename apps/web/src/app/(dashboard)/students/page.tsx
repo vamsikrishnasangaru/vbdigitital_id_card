@@ -11,7 +11,7 @@ import {
   CreditCard, Building2, Layers, Pencil, FileSpreadsheet,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { cn, resolveMediaUrl } from '@/lib/utils';
+import { cn, resolveMediaUrl, sanitizeIndianMobileInput, isTenDigitMobile } from '@/lib/utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
@@ -474,7 +474,7 @@ export default function StudentsPage() {
       rollNumber: student.rollNumber || '',
       admissionNumber: student.admissionNumber || '',
       parentName: student.parentName || '',
-      parentPhone: student.parentPhone || '',
+      parentPhone: sanitizeIndianMobileInput(student.parentPhone || ''),
       bloodGroup: student.bloodGroup || '',
       aadharCard: student.aadharCard || '',
       address: student.address || '',
@@ -713,13 +713,19 @@ export default function StudentsPage() {
       return;
     }
 
+    const parentPhone = form.parentPhone.trim();
+    if (!isTenDigitMobile(parentPhone)) {
+      toast.error('Parent mobile must be exactly 10 digits');
+      return;
+    }
+
     if (editingStudentId) {
       const formData = new FormData();
       formData.append('schoolId', schoolId);
       formData.append('firstName', form.firstName.trim());
       formData.append('lastName', form.lastName.trim() || '-');
       formData.append('rollNumber', form.rollNumber.trim());
-      formData.append('parentPhone', form.parentPhone.trim());
+      formData.append('parentPhone', parentPhone);
       formData.append('address', form.address.trim());
       if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
       if (form.classId.trim()) formData.append('classId', form.classId.trim());
@@ -749,7 +755,7 @@ export default function StudentsPage() {
     formData.append('lastName', form.lastName.trim() || '-');
     formData.append('rollNumber', form.rollNumber.trim());
     if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
-    formData.append('parentPhone', form.parentPhone.trim());
+    formData.append('parentPhone', parentPhone);
     formData.append('address', form.address.trim());
     if (form.classId.trim()) formData.append('classId', form.classId.trim());
     if (form.sectionId.trim()) formData.append('sectionId', form.sectionId.trim());
@@ -1670,12 +1676,19 @@ export default function StudentsPage() {
                       </label>
                       <input
                         type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel"
+                        maxLength={10}
+                        pattern="\d{10}"
                         value={form.parentPhone}
-                        onChange={(e) => setForm({ ...form, parentPhone: e.target.value })}
+                        onChange={(e) =>
+                          setForm({ ...form, parentPhone: sanitizeIndianMobileInput(e.target.value) })
+                        }
                         required
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                        placeholder="9876543210"
+                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono tracking-wide"
+                        placeholder="10-digit mobile"
                       />
+                      <p className="text-[10px] text-muted-foreground ml-1">Numbers only · exactly 10 digits</p>
                     </div>
 
                     <div className="md:col-span-2 space-y-2">

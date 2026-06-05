@@ -50,6 +50,10 @@ export class StudentsService {
     }
 
     const rollNumber = String(rest.rollNumber).trim();
+    const parentPhone = String(rest.parentPhone).trim();
+    if (!/^\d{10}$/.test(parentPhone)) {
+      throw new BadRequestException('parentPhone must be exactly 10 digits');
+    }
     const lastName = typeof rest.lastName === 'string' ? rest.lastName.trim() : '';
     const admissionNumber =
       (typeof rest.admissionNumber === 'string' && rest.admissionNumber.trim()) ||
@@ -63,7 +67,7 @@ export class StudentsService {
         rollNumber,
         admissionNumber,
         parentName: String(rest.parentName).trim(),
-        parentPhone: String(rest.parentPhone).trim(),
+        parentPhone,
         address: String(rest.address).trim(),
         photoUrl,
         lastName: lastName || '-',
@@ -227,7 +231,13 @@ export class StudentsService {
       payload.rollNumber = trimmed ? trimmed : null;
     }
     if (parentName !== undefined) payload.parentName = parentName ? String(parentName).trim() : null;
-    if (parentPhone !== undefined) payload.parentPhone = parentPhone ? String(parentPhone).trim() : null;
+    if (parentPhone !== undefined) {
+      const trimmed = parentPhone ? String(parentPhone).trim() : '';
+      if (trimmed && !/^\d{10}$/.test(trimmed)) {
+        throw new BadRequestException('parentPhone must be exactly 10 digits');
+      }
+      payload.parentPhone = trimmed || null;
+    }
     if (address !== undefined) payload.address = address ? String(address).trim() : null;
     if (bloodGroup !== undefined) payload.bloodGroup = bloodGroup ? String(bloodGroup).trim() : null;
     if (aadharCard !== undefined) payload.aadharCard = aadharCard ? String(aadharCard).trim() : null;
