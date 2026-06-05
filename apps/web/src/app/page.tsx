@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import api from '@/lib/api';
 import { Eye, EyeOff, CreditCard, Loader2 } from 'lucide-react';
+import { PwaInstallBanner } from '@/components/PwaInstallBanner';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -78,7 +79,9 @@ export default function LoginPage() {
           </div>
 
           <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
-          <p className="text-muted-foreground mt-1 mb-8">Sign in to your account to continue</p>
+          <p className="text-muted-foreground mt-1 mb-6">Sign in to your account to continue</p>
+
+          <PwaInstallBanner />
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">

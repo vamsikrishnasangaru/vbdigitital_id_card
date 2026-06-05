@@ -12,10 +12,11 @@ const inter = Inter({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: "#4f46e5",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {
@@ -23,6 +24,10 @@ export const metadata: Metadata = {
   description: "Enterprise-grade SaaS platform for managing school ID card operations from student onboarding to printing and delivery tracking.",
   keywords: "school ID cards, student management, ID card printing, digital ID, SaaS",
   manifest: "/manifest.json",
+  icons: {
+    icon: [{ url: "/icon", sizes: "512x512", type: "image/png" }],
+    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

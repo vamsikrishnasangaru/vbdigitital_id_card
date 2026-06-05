@@ -28,6 +28,7 @@ const withSerwist = withSerwistInit({
           { url: "/id-cards", revision },
           { url: "/templates", revision },
           { url: "/settings", revision },
+          { url: "/install", revision },
         ];
       })(),
 });

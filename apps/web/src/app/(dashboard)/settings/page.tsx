@@ -21,7 +21,9 @@ import {
   GraduationCap,
   Eye,
   EyeOff,
+  Smartphone,
 } from 'lucide-react';
+import { PwaInstallInstructions } from '@/components/pwa/PwaInstallInstructions';
 
 type SettingsTab = 'profile' | 'password' | 'account';
 
@@ -497,6 +499,17 @@ export default function SettingsPage() {
                   As Teacher you can view students in your assigned classes and preview ID cards.
                 </p>
               )}
+
+              <div className="rounded-2xl border border-border bg-card p-5 max-w-2xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <Smartphone className="h-4 w-4 text-primary" />
+                  <h4 className="text-sm font-black text-foreground">Install mobile app</h4>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Add VB Digital to your phone home screen for full-screen access and offline use.
+                </p>
+                <PwaInstallInstructions compact />
+              </div>
             </div>
           )}
         </div>
