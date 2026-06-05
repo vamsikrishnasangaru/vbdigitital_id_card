@@ -39,6 +39,37 @@ const IdCardDesigner = dynamic(
   { ssr: false, loading: () => <DesignerLoadingOverlay /> },
 );
 
+const ALL_CLASSES = '__all__';
+const ALL_SECTIONS = '__all__';
+
+async function fetchStudentsForBatch(params: {
+  schoolId: string;
+  classId?: string;
+  sectionId?: string;
+}) {
+  const limit = 200;
+  let page = 1;
+  let totalPages = 1;
+  const all: any[] = [];
+
+  do {
+    const query: Record<string, string | number> = {
+      schoolId: params.schoolId,
+      limit,
+      page,
+    };
+    if (params.classId) query.classId = params.classId;
+    if (params.sectionId) query.sectionId = params.sectionId;
+
+    const { data } = await api.get('/students', { params: query });
+    all.push(...(data.data || []));
+    totalPages = data.totalPages ?? 1;
+    page += 1;
+  } while (page <= totalPages);
+
+  return all;
+}
+
 export default function IdCardsPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -110,23 +141,26 @@ export default function IdCardsPage() {
   });
 
   const { data: studentsRaw = [], isLoading: loadingStudents } = useQuery({
-    queryKey: ['students-batch', selectedClass, selectedSection],
+    queryKey: ['students-batch', effectiveSchoolId, selectedClass, selectedSection],
     queryFn: async () => {
-      if (!selectedClass || !selectedSection) return [];
-      const { data } = await api.get('/students', {
-        params: { classId: selectedClass, sectionId: selectedSection, limit: 100 }
+      if (!effectiveSchoolId || !selectedClass || !selectedSection) return [];
+      return fetchStudentsForBatch({
+        schoolId: effectiveSchoolId,
+        classId: selectedClass === ALL_CLASSES ? undefined : selectedClass,
+        sectionId: selectedSection === ALL_SECTIONS ? undefined : selectedSection,
       });
-      return data.data || [];
     },
-    enabled: !!selectedSection
+    enabled: !!effectiveSchoolId && !!selectedClass && !!selectedSection,
   });
 
   const students = useMergedStudents(
     studentsRaw,
     {
       schoolId: effectiveSchoolId,
-      classId: selectedClass || undefined,
-      sectionId: selectedSection || undefined,
+      classId:
+        selectedClass && selectedClass !== ALL_CLASSES ? selectedClass : undefined,
+      sectionId:
+        selectedSection && selectedSection !== ALL_SECTIONS ? selectedSection : undefined,
     },
     offlineRefreshKey,
   );
@@ -191,12 +225,13 @@ export default function IdCardsPage() {
   const canGenerate =
     isSuperAdmin &&
     !!selectedTemplate &&
+    !!selectedClass &&
     !!selectedSection &&
     students.length > 0 &&
     !generateMutation.isPending;
 
   const canPreview =
-    !!selectedTemplate && !!selectedSection && students.length > 0;
+    !!selectedTemplate && !!selectedClass && !!selectedSection && students.length > 0;
 
   const handleGenerate = () => {
     if (!isSuperAdmin) return;
@@ -208,8 +243,12 @@ export default function IdCardsPage() {
       toast.error('Select a template first');
       return;
     }
+    if (!selectedClass || !selectedSection) {
+      toast.error('Select a class and section (or All Classes / All Sections)');
+      return;
+    }
     if (students.length === 0) {
-      toast.error('Select a class and section with students');
+      toast.error('No students found for this selection');
       return;
     }
     setShowGenerateDialog(true);
@@ -224,6 +263,16 @@ export default function IdCardsPage() {
   const activeClass = classes.find((c: any) => c.id === selectedClass);
   const sections = activeClass?.sections || [];
   const selectedSchool = schools.find((s) => s.id === effectiveSchoolId);
+
+  const selectionLabel = (() => {
+    if (!selectedClass || !selectedSection) return 'No Selection';
+    const classLabel = selectedClass === ALL_CLASSES ? 'All Classes' : activeClass?.name ?? 'Class';
+    const sectionLabel =
+      selectedSection === ALL_SECTIONS
+        ? 'All Sections'
+        : sections.find((s: { id: string }) => s.id === selectedSection)?.name ?? 'Section';
+    return `${classLabel} · ${sectionLabel}`;
+  })();
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -345,23 +394,27 @@ export default function IdCardsPage() {
                   <select 
                     value={selectedClass} 
                     onChange={e => {
-                      setSelectedClass(e.target.value);
-                      setSelectedSection('');
+                      const value = e.target.value;
+                      setSelectedClass(value);
+                      setSelectedSection(value === ALL_CLASSES ? ALL_SECTIONS : '');
                     }}
                     className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
                   >
                     <option value="">Select Class</option>
+                    <option value={ALL_CLASSES}>All Classes</option>
                     {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   
                   <select 
                     value={selectedSection} 
                     onChange={e => setSelectedSection(e.target.value)}
-                    disabled={!selectedClass}
+                    disabled={!selectedClass || selectedClass === ALL_CLASSES}
                     className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm disabled:opacity-50"
                   >
                     <option value="">Select Section</option>
-                    {sections.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    <option value={ALL_SECTIONS}>All Sections</option>
+                    {selectedClass !== ALL_CLASSES &&
+                      sections.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -418,7 +471,7 @@ export default function IdCardsPage() {
                 <div>
                   <h3 className="text-xl font-black text-foreground">Student List</h3>
                   <p className="text-muted-foreground text-xs font-medium uppercase tracking-widest">
-                    {selectedSection ? `Section ${sections.find((s:any) => s.id === selectedSection)?.name}` : 'No Selection'}
+                    {selectionLabel}
                   </p>
                 </div>
               </div>
