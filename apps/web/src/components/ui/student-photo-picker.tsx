@@ -256,7 +256,6 @@ export function StudentPhotoPicker({
                     </div>
                     <div>
                       <div className="font-bold text-foreground">Edit photo</div>
-                      <div className="text-xs text-muted-foreground">Crop, brightness, contrast &amp; RGB</div>
                     </div>
                   </button>
                   <button
