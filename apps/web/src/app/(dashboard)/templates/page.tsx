@@ -72,6 +72,8 @@ export default function TemplatesPage() {
   const [replaceBgFileName, setReplaceBgFileName] = useState('');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'school' | 'all'>('school');
+  /** Optional narrow filter when viewMode is "all" — empty string means every school. */
+  const [allSchoolsFilterId, setAllSchoolsFilterId] = useState('');
   const [duplicatingTemplate, setDuplicatingTemplate] = useState<Template | null>(null);
   const [duplicateTargetSchoolId, setDuplicateTargetSchoolId] = useState('');
   const [duplicateName, setDuplicateName] = useState('');
@@ -109,9 +111,13 @@ export default function TemplatesPage() {
 
   useEffect(() => {
     setSearch('');
-  }, [selectedSchoolId]);
+  }, [selectedSchoolId, viewMode, allSchoolsFilterId]);
 
   const selectedSchool = schools.find((s) => s.id === selectedSchoolId);
+  const allSchoolsFilter = schools.find((s) => s.id === allSchoolsFilterId);
+  /** School used when uploading a new template (all mode: filtered school, else last selected). */
+  const uploadSchoolId = viewMode === 'all' ? allSchoolsFilterId || selectedSchoolId : selectedSchoolId;
+  const uploadSchool = schools.find((s) => s.id === uploadSchoolId);
   
   // Queries
   const templatesQueryKey =
@@ -153,8 +159,8 @@ export default function TemplatesPage() {
   const filteredTemplates = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = templates;
-    if (viewMode === 'all' && selectedSchoolId) {
-      list = list.filter((tpl) => tpl.schoolId === selectedSchoolId);
+    if (viewMode === 'all' && allSchoolsFilterId) {
+      list = list.filter((tpl) => tpl.schoolId === allSchoolsFilterId);
     }
     if (!q) return list;
     return list.filter((tpl) => {
@@ -173,7 +179,7 @@ export default function TemplatesPage() {
         schoolCode.includes(q)
       );
     });
-  }, [templates, search, viewMode, selectedSchoolId]);
+  }, [templates, search, viewMode, allSchoolsFilterId]);
 
   const duplicateMutation = useMutation({
     mutationFn: async ({
@@ -344,7 +350,7 @@ export default function TemplatesPage() {
   };
 
   const handleCreateNew = () => {
-    if (!selectedSchoolId) {
+    if (!uploadSchoolId) {
       toast.error('Select a school first');
       return;
     }
@@ -419,7 +425,7 @@ export default function TemplatesPage() {
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSchoolId) {
+    if (!uploadSchoolId) {
       toast.error('Select a school to assign this template');
       return;
     }
@@ -452,7 +458,7 @@ export default function TemplatesPage() {
         orientation: newTemplateOrientation,
         frontBgUrl,
         frontConfig: [],
-        schoolId: selectedSchoolId,
+        schoolId: uploadSchoolId,
       });
       
       toast.success('Template created successfully');
@@ -510,7 +516,7 @@ export default function TemplatesPage() {
         </div>
         <button 
           onClick={handleCreateNew}
-          disabled={!selectedSchoolId}
+          disabled={!uploadSchoolId}
           className="group relative flex items-center gap-2 px-6 py-3.5 bg-primary text-primary-foreground rounded-2xl text-sm font-black shadow-xl shadow-primary/20 hover:shadow-primary/40 active:scale-95 transition-all overflow-hidden disabled:opacity-50 shrink-0"
         >
           <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
@@ -524,7 +530,10 @@ export default function TemplatesPage() {
           <div className="flex p-1 rounded-xl bg-muted/50 border border-border shrink-0">
             <button
               type="button"
-              onClick={() => setViewMode('school')}
+              onClick={() => {
+                setViewMode('school');
+                setAllSchoolsFilterId('');
+              }}
               className={cn(
                 'px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all',
                 viewMode === 'school' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground',
@@ -534,7 +543,10 @@ export default function TemplatesPage() {
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('all')}
+              onClick={() => {
+                setViewMode('all');
+                setAllSchoolsFilterId('');
+              }}
               className={cn(
                 'px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all',
                 viewMode === 'all' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground',
@@ -550,11 +562,20 @@ export default function TemplatesPage() {
             </span>
           </div>
           <select
-            value={selectedSchoolId}
-            onChange={(e) => setSelectedSchoolId(e.target.value)}
+            value={viewMode === 'all' ? allSchoolsFilterId : selectedSchoolId}
+            onChange={(e) => {
+              if (viewMode === 'all') {
+                setAllSchoolsFilterId(e.target.value);
+              } else {
+                setSelectedSchoolId(e.target.value);
+              }
+            }}
             className="flex-1 min-w-0 px-4 py-3 bg-card border border-border rounded-xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none"
           >
             {schools.length === 0 && <option value="">Loading schools…</option>}
+            {viewMode === 'all' && schools.length > 0 && (
+              <option value="">All schools</option>
+            )}
             {schools.map((s) => (
               <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
             ))}
@@ -566,9 +587,18 @@ export default function TemplatesPage() {
               Templates for <span className="text-foreground font-bold">{selectedSchool.name}</span> only.
               Use <span className="font-bold">Copy to school</span> on any card to reuse the same design elsewhere with a new code.
             </>
+          ) : allSchoolsFilter ? (
+            <>
+              Showing templates for <span className="text-foreground font-bold">{allSchoolsFilter.name}</span> only.
+              Choose <span className="font-bold">All schools</span> in the filter to see every school.
+            </>
           ) : (
             <>
-              Showing templates across all schools. Pick a school above to narrow the list, or copy any template to another school.
+              Showing templates from <span className="text-foreground font-bold">all schools</span>.
+              Pick a school above to narrow the list, or use <span className="font-bold">Copy to school</span> on any card.
+              {uploadSchool && (
+                <> New uploads go to <span className="text-foreground font-bold">{uploadSchool.name}</span>.</>
+              )}
             </>
           )}
         </p>
