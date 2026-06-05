@@ -1034,6 +1034,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
         onToggleSnap={() => setSnapEnabled((s) => !s)}
         readOnlyPreview={p.restrictedPreview}
         restrictExport={p.restrictedPreview}
+        orientation={p.orientation}
       />
 
       <input ref={p.assetInputRef} type="file" accept="image/*" className="hidden" onChange={p.onAssetFile} />

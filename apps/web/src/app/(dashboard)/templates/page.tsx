@@ -23,6 +23,7 @@ const IdCardDesigner = dynamic(
 import { TemplateBackgroundPicker, createEmptyBackground } from '@/components/designer/TemplateBackgroundPicker';
 import { cn, resolveMediaUrl } from '@/lib/utils';
 import { normalizeFrontConfig, uploadTemplateBackground } from '@/lib/template-utils';
+import { CR80_SIZE_OPTIONS, formatCr80Label, formatCr80Short } from '@/lib/card-sizes';
 import {
   type TemplateBackground,
   encodeBackground,
@@ -501,6 +502,11 @@ export default function TemplatesPage() {
           <p className="text-muted-foreground text-sm font-medium">
             Design layouts per school, assign template codes, and copy the same card design to other schools.
           </p>
+          <p className="text-xs text-muted-foreground/90 font-medium pt-1">
+            Standard ID card size: <span className="text-foreground font-bold">CR80</span> (credit card).
+            Horizontal {formatCr80Label('HORIZONTAL').replace('CR80 · ', '')} · Vertical{' '}
+            {formatCr80Label('VERTICAL').replace('CR80 · ', '')}
+          </p>
         </div>
         <button 
           onClick={handleCreateNew}
@@ -726,7 +732,10 @@ export default function TemplatesPage() {
                     {templateDisplayCode(tpl)}
                   </span>
                   <span className="px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-wider">
-                    {tpl.orientation}
+                    {tpl.orientation === 'VERTICAL' ? 'Vertical' : 'Horizontal'}
+                  </span>
+                  <span className="px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[10px] font-bold tracking-wide">
+                    {formatCr80Short(tpl.orientation)}
                   </span>
                   {viewMode === 'all' && tpl.school && (
                     <span className="px-3 py-1 rounded-lg bg-primary/80 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-wider">
@@ -744,6 +753,9 @@ export default function TemplatesPage() {
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       <span className="text-[10px] font-mono font-black text-primary uppercase">
                         {templateDisplayCode(tpl)}
+                      </span>
+                      <span className="text-[10px] font-bold text-muted-foreground">
+                        · {formatCr80Label(tpl.orientation)}
                       </span>
                       {tpl.school && (
                         <span className="text-[10px] font-bold text-muted-foreground">· {tpl.school.name}</span>
@@ -876,39 +888,48 @@ export default function TemplatesPage() {
                   </div>
                 </div>
 
-                {/* Orientation Selection */}
+                {/* Orientation Selection — CR80 default sizes */}
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Orientation</label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setNewTemplateOrientation('HORIZONTAL')}
-                      className={cn(
-                        "p-6 rounded-[2rem] border border-border bg-card text-left transition-all duration-300 hover:shadow-lg flex flex-col items-center justify-center gap-3 relative overflow-hidden group",
-                        newTemplateOrientation === 'HORIZONTAL' && "border-primary ring-2 ring-primary/20 bg-primary/5"
-                      )}
-                    >
-                      <div className="w-20 h-12 rounded bg-muted-foreground/20 border-2 border-dashed border-muted-foreground/30 flex items-center justify-center relative shadow-sm">
-                        <div className="absolute top-1 left-1 w-2 h-2 rounded-full bg-muted-foreground/40" />
-                        <div className="w-8 h-1.5 rounded-full bg-muted-foreground/20" />
-                      </div>
-                      <span className="text-sm font-black text-foreground">Landscape (Horizontal)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setNewTemplateOrientation('VERTICAL')}
-                      className={cn(
-                        "p-6 rounded-[2rem] border border-border bg-card text-left transition-all duration-300 hover:shadow-lg flex flex-col items-center justify-center gap-3 relative overflow-hidden group",
-                        newTemplateOrientation === 'VERTICAL' && "border-primary ring-2 ring-primary/20 bg-primary/5"
-                      )}
-                    >
-                      <div className="w-12 h-20 rounded bg-muted-foreground/20 border-2 border-dashed border-muted-foreground/30 flex items-center justify-center flex-col gap-1 relative shadow-sm">
-                        <div className="absolute top-1 left-1 w-2 h-2 rounded-full bg-muted-foreground/40" />
-                        <div className="w-6 h-1.5 rounded-full bg-muted-foreground/20" />
-                      </div>
-                      <span className="text-sm font-black text-foreground">Portrait (Vertical)</span>
-                    </button>
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                    Card size &amp; orientation
+                  </label>
+                  <p className="text-xs text-muted-foreground ml-1 mb-3">
+                    All templates use standard CR80 (credit-card) dimensions. Choose portrait or landscape layout.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {CR80_SIZE_OPTIONS.map((option) => (
+                      <button
+                        key={option.orientation}
+                        type="button"
+                        onClick={() => setNewTemplateOrientation(option.orientation)}
+                        className={cn(
+                          'p-6 rounded-[2rem] border border-border bg-card text-left transition-all duration-300 hover:shadow-lg flex flex-col items-center justify-center gap-3 relative overflow-hidden group',
+                          newTemplateOrientation === option.orientation &&
+                            'border-primary ring-2 ring-primary/20 bg-primary/5',
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            'rounded bg-muted-foreground/20 border-2 border-dashed border-muted-foreground/30 flex items-center justify-center relative shadow-sm',
+                            option.orientation === 'VERTICAL' ? 'w-12 h-20 flex-col gap-1' : 'w-20 h-12',
+                          )}
+                        >
+                          <div className="absolute top-1 left-1 w-2 h-2 rounded-full bg-muted-foreground/40" />
+                          <div
+                            className={cn(
+                              'rounded-full bg-muted-foreground/20',
+                              option.orientation === 'VERTICAL' ? 'w-6 h-1.5' : 'w-8 h-1.5',
+                            )}
+                          />
+                        </div>
+                        <div className="text-center space-y-1">
+                          <span className="text-sm font-black text-foreground block">{option.title}</span>
+                          <span className="text-[10px] font-bold text-muted-foreground leading-snug block">
+                            {option.subtitle}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 </div>
 

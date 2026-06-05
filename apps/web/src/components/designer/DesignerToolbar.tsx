@@ -5,6 +5,7 @@ import {
   ZoomIn, ZoomOut, Trash2, CopyPlus, FlipHorizontal, Grid3X3, Magnet, X, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatCr80Short, type CardOrientation } from '@/lib/card-sizes';
 
 interface DesignerToolbarProps {
   templateName: string;
@@ -33,6 +34,7 @@ interface DesignerToolbarProps {
   snapEnabled?: boolean;
   onToggleSnap?: () => void;
   /** School admin / teacher preview: hide export and editing tools */
+  orientation?: 'HORIZONTAL' | 'VERTICAL';
   readOnlyPreview?: boolean;
   restrictExport?: boolean;
 }
@@ -101,6 +103,7 @@ export function DesignerToolbar({
   onToggleSnap,
   readOnlyPreview = false,
   restrictExport = false,
+  orientation = 'HORIZONTAL',
 }: DesignerToolbarProps) {
   return (
     <header className="h-12 shrink-0 sticky top-0 z-20 flex items-center gap-1 px-3 border-b border-white/[0.08] bg-[#0a0a0f]/95 backdrop-blur-md">
@@ -190,8 +193,14 @@ export function DesignerToolbar({
         </>
       )}
 
-      <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-white/40 hidden md:inline">
-        {readOnlyPreview ? 'View only' : `${activeSide === 'front' ? 'Front' : 'Back'} · CR80`}
+      <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-white/40 hidden md:inline text-right leading-tight">
+        {readOnlyPreview ? (
+          'View only'
+        ) : (
+          <>
+            {activeSide === 'front' ? 'Front' : 'Back'} · CR80 · {formatCr80Short(orientation as CardOrientation)}
+          </>
+        )}
       </span>
     </header>
   );

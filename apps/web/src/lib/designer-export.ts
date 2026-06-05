@@ -1,4 +1,5 @@
 import type Konva from 'konva';
+import { getCr80Dimensions } from '@/lib/card-sizes';
 
 const EXPORT_PIXEL_RATIO = 4;
 
@@ -33,9 +34,8 @@ export function exportStageToPng(stage: Konva.Stage, filename: string) {
 
 /** CR80 card size in inches (ISO/IEC 7810 ID-1). */
 export function getCardDimensionsInches(orientation: 'HORIZONTAL' | 'VERTICAL') {
-  const w = 3.375;
-  const h = 2.125;
-  return orientation === 'VERTICAL' ? { widthIn: h, heightIn: w } : { widthIn: w, heightIn: h };
+  const { widthIn, heightIn } = getCr80Dimensions(orientation);
+  return { widthIn, heightIn };
 }
 
 export async function exportStageToPdf(
