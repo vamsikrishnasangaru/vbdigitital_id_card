@@ -11,6 +11,17 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ClassesService {
   constructor(private prisma: PrismaService) {}
 
+  private readonly classInclude = {
+    sections: {
+      where: { deletedAt: null },
+      orderBy: { sortOrder: 'asc' as const },
+      include: {
+        _count: { select: { students: { where: { deletedAt: null } } } },
+      },
+    },
+    _count: { select: { students: { where: { deletedAt: null } } } },
+  };
+
   assertSchoolAccess(role: string, userSchoolId: string | undefined, targetSchoolId: string) {
     if (role !== 'SUPER_ADMIN' && userSchoolId !== targetSchoolId) {
       throw new ForbiddenException('You can only manage classes for your own school');
@@ -21,25 +32,51 @@ export class ClassesService {
     const trimmed = name?.trim();
     if (!trimmed) throw new BadRequestException('Class name is required');
 
+    const active = await this.prisma.class.findFirst({
+      where: { schoolId, name: trimmed, deletedAt: null },
+      select: { id: true },
+    });
+    if (active) {
+      throw new ConflictException(`Class "${trimmed}" already exists in this school`);
+    }
+
     const maxOrder = await this.prisma.class.aggregate({
       where: { schoolId, deletedAt: null },
       _max: { sortOrder: true },
     });
     const nextOrder = sortOrder ?? (maxOrder._max.sortOrder ?? 0) + 1;
 
+    const deleted = await this.prisma.class.findFirst({
+      where: { schoolId, name: trimmed, deletedAt: { not: null } },
+      select: { id: true },
+    });
+    if (deleted) {
+      const studentCount = await this.prisma.student.count({
+        where: { classId: deleted.id, deletedAt: null },
+      });
+      if (studentCount > 0) {
+        throw new ConflictException(
+          `A previously deleted class named "${trimmed}" still has ${studentCount} student(s). Use a different name or restore students first.`,
+        );
+      }
+
+      return this.prisma.$transaction(async (tx) => {
+        await tx.section.updateMany({
+          where: { classId: deleted.id, deletedAt: { not: null } },
+          data: { deletedAt: null },
+        });
+        return tx.class.update({
+          where: { id: deleted.id },
+          data: { deletedAt: null, sortOrder: nextOrder },
+          include: this.classInclude,
+        });
+      });
+    }
+
     try {
       return await this.prisma.class.create({
         data: { schoolId, name: trimmed, sortOrder: nextOrder },
-        include: {
-          sections: {
-            where: { deletedAt: null },
-            orderBy: { sortOrder: 'asc' },
-            include: {
-              _count: { select: { students: { where: { deletedAt: null } } } },
-            },
-          },
-          _count: { select: { students: { where: { deletedAt: null } } } },
-        },
+        include: this.classInclude,
       });
     } catch {
       throw new ConflictException('A class with this name already exists in this school');
@@ -157,6 +194,37 @@ export class ClassesService {
       _max: { sortOrder: true },
     });
     const nextOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+
+    const active = await this.prisma.section.findFirst({
+      where: { classId, name: trimmed, deletedAt: null },
+      select: { id: true },
+    });
+    if (active) {
+      throw new ConflictException(`Section "${trimmed}" already exists in this class`);
+    }
+
+    const deleted = await this.prisma.section.findFirst({
+      where: { classId, name: trimmed, deletedAt: { not: null } },
+      select: { id: true, classId: true },
+    });
+    if (deleted) {
+      const studentCount = await this.prisma.student.count({
+        where: { sectionId: deleted.id, classId: deleted.classId, deletedAt: null },
+      });
+      if (studentCount > 0) {
+        throw new ConflictException(
+          `A previously deleted section named "${trimmed}" still has ${studentCount} student(s). Reassign them first.`,
+        );
+      }
+
+      return this.prisma.section.update({
+        where: { id: deleted.id },
+        data: { deletedAt: null, sortOrder: nextOrder },
+        include: {
+          _count: { select: { students: { where: { deletedAt: null } } } },
+        },
+      });
+    }
 
     try {
       return await this.prisma.section.create({
