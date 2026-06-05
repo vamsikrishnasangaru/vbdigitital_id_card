@@ -57,7 +57,7 @@ function AdjustmentSlider({
         min={min}
         max={max}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onInput={(e) => onChange(Number(e.currentTarget.value))}
         className="w-full accent-primary h-1.5 cursor-pointer"
       />
     </div>
@@ -75,6 +75,7 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewRafRef = useRef<number>(0);
 
   const cropDisplaySize = getCropDisplaySize(PHOTO_EDITOR_VIEWPORT, PHOTO_EDITOR_CROP_INSET);
 
@@ -131,7 +132,11 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   }, [open, source]);
 
   useEffect(() => {
-    drawPreview();
+    cancelAnimationFrame(previewRafRef.current);
+    previewRafRef.current = requestAnimationFrame(() => {
+      drawPreview();
+    });
+    return () => cancelAnimationFrame(previewRafRef.current);
   }, [drawPreview]);
 
   const onPointerDown = (e: React.PointerEvent) => {

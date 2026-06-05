@@ -72,32 +72,131 @@ function loadImageElement(src: string, crossOrigin = false): Promise<HTMLImageEl
   });
 }
 
-function clamp255(value: number): number {
-  return Math.max(0, Math.min(255, value));
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
-function applyAdjustmentsToImageData(
-  data: ImageData,
-  { brightness, contrast, red, green, blue }: PhotoAdjustments,
+function clamp255(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+/** sRGB (0–255) → linear light (0–1). */
+function srgbToLinear(channel: number): number {
+  const x = channel / 255;
+  return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+}
+
+/** Linear light (0–1) → sRGB (0–255). */
+function linearToSrgb(channel: number): number {
+  const x = clamp01(channel);
+  return x <= 0.0031308 ? x * 12.92 * 255 : (1.055 * Math.pow(x, 1 / 2.4) - 0.055) * 255;
+}
+
+function luminanceLinear(r: number, g: number, b: number): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** Photoshop-style exposure (brightness) in linear space. */
+function applyExposureLinear(r: number, g: number, b: number, brightness: number) {
+  const ev = (brightness / 100) * 0.85;
+  const mul = Math.pow(2, ev);
+  return [r * mul, g * mul, b * mul] as const;
+}
+
+/** Contrast pivoting around ~18% gray (photographic mid-point). */
+function applyContrastLinear(r: number, g: number, b: number, contrast: number) {
+  const pivot = 0.18;
+  const t = contrast / 100;
+  const factor = (1 + t) / Math.max(0.05, 1 - t * 0.92);
+  return [
+    (r - pivot) * factor + pivot,
+    (g - pivot) * factor + pivot,
+    (b - pivot) * factor + pivot,
+  ] as const;
+}
+
+/** Tonal weights similar to Photoshop Color Balance (shadow / midtone / highlight). */
+function colorBalanceTonalWeights(luminance: number) {
+  const l = clamp01(luminance);
+  const shadow = Math.pow(1 - l, 1.8);
+  const highlight = Math.pow(l, 1.8);
+  const midtone = Math.exp(-Math.pow((l - 0.45) / 0.28, 2));
+  const sum = shadow + midtone + highlight || 1;
+  return {
+    shadow: shadow / sum,
+    midtone: midtone / sum,
+    highlight: highlight / sum,
+  };
+}
+
+/** Per-channel color balance with partial luminance preservation. */
+function applyColorBalanceLinear(
+  r: number,
+  g: number,
+  b: number,
+  red: number,
+  green: number,
+  blue: number,
 ) {
-  const br = brightness * 1.2;
-  const contrastFactor = 1 + contrast / 100;
-  const rShift = red * 1.2;
-  const gShift = green * 1.2;
-  const bShift = blue * 1.2;
+  const lum = luminanceLinear(r, g, b);
+  const w = colorBalanceTonalWeights(lum * 1.15);
+  const mix = w.shadow * 0.85 + w.midtone * 1.15 + w.highlight * 0.85;
+  const strength = 0.42 * mix;
 
-  for (let i = 0; i < data.data.length; i += 4) {
-    let r = data.data[i];
-    let g = data.data[i + 1];
-    let b = data.data[i + 2];
+  const dr = (red / 100) * strength;
+  const dg = (green / 100) * strength;
+  const db = (blue / 100) * strength;
 
-    r = (r - 128) * contrastFactor + 128 + br + rShift;
-    g = (g - 128) * contrastFactor + 128 + br + gShift;
-    b = (b - 128) * contrastFactor + 128 + br + bShift;
+  let nr = r + dr;
+  let ng = g + dg;
+  let nb = b + db;
 
-    data.data[i] = clamp255(r);
-    data.data[i + 1] = clamp255(g);
-    data.data[i + 2] = clamp255(b);
+  const oldL = lum;
+  const newL = luminanceLinear(nr, ng, nb);
+  if (newL > 1e-6 && oldL > 1e-6) {
+    const preserve = 0.72;
+    const scale = oldL / newL;
+    nr = nr * (1 - preserve) + nr * scale * preserve;
+    ng = ng * (1 - preserve) + ng * scale * preserve;
+    nb = nb * (1 - preserve) + nb * scale * preserve;
+  }
+
+  return [nr, ng, nb] as const;
+}
+
+export function hasPhotoAdjustments(adjustments: PhotoAdjustments): boolean {
+  return (
+    adjustments.brightness !== 0 ||
+    adjustments.contrast !== 0 ||
+    adjustments.red !== 0 ||
+    adjustments.green !== 0 ||
+    adjustments.blue !== 0
+  );
+}
+
+function applyAdjustmentsToImageData(data: ImageData, adjustments: PhotoAdjustments) {
+  const { brightness, contrast, red, green, blue } = adjustments;
+  if (!hasPhotoAdjustments(adjustments)) return;
+
+  const pixels = data.data;
+  for (let i = 0; i < pixels.length; i += 4) {
+    let rl = srgbToLinear(pixels[i]);
+    let gl = srgbToLinear(pixels[i + 1]);
+    let bl = srgbToLinear(pixels[i + 2]);
+
+    if (brightness !== 0) {
+      [rl, gl, bl] = applyExposureLinear(rl, gl, bl, brightness);
+    }
+    if (contrast !== 0) {
+      [rl, gl, bl] = applyContrastLinear(rl, gl, bl, contrast);
+    }
+    if (red !== 0 || green !== 0 || blue !== 0) {
+      [rl, gl, bl] = applyColorBalanceLinear(rl, gl, bl, red, green, blue);
+    }
+
+    pixels[i] = clamp255(linearToSrgb(rl));
+    pixels[i + 1] = clamp255(linearToSrgb(gl));
+    pixels[i + 2] = clamp255(linearToSrgb(bl));
   }
 }
 
@@ -174,12 +273,7 @@ export function renderEditedPhoto(
     outputSize,
   );
 
-  const hasAdjustments =
-    adjustments.brightness !== 0 ||
-    adjustments.contrast !== 0 ||
-    adjustments.red !== 0 ||
-    adjustments.green !== 0 ||
-    adjustments.blue !== 0;
+  const hasAdjustments = hasPhotoAdjustments(adjustments);
 
   if (hasAdjustments) {
     const imageData = ctx.getImageData(0, 0, outputSize, outputSize);
