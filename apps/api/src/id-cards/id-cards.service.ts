@@ -10,7 +10,7 @@ import { IdCardRendererService } from './id-card-renderer.service';
 import { AuthService } from '../auth/auth.service';
 import { Orientation } from '@prisma/client';
 import { IdCardGenerateDestination } from './dto/generate-id-cards.dto';
-import { buildIdCardsZip, idCardFileBaseName } from './id-cards-download.util';
+import { buildIdCardsZip, buildIdCardsZipFilename, idCardFileBaseName, idCardZipEntryPath } from './id-cards-download.util';
 
 type StudentWithRelations = {
   id: string;
@@ -79,8 +79,9 @@ export class IdCardsService {
           renderToken,
           template.orientation as Orientation,
         );
+        const pngFileName = `${idCardFileBaseName(student)}.png`;
         files.push({
-          name: `${idCardFileBaseName(student)}.png`,
+          name: idCardZipEntryPath(student, pngFileName),
           buffer: pngBuffer,
         });
         await this.prisma.idCard.updateMany({
@@ -103,11 +104,11 @@ export class IdCardsService {
       );
     }
 
-    const stamp = new Date().toISOString().slice(0, 10);
     if (files.length === 1) {
+      const singleName = files[0].name.split('/').pop() || files[0].name;
       return {
         kind: 'single' as const,
-        filename: files[0].name,
+        filename: singleName,
         buffer: files[0].buffer,
         successCount: 1,
         failCount: errors.length,
@@ -118,7 +119,7 @@ export class IdCardsService {
     const zipBuffer = await buildIdCardsZip(files);
     return {
       kind: 'zip' as const,
-      filename: `id-cards_${stamp}.zip`,
+      filename: buildIdCardsZipFilename(files),
       buffer: zipBuffer,
       successCount: files.length,
       failCount: errors.length,
