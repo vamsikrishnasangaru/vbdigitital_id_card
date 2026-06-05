@@ -90,6 +90,8 @@ export default function IdCardsPage() {
   const [selectedSection, setSelectedSection] = useState('');
   const [viewStudent, setViewStudent] = useState<any | null>(null);
   const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [editNavigating, setEditNavigating] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<{
     name: string;
     frontBgUrl?: string;
@@ -248,10 +250,23 @@ export default function IdCardsPage() {
     deleteMutation.mutate(s.id);
   };
 
-  const openEditStudent = (student: { id: string }) => {
-    sessionStorage.setItem(EDIT_STUDENT_STORAGE_KEY, student.id);
-    setViewStudent(null);
-    router.push('/students');
+  const openEditStudent = async (student: { id: string; schoolId?: string }) => {
+    setEditNavigating(true);
+    try {
+      sessionStorage.setItem(EDIT_STUDENT_STORAGE_KEY, student.id);
+      const schoolId = student.schoolId || effectiveSchoolId;
+      if (schoolId) {
+        await queryClient.prefetchQuery({
+          queryKey: classesQueryKey(schoolId),
+          queryFn: () => fetchClassesPicker(schoolId),
+          staleTime: classesQueryStaleTime(),
+        });
+      }
+      setViewStudent(null);
+      router.push('/students');
+    } finally {
+      setEditNavigating(false);
+    }
   };
 
   const openCardPreview = async () => {
@@ -259,6 +274,7 @@ export default function IdCardsPage() {
       toast.error('Select a template to preview');
       return;
     }
+    setPreviewLoading(true);
     try {
       const tpl = await fetchTemplateWithConfig<{
         name: string;
@@ -270,6 +286,8 @@ export default function IdCardsPage() {
       setCardPreviewOpen(true);
     } catch {
       toast.error('Failed to load template for preview');
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -622,15 +640,24 @@ export default function IdCardsPage() {
         </div>
       </div>
 
-      {/* Student detail */}
+      {/* Student detail — bottom sheet on mobile, centered on desktop */}
       {viewStudent && !cardPreviewOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4">
           <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-xl"
+            className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-300"
             onClick={() => setViewStudent(null)}
           />
-          <div className="relative bg-card border border-border w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-border flex justify-between items-start gap-4">
+          <div
+            className={cn(
+              'relative bg-card border border-border w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]',
+              'rounded-t-[2rem] sm:rounded-3xl border-b-0 sm:border-b',
+              'animate-in slide-in-from-bottom duration-300 ease-out sm:slide-in-from-bottom-0 sm:zoom-in-95 sm:duration-200',
+            )}
+          >
+            <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
+              <span className="h-1 w-10 rounded-full bg-border" aria-hidden />
+            </div>
+            <div className="p-6 border-b border-border flex justify-between items-start gap-4 shrink-0">
               <div className="flex items-center gap-4 min-w-0">
                 <div className="h-16 w-16 shrink-0 rounded-2xl overflow-hidden border border-border bg-muted">
                   {viewStudent.photoUrl ? (
@@ -658,7 +685,7 @@ export default function IdCardsPage() {
                 <X className="h-5 w-5 text-muted-foreground" />
               </button>
             </div>
-            <div className="p-6 space-y-4 text-sm">
+            <div className="p-6 space-y-4 text-sm overflow-y-auto flex-1 min-h-0">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Class</p>
@@ -695,11 +722,11 @@ export default function IdCardsPage() {
                 </div>
               )}
             </div>
-            <div className="p-6 border-t border-border flex flex-wrap gap-3 justify-end bg-muted/30">
+            <div className="p-6 border-t border-border flex flex-wrap gap-3 justify-end bg-muted/30 shrink-0 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
               <button
                 type="button"
                 onClick={() => handleDeleteStudent(viewStudent)}
-                disabled={deleteMutation.isPending}
+                disabled={deleteMutation.isPending || editNavigating || previewLoading}
                 className="px-4 py-2.5 rounded-xl text-sm font-bold text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50"
               >
                 Remove
@@ -707,19 +734,25 @@ export default function IdCardsPage() {
               {!(viewStudent.status === 'APPROVED' && !isSuperAdmin) && (
                 <button
                   type="button"
-                  onClick={() => openEditStudent(viewStudent)}
-                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-card border border-border hover:bg-muted transition-colors flex items-center gap-2"
+                  onClick={() => void openEditStudent(viewStudent)}
+                  disabled={editNavigating || previewLoading}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-card border border-border hover:bg-muted transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
-                  <Pencil className="h-4 w-4" />
+                  {editNavigating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Pencil className="h-4 w-4" />
+                  )}
                   Edit
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => void openCardPreview()}
-                disabled={!selectedTemplate}
-                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+                disabled={!selectedTemplate || previewLoading || editNavigating}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
+                {previewLoading && <Loader2 className="h-4 w-4 animate-spin" />}
                 Preview ID card
               </button>
               <button

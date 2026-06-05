@@ -1467,9 +1467,21 @@ export default function StudentsPage() {
 
       {/* Enrollment Modal (Full Screen Glassmorphism) */}
       {showCreate && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={closeEnrollModal} />
-          <div className="relative bg-card border border-border w-full max-w-4xl max-h-[90vh] rounded-[3rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] flex flex-col animate-in zoom-in-95 duration-300 min-h-0">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-300"
+            onClick={closeEnrollModal}
+          />
+          <div
+            className={cn(
+              'relative bg-card border border-border w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] flex flex-col min-h-0',
+              'rounded-t-[2rem] sm:rounded-[3rem] border-b-0 sm:border-b',
+              'animate-in slide-in-from-bottom duration-300 ease-out sm:slide-in-from-bottom-0 sm:zoom-in-95 sm:duration-300',
+            )}
+          >
+            <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
+              <span className="h-1 w-10 rounded-full bg-border" aria-hidden />
+            </div>
             {/* Modal Header */}
             <div className="p-8 border-b border-border flex justify-between items-center bg-muted/50 sticky top-0 z-20">
               <div className="flex items-center gap-4">
