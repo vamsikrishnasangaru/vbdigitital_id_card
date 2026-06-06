@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  completeStudentWhere,
+  incompleteStudentWhere,
+} from '../students/student-completion.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -27,10 +31,8 @@ export class AnalyticsService {
 
   private assignmentStudentWhere(
     assignments: { classId: string; sectionId: string }[],
-  ): Prisma.StudentWhereInput {
-    if (assignments.length === 0) {
-      return { id: '__none__' };
-    }
+  ): Prisma.StudentWhereInput | null {
+    if (assignments.length === 0) return null;
     return {
       deletedAt: null,
       OR: assignments.map((a) => ({
@@ -40,26 +42,41 @@ export class AnalyticsService {
     };
   }
 
+  private async studentMetrics(base: Prisma.StudentWhereInput = {}) {
+    const active = { ...base, deletedAt: null };
+    const [totalStudents, incompleteStudents, completeStudents, submittedStudents] =
+      await Promise.all([
+        this.prisma.student.count({ where: active }),
+        this.prisma.student.count({ where: incompleteStudentWhere(base) }),
+        this.prisma.student.count({ where: completeStudentWhere(base) }),
+        this.prisma.student.count({
+          where: { ...active, status: 'SUBMITTED' },
+        }),
+      ]);
+
+    return { totalStudents, incompleteStudents, completeStudents, submittedStudents };
+  }
+
   async getSuperAdminDashboard() {
     const [
       totalSchools,
-      totalStudents,
       totalTemplates,
       totalIdCards,
       totalTeachers,
+      studentCounts,
     ] = await Promise.all([
       this.prisma.school.count({ where: { deletedAt: null } }),
-      this.prisma.student.count({ where: { deletedAt: null } }),
       this.prisma.template.count({ where: { deletedAt: null, isActive: true } }),
       this.prisma.idCard.count({ where: { deletedAt: null } }),
       this.prisma.user.count({
         where: { role: 'TEACHER', deletedAt: null, isActive: true },
       }),
+      this.studentMetrics(),
     ]);
 
     return {
       totalSchools,
-      totalStudents,
+      ...studentCounts,
       totalTemplates,
       totalIdCards,
       totalTeachers,
@@ -74,20 +91,15 @@ export class AnalyticsService {
   }
 
   async getSchoolDashboard(schoolId: string) {
+    const base = { schoolId };
     const [
-      totalStudents,
-      draftStudents,
-      submittedStudents,
-      approvedStudents,
+      studentCounts,
       totalClasses,
       totalTeachers,
       totalTemplates,
       totalIdCards,
     ] = await Promise.all([
-      this.prisma.student.count({ where: { schoolId, deletedAt: null } }),
-      this.prisma.student.count({ where: { schoolId, status: 'DRAFT', deletedAt: null } }),
-      this.prisma.student.count({ where: { schoolId, status: 'SUBMITTED', deletedAt: null } }),
-      this.prisma.student.count({ where: { schoolId, status: 'APPROVED', deletedAt: null } }),
+      this.studentMetrics(base),
       this.prisma.class.count({ where: { schoolId, deletedAt: null } }),
       this.prisma.user.count({
         where: { schoolId, role: 'TEACHER', deletedAt: null, isActive: true },
@@ -116,10 +128,7 @@ export class AnalyticsService {
     });
 
     return {
-      totalStudents,
-      draftStudents,
-      submittedStudents,
-      approvedStudents,
+      ...studentCounts,
       totalClasses,
       totalTeachers,
       totalTemplates,
@@ -142,58 +151,44 @@ export class AnalyticsService {
       classId: a.classId,
       sectionId: a.sectionId,
     }));
-    const studentWhere = this.assignmentStudentWhere(pairs);
+    const scope = this.assignmentStudentWhere(pairs);
 
-    const [totalStudents, draftStudents, submittedStudents, approvedStudents] =
-      await Promise.all([
-        pairs.length
-          ? this.prisma.student.count({ where: studentWhere })
-          : Promise.resolve(0),
-        pairs.length
-          ? this.prisma.student.count({ where: { ...studentWhere, status: 'DRAFT' } })
-          : Promise.resolve(0),
-        pairs.length
-          ? this.prisma.student.count({ where: { ...studentWhere, status: 'SUBMITTED' } })
-          : Promise.resolve(0),
-        pairs.length
-          ? this.prisma.student.count({ where: { ...studentWhere, status: 'APPROVED' } })
-          : Promise.resolve(0),
-      ]);
+    const studentCounts = scope
+      ? await this.studentMetrics(scope)
+      : {
+          totalStudents: 0,
+          incompleteStudents: 0,
+          completeStudents: 0,
+          submittedStudents: 0,
+        };
 
     const sectionStats = await Promise.all(
       assignments.map(async (a) => {
-        const base = {
+        const rowBase = {
           classId: a.classId,
           sectionId: a.sectionId,
-          deletedAt: null,
         };
-        const count = await this.prisma.student.count({ where: base });
-        const approved = await this.prisma.student.count({
-          where: { ...base, status: 'APPROVED' },
+        const total = await this.prisma.student.count({
+          where: { ...rowBase, deletedAt: null },
+        });
+        const complete = await this.prisma.student.count({
+          where: completeStudentWhere(rowBase),
         });
         return {
           className: a.class.name,
           sectionName: a.section.name,
-          total: count,
-          approved,
-          percentage: count > 0 ? Math.round((approved / count) * 100) : 0,
+          total,
+          complete,
+          percentage: total > 0 ? Math.round((complete / total) * 100) : 0,
         };
       }),
     );
 
     return {
-      totalStudents,
-      draftStudents,
-      submittedStudents,
-      approvedStudents,
+      ...studentCounts,
       assignments: sectionStats,
-      recentStudents: pairs.length
-        ? await this.getRecentStudents({
-            OR: pairs.map((p) => ({
-              classId: p.classId,
-              sectionId: p.sectionId,
-            })),
-          })
+      recentStudents: scope
+        ? await this.getRecentStudents(scope)
         : [],
     };
   }

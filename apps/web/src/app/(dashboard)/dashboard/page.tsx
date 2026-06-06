@@ -15,7 +15,6 @@ import {
   Settings,
   BookOpen,
   Palette,
-  LayoutGrid,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -44,7 +43,7 @@ type AssignmentStat = {
   className: string;
   sectionName: string;
   total: number;
-  approved: number;
+  complete: number;
   percentage: number;
 };
 
@@ -62,6 +61,7 @@ type StatDef = {
   icon: typeof Users;
   color: StatCardColor;
   href: string;
+  sublabel?: string;
 };
 
 function formatStudentActivityMeta(student: RecentStudent, showSchool: boolean) {
@@ -84,28 +84,84 @@ function superAdminStats(): StatDef[] {
   return [
     { key: 'totalSchools', label: 'Schools', icon: School, color: 'indigo', href: '/schools' },
     { key: 'totalStudents', label: 'Students', icon: Users, color: 'blue', href: '/students' },
-    { key: 'totalTemplates', label: 'Templates', icon: Palette, color: 'violet', href: '/templates' },
-    { key: 'totalIdCards', label: 'Cards Generated', icon: CreditCard, color: 'emerald', href: '/id-cards' },
+    {
+      key: 'incompleteStudents',
+      label: 'Incomplete',
+      icon: AlertCircle,
+      color: 'rose',
+      href: '/students?filter=incomplete',
+    },
+    {
+      key: 'submittedStudents',
+      label: 'Pending Review',
+      icon: Clock,
+      color: 'amber',
+      href: '/students?filter=pending',
+      sublabel: 'View only',
+    },
+    {
+      key: 'completeStudents',
+      label: 'Verified',
+      icon: CheckCircle2,
+      color: 'emerald',
+      href: '/students?filter=verified',
+    },
+    { key: 'totalIdCards', label: 'Cards Generated', icon: CreditCard, color: 'violet', href: '/id-cards' },
   ];
 }
 
 function schoolAdminStats(): StatDef[] {
   return [
     { key: 'totalStudents', label: 'Total Students', icon: Users, color: 'blue', href: '/students' },
-    { key: 'approvedStudents', label: 'Verified', icon: CheckCircle2, color: 'emerald', href: '/students?status=APPROVED' },
-    { key: 'submittedStudents', label: 'Pending Review', icon: Clock, color: 'amber', href: '/students?status=SUBMITTED' },
-    { key: 'draftStudents', label: 'Drafts', icon: AlertCircle, color: 'rose', href: '/students?status=DRAFT' },
+    {
+      key: 'incompleteStudents',
+      label: 'Incomplete',
+      icon: AlertCircle,
+      color: 'rose',
+      href: '/students?filter=incomplete',
+    },
+    {
+      key: 'submittedStudents',
+      label: 'Pending Review',
+      icon: Clock,
+      color: 'amber',
+      href: '/students?filter=pending',
+    },
+    {
+      key: 'completeStudents',
+      label: 'Verified',
+      icon: CheckCircle2,
+      color: 'emerald',
+      href: '/students?filter=verified',
+    },
     { key: 'totalClasses', label: 'Classes', icon: BookOpen, color: 'indigo', href: '/classes' },
-    { key: 'totalIdCards', label: 'Cards Generated', icon: CreditCard, color: 'primary', href: '/id-cards' },
   ];
 }
 
 function teacherStats(): StatDef[] {
   return [
     { key: 'totalStudents', label: 'My Students', icon: Users, color: 'blue', href: '/students' },
-    { key: 'approvedStudents', label: 'Verified', icon: CheckCircle2, color: 'emerald', href: '/students?status=APPROVED' },
-    { key: 'submittedStudents', label: 'Pending Review', icon: Clock, color: 'amber', href: '/students?status=SUBMITTED' },
-    { key: 'draftStudents', label: 'Drafts', icon: AlertCircle, color: 'rose', href: '/students?status=DRAFT' },
+    {
+      key: 'incompleteStudents',
+      label: 'Incomplete',
+      icon: AlertCircle,
+      color: 'rose',
+      href: '/students?filter=incomplete',
+    },
+    {
+      key: 'submittedStudents',
+      label: 'Pending Review',
+      icon: Clock,
+      color: 'amber',
+      href: '/students?filter=pending',
+    },
+    {
+      key: 'completeStudents',
+      label: 'Verified',
+      icon: CheckCircle2,
+      color: 'emerald',
+      href: '/students?filter=verified',
+    },
   ];
 }
 
@@ -169,12 +225,12 @@ export default function DashboardPage() {
   const gridCols =
     statCards.length >= 6
       ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6'
-      : statCards.length === 4
-        ? 'grid-cols-2 lg:grid-cols-4'
-        : 'grid-cols-2 md:grid-cols-3';
+      : statCards.length === 5
+        ? 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'
+        : 'grid-cols-2 md:grid-cols-4';
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-300">
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-black tracking-tight text-foreground">
           Welcome back, {user?.firstName} 👋
@@ -198,6 +254,7 @@ export default function DashboardPage() {
             icon={stat.icon}
             color={stat.color}
             loading={loading}
+            sublabel={stat.sublabel}
           />
         ))}
       </div>
@@ -327,7 +384,7 @@ export default function DashboardPage() {
                           : ''}
                       </div>
                       <div className="text-[10px] text-muted-foreground font-bold uppercase mt-0.5">
-                        {row.approved} verified · {row.total} total
+                        {row.complete} verified · {row.total} total
                       </div>
                     </div>
                     <div className="text-sm font-black text-primary shrink-0 ml-3">
@@ -364,26 +421,44 @@ export default function DashboardPage() {
 
           {user?.role === 'SUPER_ADMIN' && !loading && (
             <div className="panel-xl p-6 sm:p-8 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
-                  <LayoutGrid className="h-5 w-5 text-violet-600 dark:text-violet-400" />
-                </div>
-                <div>
-                  <div className="text-sm font-black text-foreground">Platform summary</div>
-                  <div className="text-[10px] text-muted-foreground font-bold uppercase">
-                    Live counts
-                  </div>
-                </div>
-              </div>
+              <div className="text-sm font-black text-foreground">Platform extras</div>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="p-3 rounded-xl bg-muted/40 border border-border">
-                  <div className="font-black text-foreground">{statValue(dashboard, 'totalTeachers', false)}</div>
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Teachers</div>
-                </div>
-                <div className="p-3 rounded-xl bg-muted/40 border border-border">
+                <Link
+                  href="/templates"
+                  className="p-3 rounded-xl bg-muted/40 border border-border hover:border-primary/30 transition-colors"
+                >
                   <div className="font-black text-foreground">{statValue(dashboard, 'totalTemplates', false)}</div>
                   <div className="text-[10px] font-bold text-muted-foreground uppercase">Templates</div>
-                </div>
+                </Link>
+                <Link
+                  href="/teachers"
+                  className="p-3 rounded-xl bg-muted/40 border border-border hover:border-primary/30 transition-colors"
+                >
+                  <div className="font-black text-foreground">{statValue(dashboard, 'totalTeachers', false)}</div>
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Teachers</div>
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {user?.role === 'SCHOOL_ADMIN' && !loading && (
+            <div className="panel-xl p-6 sm:p-8 space-y-3">
+              <div className="text-sm font-black text-foreground">More</div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <Link
+                  href="/id-cards"
+                  className="p-3 rounded-xl bg-muted/40 border border-border hover:border-primary/30 transition-colors"
+                >
+                  <div className="font-black text-foreground">{statValue(dashboard, 'totalIdCards', false)}</div>
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Cards</div>
+                </Link>
+                <Link
+                  href="/templates"
+                  className="p-3 rounded-xl bg-muted/40 border border-border hover:border-primary/30 transition-colors"
+                >
+                  <div className="font-black text-foreground">{statValue(dashboard, 'totalTemplates', false)}</div>
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase">Templates</div>
+                </Link>
               </div>
             </div>
           )}

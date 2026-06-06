@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useDeferredValue, useRef, useLayoutEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
@@ -161,6 +162,24 @@ export default function StudentsPage() {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());
   const [statusFilter, setStatusFilter] = useState('');
+  const searchParams = useSearchParams();
+  const urlFilterApplied = useRef(false);
+
+  useEffect(() => {
+    if (urlFilterApplied.current) return;
+    const filter = searchParams.get('filter')?.toLowerCase();
+    const legacyStatus = searchParams.get('status')?.toUpperCase();
+    if (!filter && !legacyStatus) return;
+    urlFilterApplied.current = true;
+
+    if (filter === 'incomplete' || legacyStatus === 'DRAFT') {
+      setStatusFilter('INCOMPLETE');
+    } else if (filter === 'verified' || filter === 'complete' || legacyStatus === 'APPROVED') {
+      setStatusFilter('COMPLETE');
+    } else if (filter === 'pending' || legacyStatus === 'SUBMITTED') {
+      setStatusFilter('SUBMITTED');
+    }
+  }, [searchParams]);
   const [classFilter, setClassFilter] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
   const [templateCode, setTemplateCode] = useState('');
@@ -299,6 +318,7 @@ export default function StudentsPage() {
       if (deferredSearch) params.search = deferredSearch;
       if (statusFilter === 'COMPLETE') params.completion = 'COMPLETE';
       if (statusFilter === 'INCOMPLETE') params.completion = 'INCOMPLETE';
+      if (statusFilter === 'SUBMITTED') params.status = 'SUBMITTED';
       if (classFilter) params.classId = classFilter;
       if (sectionFilter) params.sectionId = sectionFilter;
       if (deferredTemplateCode) params.templateCode = deferredTemplateCode;
@@ -828,6 +848,7 @@ export default function StudentsPage() {
   const statuses = [
     { value: '', label: 'All Records' },
     { value: 'INCOMPLETE', label: 'Incomplete' },
+    { value: 'SUBMITTED', label: 'Pending Review' },
     { value: 'COMPLETE', label: 'Verified' },
   ];
 

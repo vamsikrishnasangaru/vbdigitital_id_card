@@ -2,6 +2,10 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { ClassesService } from '../classes/classes.service';
+import {
+  INCOMPLETE_STUDENT_OR,
+  completeStudentWhere,
+} from './student-completion.util';
 
 @Injectable()
 export class StudentsService {
@@ -120,23 +124,10 @@ export class StudentsService {
     if (sectionId) where.sectionId = sectionId;
     if (status) where.status = status;
     if (completion === 'INCOMPLETE') {
-      where.OR = [
-        ...(where.OR ?? []),
-        { photoUrl: null },
-        { photoUrl: '' },
-        { rollNumber: null },
-        { rollNumber: '' },
-        { parentName: null },
-        { parentName: '' },
-        { parentPhone: null },
-        { parentPhone: '' },
-      ];
+      where.OR = [...(where.OR ?? []), ...INCOMPLETE_STUDENT_OR];
     } else if (completion === 'COMPLETE') {
-      where.photoUrl = { not: null };
-      where.rollNumber = { not: null };
-      where.parentName = { not: null };
-      where.parentPhone = { not: null };
-      where.NOT = [{ photoUrl: '' }, { rollNumber: '' }, { parentName: '' }, { parentPhone: '' }];
+      Object.assign(where, completeStudentWhere(where));
+      delete where.OR;
     }
     if (search) {
       where.OR = [

@@ -11,7 +11,9 @@ import {
   BookOpen,
   CreditCard,
   ArrowUpRight,
-  Palette,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
 } from 'lucide-react';
 import { StatCard } from '@/components/ui/stat-card';
 
@@ -62,14 +64,54 @@ export default function AnalyticsPage() {
     ? [
         { key: 'totalSchools', label: 'Schools', icon: School, color: 'indigo' as const, href: '/schools' },
         { key: 'totalStudents', label: 'Students', icon: Users, color: 'blue' as const, href: '/students' },
-        { key: 'totalTemplates', label: 'Templates', icon: Palette, color: 'violet' as const, href: '/templates' },
-        { key: 'totalIdCards', label: 'Cards Generated', icon: CreditCard, color: 'emerald' as const, href: '/id-cards' },
+        {
+          key: 'incompleteStudents',
+          label: 'Incomplete',
+          icon: AlertCircle,
+          color: 'rose' as const,
+          href: '/students?filter=incomplete',
+        },
+        {
+          key: 'submittedStudents',
+          label: 'Pending Review',
+          icon: Clock,
+          color: 'amber' as const,
+          href: '/students?filter=pending',
+          sublabel: 'View only',
+        },
+        {
+          key: 'completeStudents',
+          label: 'Verified',
+          icon: CheckCircle2,
+          color: 'emerald' as const,
+          href: '/students?filter=verified',
+        },
+        { key: 'totalIdCards', label: 'Cards Generated', icon: CreditCard, color: 'violet' as const, href: '/id-cards' },
       ]
     : [
         { key: 'totalStudents', label: 'Students', icon: Users, color: 'blue' as const, href: '/students' },
+        {
+          key: 'incompleteStudents',
+          label: 'Incomplete',
+          icon: AlertCircle,
+          color: 'rose' as const,
+          href: '/students?filter=incomplete',
+        },
+        {
+          key: 'submittedStudents',
+          label: 'Pending Review',
+          icon: Clock,
+          color: 'amber' as const,
+          href: '/students?filter=pending',
+        },
+        {
+          key: 'completeStudents',
+          label: 'Verified',
+          icon: CheckCircle2,
+          color: 'emerald' as const,
+          href: '/students?filter=verified',
+        },
         { key: 'totalClasses', label: 'Classes', icon: BookOpen, color: 'indigo' as const, href: '/classes' },
-        { key: 'approvedStudents', label: 'Verified', icon: Users, color: 'emerald' as const, href: '/students?status=APPROVED' },
-        { key: 'totalIdCards', label: 'Cards Generated', icon: CreditCard, color: 'primary' as const, href: '/id-cards' },
       ];
 
   const classWise = (data?.classWise ?? []) as {
@@ -92,7 +134,7 @@ export default function AnalyticsPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {stats.map((stat) => (
           <StatCard
             key={stat.key}
@@ -102,6 +144,7 @@ export default function AnalyticsPage() {
             icon={stat.icon}
             color={stat.color}
             loading={isLoading}
+            sublabel={'sublabel' in stat ? stat.sublabel : undefined}
           />
         ))}
       </div>
