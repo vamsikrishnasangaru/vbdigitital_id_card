@@ -69,14 +69,14 @@ export default function AnalyticsPage() {
           label: 'Incomplete',
           icon: AlertCircle,
           color: 'rose' as const,
-          href: '/students?filter=incomplete',
+          href: '/students?filter=incomplete&allSchools=1',
         },
         {
           key: 'submittedStudents',
           label: 'Pending Review',
           icon: Clock,
           color: 'amber' as const,
-          href: '/students?filter=pending',
+          href: '/students?filter=pending&allSchools=1',
           sublabel: 'View only',
         },
         {
@@ -84,7 +84,7 @@ export default function AnalyticsPage() {
           label: 'Verified',
           icon: CheckCircle2,
           color: 'emerald' as const,
-          href: '/students?filter=verified',
+          href: '/students?filter=verified&allSchools=1',
         },
         { key: 'totalIdCards', label: 'Cards Generated', icon: CreditCard, color: 'violet' as const, href: '/id-cards' },
       ]

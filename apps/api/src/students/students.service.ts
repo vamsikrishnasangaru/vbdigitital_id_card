@@ -120,6 +120,7 @@ export class StudentsService {
     const where: any = { deletedAt: null };
 
     if (schoolId) where.schoolId = schoolId;
+    else where.school = { deletedAt: null, isActive: true };
     if (classId) where.classId = classId;
     if (sectionId) where.sectionId = sectionId;
     if (status) where.status = status;

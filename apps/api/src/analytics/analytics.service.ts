@@ -11,9 +11,18 @@ import {
 export class AnalyticsService {
   constructor(private prisma: PrismaService) {}
 
+  /** Only students in active, non-deleted schools — matches what admins can open in the UI. */
+  private activeStudentWhere(base: Prisma.StudentWhereInput = {}): Prisma.StudentWhereInput {
+    return {
+      ...base,
+      deletedAt: null,
+      school: { deletedAt: null, isActive: true },
+    };
+  }
+
   private getRecentStudents(where: Prisma.StudentWhereInput) {
     return this.prisma.student.findMany({
-      where: { ...where, deletedAt: null },
+      where: this.activeStudentWhere(where),
       orderBy: { createdAt: 'desc' },
       take: 8,
       select: {
@@ -44,9 +53,8 @@ export class AnalyticsService {
   }
 
   private async studentMetrics(base: Prisma.StudentWhereInput = {}) {
-    const active = { ...base, deletedAt: null };
     const students = await this.prisma.student.findMany({
-      where: active,
+      where: this.activeStudentWhere(base),
       select: STUDENT_COMPLETION_SELECT,
     });
     const { incompleteStudents, completeStudents } = countStudentsByCompletion(students);
@@ -167,17 +175,15 @@ export class AnalyticsService {
 
     const sectionStats = await Promise.all(
       assignments.map(async (a) => {
-        const rowBase = {
+        const rowBase = this.activeStudentWhere({
           classId: a.classId,
           sectionId: a.sectionId,
-        };
-        const total = await this.prisma.student.count({
-          where: { ...rowBase, deletedAt: null },
         });
         const sectionStudents = await this.prisma.student.findMany({
-          where: { ...rowBase, deletedAt: null },
+          where: rowBase,
           select: STUDENT_COMPLETION_SELECT,
         });
+        const total = sectionStudents.length;
         const complete = sectionStudents.filter((s) => !isStudentIncomplete(s)).length;
         return {
           className: a.class.name,

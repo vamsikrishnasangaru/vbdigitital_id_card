@@ -89,14 +89,15 @@ function superAdminStats(): StatDef[] {
       label: 'Incomplete',
       icon: AlertCircle,
       color: 'rose',
-      href: '/students?filter=incomplete',
+      href: '/students?filter=incomplete&allSchools=1',
+      sublabel: 'All schools',
     },
     {
       key: 'submittedStudents',
       label: 'Pending Review',
       icon: Clock,
       color: 'amber',
-      href: '/students?filter=pending',
+      href: '/students?filter=pending&allSchools=1',
       sublabel: 'View only',
     },
     {
@@ -104,7 +105,7 @@ function superAdminStats(): StatDef[] {
       label: 'Verified',
       icon: CheckCircle2,
       color: 'emerald',
-      href: '/students?filter=verified',
+      href: '/students?filter=verified&allSchools=1',
     },
     { key: 'totalIdCards', label: 'Cards Generated', icon: CreditCard, color: 'violet', href: '/id-cards' },
   ];

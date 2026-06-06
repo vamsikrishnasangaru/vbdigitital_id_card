@@ -12,7 +12,7 @@ export type StudentCompletionFields = {
 /** Same rules as the Students page badge — trim-aware, not just null/empty DB values. */
 export function isStudentIncomplete(s: StudentCompletionFields): boolean {
   return (
-    !s?.photoUrl ||
+    !String(s?.photoUrl ?? '').trim() ||
     !String(s?.rollNumber ?? '').trim() ||
     !String(s?.classId ?? s?.class?.id ?? '').trim() ||
     String(s?.class?.name ?? '').trim().toLowerCase() === 'unassigned' ||

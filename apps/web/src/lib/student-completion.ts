@@ -10,7 +10,7 @@ export type StudentCompletionFields = {
 /** Profile is incomplete when required fields are missing or class is Unassigned. */
 export function isStudentIncomplete(s: StudentCompletionFields): boolean {
   return (
-    !s?.photoUrl ||
+    !String(s?.photoUrl ?? '').trim() ||
     !String(s?.rollNumber ?? '').trim() ||
     !String(s?.classId ?? s?.class?.id ?? '').trim() ||
     String(s?.class?.name ?? '').trim().toLowerCase() === 'unassigned' ||

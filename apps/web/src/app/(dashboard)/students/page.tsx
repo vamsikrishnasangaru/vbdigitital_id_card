@@ -31,7 +31,7 @@ import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOve
 import { normalizeFrontConfig } from '@/lib/template-utils';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
-import { isStudentIncomplete } from '@/lib/student-completion';
+import { isStudentIncomplete, type StudentCompletionFields } from '@/lib/student-completion';
 import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
 import {
   classesQueryKey,
@@ -178,6 +178,17 @@ export default function StudentsPage() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
+  const viewAllSchools = useMemo(() => {
+    if (!isSuperAdmin) return false;
+    if (searchParams.get('allSchools') === '1') return true;
+    return statusFilter === 'INCOMPLETE' || statusFilter === 'COMPLETE' || statusFilter === 'SUBMITTED';
+  }, [isSuperAdmin, searchParams, statusFilter]);
+
+  useEffect(() => {
+    if (!viewAllSchools) return;
+    setClassFilter('');
+    setSectionFilter('');
+  }, [viewAllSchools]);
   const [showCreate, setShowCreate] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [sections, setSections] = useState<any[]>([]);
@@ -294,7 +305,8 @@ export default function StudentsPage() {
     queryKey: [
       'students',
       {
-        schoolId: effectiveSchoolId,
+        allSchools: viewAllSchools,
+        schoolId: viewAllSchools ? undefined : effectiveSchoolId,
         search: deferredSearch,
         status: statusFilter,
         classId: classFilter,
@@ -303,19 +315,19 @@ export default function StudentsPage() {
       },
     ],
     queryFn: async () => {
-      const params: Record<string, string | number> = { limit: 100 };
-      if (effectiveSchoolId) params.schoolId = effectiveSchoolId;
+      const params: Record<string, string | number> = { limit: viewAllSchools ? 500 : 100 };
+      if (!viewAllSchools && effectiveSchoolId) params.schoolId = effectiveSchoolId;
       if (deferredSearch) params.search = deferredSearch;
-      if (statusFilter === 'COMPLETE') params.completion = 'COMPLETE';
-      if (statusFilter === 'INCOMPLETE') params.completion = 'INCOMPLETE';
-      if (statusFilter === 'SUBMITTED') params.status = 'SUBMITTED';
+      if (!viewAllSchools && statusFilter === 'COMPLETE') params.completion = 'COMPLETE';
+      if (!viewAllSchools && statusFilter === 'INCOMPLETE') params.completion = 'INCOMPLETE';
+      if (!viewAllSchools && statusFilter === 'SUBMITTED') params.status = 'SUBMITTED';
       if (classFilter) params.classId = classFilter;
       if (sectionFilter) params.sectionId = sectionFilter;
       if (deferredTemplateCode) params.templateCode = deferredTemplateCode;
       const { data } = await api.get('/students', { params });
       return data;
     },
-    enabled: !!effectiveSchoolId,
+    enabled: isSuperAdmin ? viewAllSchools || !!effectiveSchoolId : !!effectiveSchoolId,
   });
 
   const { data: classes = [], isPending: classesPending } = useQuery({
@@ -328,13 +340,13 @@ export default function StudentsPage() {
 
   const studentListFilters = useMemo(
     () => ({
-      schoolId: effectiveSchoolId,
+      schoolId: viewAllSchools ? undefined : effectiveSchoolId,
       classId: classFilter || undefined,
       sectionId: sectionFilter || undefined,
       status: undefined,
       search: deferredSearch || undefined,
     }),
-    [effectiveSchoolId, classFilter, sectionFilter, statusFilter, deferredSearch],
+    [viewAllSchools, effectiveSchoolId, classFilter, sectionFilter, statusFilter, deferredSearch],
   );
 
   const studentsData = useMergedStudents(
@@ -343,9 +355,24 @@ export default function StudentsPage() {
     offlineRefreshKey,
     classes,
   );
-  const studentsTotal = studentsResponse?._offline
-    ? studentsData.length
-    : Math.max(studentsData.length, studentsResponse?.total ?? 0);
+
+  const visibleStudents = useMemo(() => {
+    const list = studentsData as Array<StudentCompletionFields & { id: string; status?: string }>;
+    if (statusFilter === 'INCOMPLETE') {
+      return list.filter((s) => isStudentIncomplete(s));
+    }
+    if (statusFilter === 'COMPLETE') {
+      return list.filter((s) => !isStudentIncomplete(s));
+    }
+    if (statusFilter === 'SUBMITTED') {
+      return list.filter((s) => s.status === 'SUBMITTED');
+    }
+    return studentsData;
+  }, [studentsData, statusFilter]);
+
+  const studentsTotal = studentsResponse?._offline || viewAllSchools
+    ? visibleStudents.length
+    : Math.max(visibleStudents.length, studentsResponse?.total ?? 0);
 
   const enrollSchoolId = showCreate ? (form.schoolId || effectiveSchoolId) : '';
 
@@ -614,7 +641,7 @@ export default function StudentsPage() {
     mutationFn: async (destination: GenerateDestination) => {
       return generateIdCards({
         templateId: selectedTemplateId,
-        studentIds: studentsData.map((s: { id: string }) => s.id),
+        studentIds: visibleStudents.map((s: { id: string }) => s.id),
         destination,
       });
     },
@@ -684,7 +711,7 @@ export default function StudentsPage() {
   const canGenerate =
     isSuperAdmin &&
     !!selectedTemplateId &&
-    studentsData.length > 0 &&
+    visibleStudents.length > 0 &&
     !generateMutation.isPending;
 
   const handleDeleteStudent = (s: { id: string; firstName?: string; lastName?: string }) => {
@@ -721,7 +748,7 @@ export default function StudentsPage() {
       toast.error('Select a template first');
       return;
     }
-    if (studentsData.length === 0) {
+    if (visibleStudents.length === 0) {
       toast.error('No students match the current filters');
       return;
     }
@@ -808,9 +835,9 @@ export default function StudentsPage() {
   };
 
   const exportToExcel = () => {
-    if (!studentsData || studentsData.length === 0) return;
+    if (!visibleStudents || visibleStudents.length === 0) return;
     
-    const exportData = studentsData.map((s: any) => ({
+    const exportData = visibleStudents.map((s: any) => ({
       'First Name': s.firstName,
       'Last Name': formatStudentLastName(s.lastName) || '—',
       'Roll No': s.rollNumber || '—',
@@ -872,7 +899,7 @@ export default function StudentsPage() {
           )}
           <button
             onClick={exportToExcel}
-            disabled={!studentsData.length}
+            disabled={!visibleStudents.length}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-card hover:bg-muted border border-border text-foreground rounded-xl text-sm font-bold transition-all shadow-sm w-full sm:w-auto disabled:opacity-50"
           >
             <Download className="h-4 w-4 shrink-0" /> Export CSV
@@ -941,14 +968,19 @@ export default function StudentsPage() {
         </div>
       )}
 
-      {!effectiveSchoolId && isSuperAdmin && (
+      {!effectiveSchoolId && isSuperAdmin && !viewAllSchools && (
         <div className="panel-empty p-8 text-center text-sm text-muted-foreground">
           Select a school above to view students and generate ID cards.
         </div>
       )}
 
-      {effectiveSchoolId && (
+      {(effectiveSchoolId || viewAllSchools) && (
         <>
+      {viewAllSchools && (
+        <div className="panel-toolbar px-4 py-3 text-sm font-medium text-muted-foreground border-primary/20 bg-primary/5 rounded-2xl">
+          Showing students across <strong className="text-foreground">all schools</strong> — matches dashboard totals.
+        </div>
+      )}
       {isTeacher && (
         <div className="panel-toolbar flex flex-col sm:flex-row sm:items-center gap-4 p-4 border-primary/20 bg-primary/5">
           <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -1129,7 +1161,11 @@ export default function StudentsPage() {
           {!loading && (
             <span>
               {studentsTotal} student{studentsTotal === 1 ? '' : 's'}
-              {selectedSchool && isSuperAdmin ? ` · ${selectedSchool.name}` : ''}
+              {viewAllSchools
+                ? ' · All schools'
+                : selectedSchool && isSuperAdmin
+                  ? ` · ${selectedSchool.name}`
+                  : ''}
             </span>
           )}
         </div>
@@ -1141,14 +1177,14 @@ export default function StudentsPage() {
         mobile={
           loading ? (
             <ListLoading message="Loading students..." />
-          ) : !studentsData?.length ? (
+          ) : !visibleStudents?.length ? (
             <ListEmpty
               icon={Users}
               title="Zero matches found"
               description="Try refining your filters or enroll a new student."
             />
           ) : (
-            studentsData.map((s: any) => (
+            visibleStudents.map((s: any) => (
               <div key={s.id} className="p-4 space-y-3">
                 <div className="flex items-start gap-3">
                   <div className="relative h-12 w-12 shrink-0 rounded-2xl overflow-hidden border border-border bg-muted">
@@ -1176,6 +1212,11 @@ export default function StudentsPage() {
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold mt-0.5">
                       <Phone className="h-2.5 w-2.5 shrink-0" /> {s.parentPhone || 'No contact'}
                     </div>
+                    {viewAllSchools && s.school?.name && (
+                      <div className="flex items-center gap-1.5 text-[10px] text-primary font-bold mt-0.5">
+                        <Building2 className="h-2.5 w-2.5 shrink-0" /> {s.school.name}
+                      </div>
+                    )}
                     <div className="mt-2 font-mono text-[11px] font-black px-2 py-1 rounded-lg bg-muted border border-border inline-block">
                       {s.rollNumber || '—'}
                     </div>
@@ -1262,7 +1303,7 @@ export default function StudentsPage() {
                     </div>
                   </td>
                 </tr>
-              ) : !studentsData || studentsData.length === 0 ? (
+              ) : !visibleStudents || visibleStudents.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-24 text-center">
                     <div className="flex flex-col items-center gap-4">
@@ -1276,7 +1317,7 @@ export default function StudentsPage() {
                     </div>
                   </td>
                 </tr>
-              ) : studentsData.map((s: any) => (
+              ) : visibleStudents.map((s: any) => (
                 <tr key={s.id} className="group/row hover:bg-muted/30 transition-all duration-300">
                   <td className="p-6">
                     <div className="flex items-center gap-4">
@@ -1847,7 +1888,7 @@ export default function StudentsPage() {
       <GenerateCardsDialog
         open={showGenerateDialog}
         onClose={() => setShowGenerateDialog(false)}
-        studentCount={studentsData.length}
+        studentCount={visibleStudents.length}
         isSubmitting={generateMutation.isPending}
         driveAvailable={driveStatus?.canUpload ?? false}
         onDownload={() => generateMutation.mutate('download')}
