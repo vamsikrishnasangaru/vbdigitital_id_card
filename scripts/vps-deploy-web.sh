@@ -15,6 +15,7 @@ pnpm install
 
 cd "$WEB_DIR"
 export RELEASE_REVISION="${RELEASE_REVISION:-$(git -C "$APP_ROOT" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d)}"
+export NEXT_PUBLIC_APP_REVISION="${NEXT_PUBLIC_APP_REVISION:-$RELEASE_REVISION}"
 export PORT="${PORT:-3000}"
 export HOSTNAME="${HOSTNAME:-0.0.0.0}"
 # Same-origin /api/v1 — nginx must proxy to Nest on :4000 (do not use localhost in the browser build).
@@ -23,6 +24,8 @@ export API_REWRITE_TARGET="${API_REWRITE_TARGET:-http://127.0.0.1:4000/api/v1}"
 {
   echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"
   echo "API_REWRITE_TARGET=$API_REWRITE_TARGET"
+  echo "NEXT_PUBLIC_APP_REVISION=$NEXT_PUBLIC_APP_REVISION"
+  echo "RELEASE_REVISION=$RELEASE_REVISION"
 } > .env.production
 
 # Dev .env.local often contains localhost and breaks live auth if baked into the client bundle.
@@ -71,6 +74,6 @@ echo "Health:"
 curl -sI "http://127.0.0.1:$PORT/" | head -n1
 curl -sI "http://127.0.0.1:$PORT/students" | head -n1
 echo ""
-echo "Deployed web revision: ${RELEASE_REVISION}"
-echo "After deploy: hard-refresh browser (Ctrl+Shift+R)."
+echo "Deployed web revision: ${RELEASE_REVISION} (client: ${NEXT_PUBLIC_APP_REVISION})"
+echo "Browsers auto-refresh once when revision changes; or hard-refresh (Ctrl+Shift+R)."
 echo "Student edit should use PUT /api/v1/students/:id — NOT POST /api/v1/uploads."

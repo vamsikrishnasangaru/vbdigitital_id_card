@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect } from 'react';
+import { clearAllAppCaches } from '@/lib/clear-app-caches';
 
 const swDisabled = process.env.NEXT_PUBLIC_DISABLE_SW === 'true';
 const isDev = process.env.NODE_ENV === 'development';
-const SW_MIGRATION_KEY = 'vb-sw-migration-v4';
+const SW_MIGRATION_KEY = 'vb-sw-migration-v5';
+const APP_UPGRADE_FLAG = 'vb-app-upgrade-pending';
+const SW_RELOAD_FLAG = 'vb-sw-reloading';
 const SERWIST_SW_PATH = '/sw.js';
 
 /** Serwist dev bundles are classic scripts; module registration fails silently. */
@@ -72,6 +75,16 @@ async function purgeDevSerwistWorkers(controllerPath: string): Promise<'reload' 
   return 'reload';
 }
 
+async function finishDeployUpgrade(): Promise<'reload' | 'continue'> {
+  if (!sessionStorage.getItem(APP_UPGRADE_FLAG)) return 'continue';
+  sessionStorage.removeItem(APP_UPGRADE_FLAG);
+  await clearAllAppCaches();
+  if (sessionStorage.getItem(SW_RELOAD_FLAG)) return 'continue';
+  sessionStorage.setItem(SW_RELOAD_FLAG, '1');
+  window.location.reload();
+  return 'reload';
+}
+
 export function SerwistRegistration({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (swDisabled || !('serviceWorker' in navigator)) return;
@@ -79,12 +92,24 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
     const swUrl = serviceWorkerUrl();
     const swPath = new URL(swUrl, window.location.origin).pathname;
     let cancelled = false;
+    let onVisible: (() => void) | null = null;
 
     const pushState = history.pushState.bind(history);
     const replaceState = history.replaceState.bind(history);
     let warmPath: (() => void) | null = null;
 
+    const onControllerChange = () => {
+      if (isDev || sessionStorage.getItem(SW_RELOAD_FLAG)) return;
+      sessionStorage.setItem(SW_RELOAD_FLAG, '1');
+      window.location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+
     void (async () => {
+      const upgrade = await finishDeployUpgrade();
+      if (upgrade === 'reload' || cancelled) return;
+
       const controllerPath = scriptName(navigator.serviceWorker.controller?.scriptURL);
       const staleController =
         controllerPath.length > 0 && controllerPath !== swPath;
@@ -115,9 +140,19 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
       const registration = await navigator.serviceWorker.register(swUrl, {
         scope: '/',
         type: 'classic',
+        updateViaCache: 'none',
       });
 
       if (cancelled) return;
+
+      void registration.update();
+
+      onVisible = () => {
+        if (document.visibilityState === 'visible') {
+          void registration.update();
+        }
+      };
+      document.addEventListener('visibilitychange', onVisible);
 
       // Dev-only: warming every navigation duplicates requests and slows the app.
       if (isDev) {
@@ -161,6 +196,8 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
 
     return () => {
       cancelled = true;
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      if (onVisible) document.removeEventListener('visibilitychange', onVisible);
       history.pushState = pushState;
       history.replaceState = replaceState;
       if (warmPath) window.removeEventListener('popstate', warmPath);
@@ -168,4 +205,4 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
   }, []);
 
   return <>{children}</>;
-};
+}

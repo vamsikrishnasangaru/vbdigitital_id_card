@@ -14,6 +14,7 @@ const withSerwist = withSerwistInit({
     ? []
     : (() => {
         const revision =
+          process.env.NEXT_PUBLIC_APP_REVISION ||
           process.env.RELEASE_REVISION ||
           process.env.GITHUB_SHA ||
           process.env.VERCEL_GIT_COMMIT_SHA ||
@@ -77,6 +78,21 @@ const nextConfig: NextConfig = {
       {
         source: '/api/v1/:path*',
         destination: `${apiRewriteTarget}/:path*`,
+      },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
+        source: '/manifest.json',
+        headers: [{ key: 'Cache-Control', value: 'no-cache' }],
       },
     ];
   },

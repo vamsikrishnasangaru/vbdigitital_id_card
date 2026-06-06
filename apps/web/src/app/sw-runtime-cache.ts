@@ -66,15 +66,16 @@ export const runtimeCaching: RuntimeCaching[] = [
   },
   {
     matcher: /\/_next\/static.+\.js$/i,
-    handler: new CacheFirst({
+    handler: new NetworkFirst({
       cacheName: "next-static-js-assets",
       plugins: [
         new ExpirationPlugin({
           maxEntries: 64,
-          maxAgeSeconds: 1440 * 60,
+          maxAgeSeconds: 24 * 60 * 60,
           maxAgeFrom: "last-used",
         }),
       ],
+      networkTimeoutSeconds: 5,
     }),
   },
   {

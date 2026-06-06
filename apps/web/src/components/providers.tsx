@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { useState, useEffect } from 'react';
+import { APP_REVISION } from '@/lib/app-revision';
 function isNetworkError(error: unknown): boolean {
   const err = error as { response?: unknown; code?: string };
   return !err.response || err.code === 'ERR_NETWORK';
@@ -52,7 +53,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     setMounted(true);
     const syncPersister = createSyncStoragePersister({
       storage: window.localStorage,
-      key: 'vb-id-cards-query-cache',
+      key: `vb-id-cards-query-cache-${APP_REVISION}`,
     });
     setPersister(syncPersister);
 

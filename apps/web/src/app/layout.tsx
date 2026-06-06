@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { SwDevBootstrap } from "@/components/SwDevBootstrap";
+import { AppVersionBootstrap } from "@/components/AppVersionBootstrap";
 import { SyncIndicator } from "@/components/SyncIndicator";
 
 const inter = Inter({
@@ -44,6 +45,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <AppVersionBootstrap />
         <SwDevBootstrap />
       </head>
       <body className={`${inter.variable} font-sans min-h-screen antialiased`}>

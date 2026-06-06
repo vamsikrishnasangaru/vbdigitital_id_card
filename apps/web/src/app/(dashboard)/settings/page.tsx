@@ -13,6 +13,7 @@ import {
   User,
   Lock,
   Building2,
+  RefreshCw,
   Bell,
   Loader2,
   Shield,
@@ -24,6 +25,8 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { PwaInstallInstructions } from '@/components/pwa/PwaInstallInstructions';
+import { APP_REVISION } from '@/lib/app-revision';
+import { clearAllAppCaches } from '@/lib/clear-app-caches';
 
 type SettingsTab = 'profile' | 'password' | 'account';
 
@@ -62,6 +65,7 @@ export default function SettingsPage() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -147,6 +151,19 @@ export default function SettingsPage() {
       toast.error(apiErr.response?.data?.message || 'Failed to change password');
     },
   });
+
+  const handleClearCache = async () => {
+    setClearingCache(true);
+    try {
+      sessionStorage.setItem('vb-app-upgrade-pending', APP_REVISION);
+      await clearAllAppCaches();
+      toast.success('Cache cleared — reloading latest version…');
+      window.location.reload();
+    } catch {
+      toast.error('Could not clear cache. Try a hard refresh (Ctrl+Shift+R).');
+      setClearingCache(false);
+    }
+  };
 
   const tabs: { id: SettingsTab; label: string; icon: typeof User }[] = [
     { id: 'profile', label: 'Profile', icon: User },
@@ -499,6 +516,29 @@ export default function SettingsPage() {
                   As Teacher you can view students in your assigned classes and preview ID cards.
                 </p>
               )}
+
+              <div className="rounded-2xl border border-border bg-card p-5 max-w-2xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <RefreshCw className="h-4 w-4 text-primary" />
+                  <h4 className="text-sm font-black text-foreground">App cache</h4>
+                </div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  If you see old screens or wrong counts after an update, clear cached data and reload
+                  the latest version.
+                </p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">
+                  Version {APP_REVISION}
+                </p>
+                <button
+                  type="button"
+                  disabled={clearingCache}
+                  onClick={() => void handleClearCache()}
+                  className="px-5 py-2.5 rounded-xl text-sm font-black bg-muted border border-border hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {clearingCache && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Clear cache &amp; reload
+                </button>
+              </div>
 
               <div className="rounded-2xl border border-border bg-card p-5 max-w-2xl">
                 <div className="flex items-center gap-2 mb-3">
