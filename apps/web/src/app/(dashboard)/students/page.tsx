@@ -31,6 +31,7 @@ import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOve
 import { normalizeFrontConfig } from '@/lib/template-utils';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
+import { isStudentIncomplete } from '@/lib/student-completion';
 import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
 import {
   classesQueryKey,
@@ -69,17 +70,6 @@ function safeLabel(value: unknown, fallback: string) {
   const lowered = s.toLowerCase();
   if (lowered === 'undefined' || lowered === 'null') return fallback;
   return s;
-}
-
-function isStudentIncomplete(s: any): boolean {
-  return (
-    !s?.photoUrl ||
-    !String(s?.rollNumber || '').trim() ||
-    !String(s?.classId || s?.class?.id || '').trim() ||
-    String(s?.class?.name || '').trim().toLowerCase() === 'unassigned' ||
-    !String(s?.parentName || '').trim() ||
-    !String(s?.parentPhone || '').trim()
-  );
 }
 
 function latestTemplateLabel(student: { idCards?: { template?: { id: string; name: string; code?: string | null } }[] }) {

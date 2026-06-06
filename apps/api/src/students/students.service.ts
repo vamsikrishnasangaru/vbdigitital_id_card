@@ -3,8 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { ClassesService } from '../classes/classes.service';
 import {
-  INCOMPLETE_STUDENT_OR,
-  completeStudentWhere,
+  isStudentIncomplete,
+  STUDENT_COMPLETION_SELECT,
 } from './student-completion.util';
 
 @Injectable()
@@ -123,12 +123,6 @@ export class StudentsService {
     if (classId) where.classId = classId;
     if (sectionId) where.sectionId = sectionId;
     if (status) where.status = status;
-    if (completion === 'INCOMPLETE') {
-      where.OR = [...(where.OR ?? []), ...INCOMPLETE_STUDENT_OR];
-    } else if (completion === 'COMPLETE') {
-      Object.assign(where, completeStudentWhere(where));
-      delete where.OR;
-    }
     if (search) {
       where.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },
@@ -155,6 +149,19 @@ export class StudentsService {
           },
         },
       };
+    }
+
+    if (completion === 'INCOMPLETE' || completion === 'COMPLETE') {
+      const candidates = await this.prisma.student.findMany({
+        where,
+        select: STUDENT_COMPLETION_SELECT,
+      });
+      const ids = candidates
+        .filter((s) =>
+          completion === 'INCOMPLETE' ? isStudentIncomplete(s) : !isStudentIncomplete(s),
+        )
+        .map((s) => s.id);
+      where.id = { in: ids.length > 0 ? ids : ['__none__'] };
     }
 
     const [data, total] = await Promise.all([

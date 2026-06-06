@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  completeStudentWhere,
-  incompleteStudentWhere,
+  countStudentsByCompletion,
+  isStudentIncomplete,
+  STUDENT_COMPLETION_SELECT,
 } from '../students/student-completion.util';
 
 @Injectable()
@@ -44,17 +45,19 @@ export class AnalyticsService {
 
   private async studentMetrics(base: Prisma.StudentWhereInput = {}) {
     const active = { ...base, deletedAt: null };
-    const [totalStudents, incompleteStudents, completeStudents, submittedStudents] =
-      await Promise.all([
-        this.prisma.student.count({ where: active }),
-        this.prisma.student.count({ where: incompleteStudentWhere(base) }),
-        this.prisma.student.count({ where: completeStudentWhere(base) }),
-        this.prisma.student.count({
-          where: { ...active, status: 'SUBMITTED' },
-        }),
-      ]);
+    const students = await this.prisma.student.findMany({
+      where: active,
+      select: STUDENT_COMPLETION_SELECT,
+    });
+    const { incompleteStudents, completeStudents } = countStudentsByCompletion(students);
+    const submittedStudents = students.filter((s) => s.status === 'SUBMITTED').length;
 
-    return { totalStudents, incompleteStudents, completeStudents, submittedStudents };
+    return {
+      totalStudents: students.length,
+      incompleteStudents,
+      completeStudents,
+      submittedStudents,
+    };
   }
 
   async getSuperAdminDashboard() {
@@ -171,9 +174,11 @@ export class AnalyticsService {
         const total = await this.prisma.student.count({
           where: { ...rowBase, deletedAt: null },
         });
-        const complete = await this.prisma.student.count({
-          where: completeStudentWhere(rowBase),
+        const sectionStudents = await this.prisma.student.findMany({
+          where: { ...rowBase, deletedAt: null },
+          select: STUDENT_COMPLETION_SELECT,
         });
+        const complete = sectionStudents.filter((s) => !isStudentIncomplete(s)).length;
         return {
           className: a.class.name,
           sectionName: a.section.name,
