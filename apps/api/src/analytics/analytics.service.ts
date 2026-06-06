@@ -25,29 +25,44 @@ export class AnalyticsService {
     });
   }
 
+  private assignmentStudentWhere(
+    assignments: { classId: string; sectionId: string }[],
+  ): Prisma.StudentWhereInput {
+    if (assignments.length === 0) {
+      return { id: '__none__' };
+    }
+    return {
+      deletedAt: null,
+      OR: assignments.map((a) => ({
+        classId: a.classId,
+        sectionId: a.sectionId,
+      })),
+    };
+  }
+
   async getSuperAdminDashboard() {
-    const [totalSchools, totalStudents, totalOrders, pendingOrders, printingBatches, deliveries] = await Promise.all([
+    const [
+      totalSchools,
+      totalStudents,
+      totalTemplates,
+      totalIdCards,
+      totalTeachers,
+    ] = await Promise.all([
       this.prisma.school.count({ where: { deletedAt: null } }),
       this.prisma.student.count({ where: { deletedAt: null } }),
-      this.prisma.order.count({ where: { deletedAt: null } }),
-      this.prisma.order.count({ where: { status: 'SUBMITTED', deletedAt: null } }),
-      this.prisma.printBatch.count({ where: { status: 'QUEUED' } }),
-      this.prisma.delivery.count({ where: { status: { in: ['PACKED', 'DISPATCHED', 'IN_TRANSIT'] } } }),
+      this.prisma.template.count({ where: { deletedAt: null, isActive: true } }),
+      this.prisma.idCard.count({ where: { deletedAt: null } }),
+      this.prisma.user.count({
+        where: { role: 'TEACHER', deletedAt: null, isActive: true },
+      }),
     ]);
 
-    // Monthly trend (last 6 months)
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    const monthlyStudents = await this.prisma.student.groupBy({
-      by: ['createdAt'],
-      where: { createdAt: { gte: sixMonthsAgo }, deletedAt: null },
-      _count: true,
-    });
-
     return {
-      totalSchools, totalStudents, totalOrders, pendingOrders,
-      printingBatches, activeDeliveries: deliveries,
+      totalSchools,
+      totalStudents,
+      totalTemplates,
+      totalIdCards,
+      totalTeachers,
       recentSchools: await this.prisma.school.findMany({
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
@@ -59,29 +74,57 @@ export class AnalyticsService {
   }
 
   async getSchoolDashboard(schoolId: string) {
-    const [totalStudents, draftStudents, submittedStudents, approvedStudents, totalOrders, pendingDeliveries] = await Promise.all([
+    const [
+      totalStudents,
+      draftStudents,
+      submittedStudents,
+      approvedStudents,
+      totalClasses,
+      totalTeachers,
+      totalTemplates,
+      totalIdCards,
+    ] = await Promise.all([
       this.prisma.student.count({ where: { schoolId, deletedAt: null } }),
       this.prisma.student.count({ where: { schoolId, status: 'DRAFT', deletedAt: null } }),
       this.prisma.student.count({ where: { schoolId, status: 'SUBMITTED', deletedAt: null } }),
       this.prisma.student.count({ where: { schoolId, status: 'APPROVED', deletedAt: null } }),
-      this.prisma.order.count({ where: { schoolId, deletedAt: null } }),
-      this.prisma.delivery.count({ where: { schoolId, status: { not: 'DELIVERED' } } }),
+      this.prisma.class.count({ where: { schoolId, deletedAt: null } }),
+      this.prisma.user.count({
+        where: { schoolId, role: 'TEACHER', deletedAt: null, isActive: true },
+      }),
+      this.prisma.template.count({
+        where: {
+          deletedAt: null,
+          isActive: true,
+          OR: [{ schoolId }, { schoolId: null }],
+        },
+      }),
+      this.prisma.idCard.count({
+        where: { deletedAt: null, student: { schoolId, deletedAt: null } },
+      }),
     ]);
 
     const classWise = await this.prisma.class.findMany({
       where: { schoolId, deletedAt: null },
-      include: { 
-        _count: { select: { students: true } }, 
-        sections: { 
-          include: { _count: { select: { students: true } } } 
-        } 
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { students: { where: { deletedAt: null } } } },
       },
       orderBy: { sortOrder: 'asc' },
+      take: 8,
     });
 
     return {
-      totalStudents, draftStudents, submittedStudents, approvedStudents,
-      totalOrders, pendingDeliveries, classWise,
+      totalStudents,
+      draftStudents,
+      submittedStudents,
+      approvedStudents,
+      totalClasses,
+      totalTeachers,
+      totalTemplates,
+      totalIdCards,
+      classWise,
       recentStudents: await this.getRecentStudents({ schoolId }),
     };
   }
@@ -95,33 +138,62 @@ export class AnalyticsService {
       },
     });
 
-    const sectionIds = assignments.map(a => a.sectionId);
-
-    const [totalStudents, draftStudents, submittedStudents, approvedStudents] = await Promise.all([
-      this.prisma.student.count({ where: { sectionId: { in: sectionIds }, deletedAt: null } }),
-      this.prisma.student.count({ where: { sectionId: { in: sectionIds }, status: 'DRAFT', deletedAt: null } }),
-      this.prisma.student.count({ where: { sectionId: { in: sectionIds }, status: 'SUBMITTED', deletedAt: null } }),
-      this.prisma.student.count({ where: { sectionId: { in: sectionIds }, status: 'APPROVED', deletedAt: null } }),
-    ]);
-
-    // Get stats per section
-    const sectionStats = await Promise.all(assignments.map(async (a) => {
-      const count = await this.prisma.student.count({ where: { sectionId: a.sectionId, deletedAt: null } });
-      const approved = await this.prisma.student.count({ where: { sectionId: a.sectionId, status: 'APPROVED', deletedAt: null } });
-      return {
-        className: a.class.name,
-        sectionName: a.section.name,
-        total: count,
-        approved,
-        percentage: count > 0 ? Math.round((approved / count) * 100) : 0,
-      };
+    const pairs = assignments.map((a) => ({
+      classId: a.classId,
+      sectionId: a.sectionId,
     }));
+    const studentWhere = this.assignmentStudentWhere(pairs);
+
+    const [totalStudents, draftStudents, submittedStudents, approvedStudents] =
+      await Promise.all([
+        pairs.length
+          ? this.prisma.student.count({ where: studentWhere })
+          : Promise.resolve(0),
+        pairs.length
+          ? this.prisma.student.count({ where: { ...studentWhere, status: 'DRAFT' } })
+          : Promise.resolve(0),
+        pairs.length
+          ? this.prisma.student.count({ where: { ...studentWhere, status: 'SUBMITTED' } })
+          : Promise.resolve(0),
+        pairs.length
+          ? this.prisma.student.count({ where: { ...studentWhere, status: 'APPROVED' } })
+          : Promise.resolve(0),
+      ]);
+
+    const sectionStats = await Promise.all(
+      assignments.map(async (a) => {
+        const base = {
+          classId: a.classId,
+          sectionId: a.sectionId,
+          deletedAt: null,
+        };
+        const count = await this.prisma.student.count({ where: base });
+        const approved = await this.prisma.student.count({
+          where: { ...base, status: 'APPROVED' },
+        });
+        return {
+          className: a.class.name,
+          sectionName: a.section.name,
+          total: count,
+          approved,
+          percentage: count > 0 ? Math.round((approved / count) * 100) : 0,
+        };
+      }),
+    );
 
     return {
-      totalStudents, draftStudents, submittedStudents, approvedStudents,
+      totalStudents,
+      draftStudents,
+      submittedStudents,
+      approvedStudents,
       assignments: sectionStats,
-      recentStudents: sectionIds.length
-        ? await this.getRecentStudents({ sectionId: { in: sectionIds } })
+      recentStudents: pairs.length
+        ? await this.getRecentStudents({
+            OR: pairs.map((p) => ({
+              classId: p.classId,
+              sectionId: p.sectionId,
+            })),
+          })
         : [],
     };
   }
