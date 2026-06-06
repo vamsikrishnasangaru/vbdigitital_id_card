@@ -34,6 +34,8 @@ import {
   fetchDriveStatus,
   type GenerateDestination,
 } from '@/lib/generate-id-cards';
+import { saveEditStudentIntent } from '@/lib/students-navigation';
+import { MODAL_BACKDROP, modalPanelClass } from '@/lib/modal-motion';
 
 const IdCardDesigner = dynamic(
   () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
@@ -42,7 +44,6 @@ const IdCardDesigner = dynamic(
 
 const ALL_CLASSES = '__all__';
 const ALL_SECTIONS = '__all__';
-const EDIT_STUDENT_STORAGE_KEY = 'vb_edit_student_id';
 
 function safeLabel(value: string | null | undefined, fallback: string) {
   return value?.trim() ? value : fallback;
@@ -91,7 +92,6 @@ export default function IdCardsPage() {
   const [viewStudent, setViewStudent] = useState<any | null>(null);
   const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [editNavigating, setEditNavigating] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<{
     name: string;
     frontBgUrl?: string;
@@ -101,6 +101,10 @@ export default function IdCardsPage() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
 
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
+
+  useEffect(() => {
+    router.prefetch('/students');
+  }, [router]);
 
   const { data: schools = [] } = useQuery({
     queryKey: queryKeys.schools.picker,
@@ -251,23 +255,18 @@ export default function IdCardsPage() {
     deleteMutation.mutate(s.id);
   };
 
-  const openEditStudent = async (student: { id: string; schoolId?: string }) => {
-    setEditNavigating(true);
-    try {
-      sessionStorage.setItem(EDIT_STUDENT_STORAGE_KEY, student.id);
-      const schoolId = student.schoolId || effectiveSchoolId;
-      if (schoolId) {
-        await queryClient.prefetchQuery({
-          queryKey: classesQueryKey(schoolId),
-          queryFn: () => fetchClassesPicker(schoolId),
-          staleTime: classesQueryStaleTime(),
-        });
-      }
-      setViewStudent(null);
-      router.push('/students');
-    } finally {
-      setEditNavigating(false);
+  const openEditStudent = (student: Record<string, unknown> & { id: string; schoolId?: string }) => {
+    saveEditStudentIntent(student as Parameters<typeof saveEditStudentIntent>[0]);
+    setViewStudent(null);
+    const schoolId = student.schoolId || effectiveSchoolId;
+    if (schoolId) {
+      void queryClient.prefetchQuery({
+        queryKey: classesQueryKey(schoolId),
+        queryFn: () => fetchClassesPicker(schoolId),
+        staleTime: classesQueryStaleTime(),
+      });
     }
+    router.push('/students');
   };
 
   const openCardPreview = async () => {
@@ -647,14 +646,14 @@ export default function IdCardsPage() {
       {viewStudent && !cardPreviewOpen && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4">
           <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-300"
+            className={MODAL_BACKDROP}
             onClick={() => setViewStudent(null)}
           />
           <div
             className={cn(
               'relative bg-card border border-border w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]',
               'rounded-t-[2rem] sm:rounded-3xl border-b-0 sm:border-b',
-              'animate-in slide-in-from-bottom duration-300 ease-out sm:slide-in-from-bottom-0 sm:zoom-in-95 sm:duration-200',
+              modalPanelClass(),
             )}
           >
             <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
@@ -729,7 +728,7 @@ export default function IdCardsPage() {
               <button
                 type="button"
                 onClick={() => handleDeleteStudent(viewStudent)}
-                disabled={deleteMutation.isPending || editNavigating || previewLoading}
+                disabled={deleteMutation.isPending || previewLoading}
                 className="px-4 py-2.5 rounded-xl text-sm font-bold text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50"
               >
                 Remove
@@ -737,22 +736,18 @@ export default function IdCardsPage() {
               {!(viewStudent.status === 'APPROVED' && !isSuperAdmin) && (
                 <button
                   type="button"
-                  onClick={() => void openEditStudent(viewStudent)}
-                  disabled={editNavigating || previewLoading}
+                  onClick={() => openEditStudent(viewStudent)}
+                  disabled={previewLoading}
                   className="px-4 py-2.5 rounded-xl text-sm font-bold bg-card border border-border hover:bg-muted transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
-                  {editNavigating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Pencil className="h-4 w-4" />
-                  )}
+                  <Pencil className="h-4 w-4" />
                   Edit
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => void openCardPreview()}
-                disabled={!selectedTemplate || previewLoading || editNavigating}
+                disabled={!selectedTemplate || previewLoading}
                 className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 {previewLoading && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useDeferredValue, useRef } from 'react';
+import { useState, useEffect, useMemo, useDeferredValue, useRef, useLayoutEffect } from 'react';
 import dynamic from 'next/dynamic';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -41,7 +41,8 @@ import { offlineStore } from '@/lib/offline-store';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { useMergedStudents } from '@/hooks/use-merged-students';
 import { GenerateCardsDialog } from '@/components/id-cards/GenerateCardsDialog';
-import { consumeStudentsClassSectionFilter } from '@/lib/students-navigation';
+import { consumeStudentsClassSectionFilter, consumeEditStudentIntent } from '@/lib/students-navigation';
+import { MODAL_BACKDROP, modalPanelClass } from '@/lib/modal-motion';
 import { StudentExcelImportDialog } from '@/components/students/StudentExcelImportDialog';
 import {
   generateIdCards,
@@ -140,8 +141,6 @@ function emptyStudentForm(schoolId = ''): StudentFormState {
   };
 }
 
-const EDIT_STUDENT_STORAGE_KEY = 'vb_edit_student_id';
-
 export default function StudentsPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -152,6 +151,8 @@ export default function StudentsPage() {
   const teacherDefaultsApplied = useRef(false);
   const skipFilterResetRef = useRef(false);
   const classSectionNavApplied = useRef(false);
+  const editIntentHandled = useRef(false);
+  const [skipPageEnterAnimation, setSkipPageEnterAnimation] = useState(false);
   const [selectedSchoolId, setSelectedSchoolId] = useState(() => {
     if (typeof window === 'undefined') return '';
     return localStorage.getItem('students_selected_school_id') ?? '';
@@ -502,35 +503,39 @@ export default function StudentsPage() {
     setShowCreate(true);
   };
 
-  useEffect(() => {
-    const editId = sessionStorage.getItem(EDIT_STUDENT_STORAGE_KEY);
-    if (!editId) return;
+  useLayoutEffect(() => {
+    if (editIntentHandled.current) return;
+    const intent = consumeEditStudentIntent();
+    if (!intent) return;
 
-    const fromList = studentsData.find((s: { id: string }) => s.id === editId);
-    if (fromList) {
-      sessionStorage.removeItem(EDIT_STUDENT_STORAGE_KEY);
-      openEditStudent(fromList);
-      return;
+    editIntentHandled.current = true;
+    setSkipPageEnterAnimation(true);
+
+    const hasDetails =
+      Boolean(intent.firstName?.trim()) ||
+      Boolean(intent.rollNumber?.trim()) ||
+      Boolean(intent.parentPhone?.trim());
+
+    if (hasDetails) {
+      openEditStudent(intent);
+    } else {
+      void api
+        .get(`/students/${intent.id}`)
+        .then(({ data }) => openEditStudent(data))
+        .catch(() => {
+          toast.error('Could not open student for editing');
+        });
     }
 
-    if (!effectiveSchoolId) return;
-
-    let cancelled = false;
-    void api
-      .get(`/students/${editId}`)
-      .then(({ data }) => {
-        if (cancelled) return;
-        sessionStorage.removeItem(EDIT_STUDENT_STORAGE_KEY);
-        openEditStudent(data);
-      })
-      .catch(() => {
-        sessionStorage.removeItem(EDIT_STUDENT_STORAGE_KEY);
+    const schoolId = intent.schoolId || effectiveSchoolId;
+    if (schoolId) {
+      void queryClient.prefetchQuery({
+        queryKey: classesQueryKey(schoolId),
+        queryFn: () => fetchClassesPicker(schoolId),
+        staleTime: classesQueryStaleTime(),
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [studentsData, effectiveSchoolId]);
+    }
+  }, [effectiveSchoolId, queryClient]);
 
   // Mutations
   const createMutation = useMutation({
@@ -827,7 +832,7 @@ export default function StudentsPage() {
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className={cn('space-y-8', !skipPageEnterAnimation && 'animate-in fade-in duration-200')}>
       {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div className="space-y-1">
@@ -1520,14 +1525,14 @@ export default function StudentsPage() {
       {showCreate && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4">
           <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-300"
+            className={MODAL_BACKDROP}
             onClick={closeEnrollModal}
           />
           <div
             className={cn(
               'relative bg-card border border-border w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] flex flex-col min-h-0',
               'rounded-t-[2rem] sm:rounded-[3rem] border-b-0 sm:border-b',
-              'animate-in slide-in-from-bottom duration-300 ease-out sm:slide-in-from-bottom-0 sm:zoom-in-95 sm:duration-300',
+              modalPanelClass(),
             )}
           >
             <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
