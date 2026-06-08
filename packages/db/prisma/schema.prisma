@@ -138,6 +138,8 @@ model Student {
   dateOfBirth      DateTime?
   bloodGroup       String?
   aadharCard       String?
+  penId            String?
+  apaarId          String?
   photoUrl         String?
   parentName       String?
   parentPhone      String?

@@ -106,6 +106,8 @@ interface StudentFormState {
   parentPhone: string;
   bloodGroup: string;
   aadharCard: string;
+  penId: string;
+  apaarId: string;
   address: string;
   dateOfBirth: string;
   emergencyContact: string;
@@ -125,6 +127,8 @@ function emptyStudentForm(schoolId = ''): StudentFormState {
     parentPhone: '',
     bloodGroup: '',
     aadharCard: '',
+    penId: '',
+    apaarId: '',
     address: '',
     dateOfBirth: '',
     emergencyContact: '',
@@ -499,6 +503,8 @@ export default function StudentsPage() {
     parentPhone?: string | null;
     bloodGroup?: string | null;
     aadharCard?: string | null;
+    penId?: string | null;
+    apaarId?: string | null;
     address?: string | null;
     dateOfBirth?: string | null;
     emergencyContact?: string | null;
@@ -524,6 +530,8 @@ export default function StudentsPage() {
       parentPhone: sanitizeIndianMobileInput(student.parentPhone || ''),
       bloodGroup: student.bloodGroup || '',
       aadharCard: student.aadharCard || '',
+      penId: student.penId || '',
+      apaarId: student.apaarId || '',
       address: student.address || '',
       dateOfBirth: student.dateOfBirth ? String(student.dateOfBirth).slice(0, 10) : '',
       emergencyContact: student.emergencyContact || '',
@@ -789,6 +797,8 @@ export default function StudentsPage() {
       }
       if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
       if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
+      if (form.penId?.trim()) formData.append('penId', form.penId.trim());
+      if (form.apaarId?.trim()) formData.append('apaarId', form.apaarId.trim());
       if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
       if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
       if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
@@ -820,6 +830,8 @@ export default function StudentsPage() {
     }
     if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
     if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
+    if (form.penId?.trim()) formData.append('penId', form.penId.trim());
+    if (form.apaarId?.trim()) formData.append('apaarId', form.apaarId.trim());
     if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
     if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
     if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
@@ -848,6 +860,8 @@ export default function StudentsPage() {
       'Parent Name': s.parentName || '—',
       'Parent Phone': s.parentPhone || '—',
       'Blood Group': s.bloodGroup || '—',
+      'PEN ID': s.penId || '—',
+      'APAAR ID': s.apaarId || '—',
     }));
 
     void import('xlsx')
@@ -1487,6 +1501,18 @@ export default function StudentsPage() {
                   <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Blood group</p>
                   <p className="font-bold text-foreground">{viewStudent.bloodGroup || '—'}</p>
                 </div>
+                {viewStudent.penId && (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">PEN ID</p>
+                    <p className="font-bold text-foreground font-mono">{viewStudent.penId}</p>
+                  </div>
+                )}
+                {viewStudent.apaarId && (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">APAAR ID</p>
+                    <p className="font-bold text-foreground font-mono">{viewStudent.apaarId}</p>
+                  </div>
+                )}
               </div>
               {(viewStudent.parentName || viewStudent.parentPhone) && (
                 <div className="p-4 rounded-2xl bg-muted/50 border border-border">
@@ -1804,6 +1830,28 @@ export default function StudentsPage() {
                             maxLength={12}
                             className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
                             placeholder="12-digit Aadhar number"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                            PEN ID
+                          </label>
+                          <input
+                            value={form.penId}
+                            onChange={(e) => setForm({ ...form, penId: e.target.value })}
+                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
+                            placeholder="Permanent Education Number"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                            APAAR ID
+                          </label>
+                          <input
+                            value={form.apaarId}
+                            onChange={(e) => setForm({ ...form, apaarId: e.target.value })}
+                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
+                            placeholder="Automated Permanent Academic Account Registry ID"
                           />
                         </div>
                         <div className="space-y-2">

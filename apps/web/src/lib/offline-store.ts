@@ -26,6 +26,8 @@ export interface OfflineStudentRecord {
   address: string;
   bloodGroup?: string | null;
   aadharCard?: string | null;
+  penId?: string | null;
+  apaarId?: string | null;
   dateOfBirth?: string | null;
   emergencyContact?: string | null;
   transportDetails?: string | null;
@@ -153,6 +155,8 @@ async function formDataToOfflineStudent(
     address: String(formData.get('address') || '').trim(),
     bloodGroup: (formData.get('bloodGroup') as string) || null,
     aadharCard: (formData.get('aadharCard') as string) || null,
+    penId: (formData.get('penId') as string) || null,
+    apaarId: (formData.get('apaarId') as string) || null,
     dateOfBirth: (formData.get('dateOfBirth') as string) || null,
     emergencyContact: (formData.get('emergencyContact') as string) || null,
     transportDetails: (formData.get('transportDetails') as string) || null,
@@ -193,6 +197,8 @@ function studentMatchesFilters(
       s.rollNumber,
       s.admissionNumber,
       s.aadharCard,
+      s.penId,
+      s.apaarId,
       s.parentName,
       s.parentPhone,
     ]

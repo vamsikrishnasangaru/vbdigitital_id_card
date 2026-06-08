@@ -185,6 +185,8 @@ export function resolveStudentField(
     dateOfBirth?: string;
     bloodGroup?: string;
     aadharCard?: string;
+    penId?: string;
+    apaarId?: string;
     parentName?: string;
     parentPhone?: string;
     address?: string;
@@ -221,6 +223,10 @@ export function resolveStudentField(
       return s.bloodGroup || 'N/A';
     case 'aadharCard':
       return s.aadharCard || 'N/A';
+    case 'penId':
+      return s.penId || 'N/A';
+    case 'apaarId':
+      return s.apaarId || 'N/A';
     case 'parentName':
       return s.parentName || 'N/A';
     case 'parentPhone':

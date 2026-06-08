@@ -31,6 +31,8 @@ const FIELD_ICONS: Record<string, LucideIcon> = {
   classSection: GraduationCap,
   bloodGroup: Droplets,
   aadharCard: Hash,
+  penId: Hash,
+  apaarId: Hash,
   parentName: User,
   parentPhone: Phone,
   address: MapPin,

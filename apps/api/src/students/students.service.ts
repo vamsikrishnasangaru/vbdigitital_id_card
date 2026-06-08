@@ -75,7 +75,7 @@ export class StudentsService {
       photoUrl = await this.uploadsService.saveFile(file, `schools/${data.schoolId}/students`);
     }
 
-    const { photo, ...rest } = data;
+    const { photo, penId, apaarId, ...rest } = data;
 
     let classId = typeof rest.classId === 'string' ? rest.classId.trim() : '';
     let sectionId = typeof rest.sectionId === 'string' ? rest.sectionId.trim() : '';
@@ -105,6 +105,8 @@ export class StudentsService {
         address: String(rest.address).trim(),
         photoUrl,
         lastName: lastName || '',
+        penId: penId ? String(penId).trim() : null,
+        apaarId: apaarId ? String(apaarId).trim() : null,
       },
       include: { class: true, section: true, school: true },
     });
@@ -131,6 +133,8 @@ export class StudentsService {
         { admissionNumber: { contains: search, mode: 'insensitive' } },
         { rollNumber: { contains: search, mode: 'insensitive' } },
         { aadharCard: { contains: search, mode: 'insensitive' } },
+        { penId: { contains: search, mode: 'insensitive' } },
+        { apaarId: { contains: search, mode: 'insensitive' } },
         { parentPhone: { contains: search, mode: 'insensitive' } },
         { parentName: { contains: search, mode: 'insensitive' } },
       ];
@@ -227,6 +231,8 @@ export class StudentsService {
       dateOfBirth,
       bloodGroup,
       aadharCard,
+      penId,
+      apaarId,
       emergencyContact,
       transportDetails,
       parentName,
@@ -270,6 +276,8 @@ export class StudentsService {
     if (address !== undefined) payload.address = address ? String(address).trim() : null;
     if (bloodGroup !== undefined) payload.bloodGroup = bloodGroup ? String(bloodGroup).trim() : null;
     if (aadharCard !== undefined) payload.aadharCard = aadharCard ? String(aadharCard).trim() : null;
+    if (penId !== undefined) payload.penId = penId ? String(penId).trim() : null;
+    if (apaarId !== undefined) payload.apaarId = apaarId ? String(apaarId).trim() : null;
     if (emergencyContact !== undefined) {
       payload.emergencyContact = emergencyContact ? String(emergencyContact).trim() : null;
     }
