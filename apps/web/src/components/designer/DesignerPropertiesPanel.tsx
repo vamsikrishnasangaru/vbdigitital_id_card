@@ -531,10 +531,11 @@ export function DesignerPropertiesPanel({
           </div>
           <ColorRow label="Text color" value={selected.fill ?? ''} onChange={(v) => onUpdate({ fill: v })} />
           <ColorRow
-            label="Text stroke"
+            label="Text outline"
             value={selected.stroke ?? ''}
             onChange={(v) => onUpdate(colorPatchWithStroke(v))}
           />
+          <p className="text-[9px] text-white/25">Outline is drawn outside the letters (not inside)</p>
           <div className="space-y-1.5">
             <Label>Text box width (px)</Label>
             <p className="text-[9px] text-white/25">Optional — long names shrink to fit on one line inside this width</p>
@@ -548,7 +549,7 @@ export function DesignerPropertiesPanel({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Stroke width</Label>
+            <Label>Outline width</Label>
             <Input
               type="number"
               min={0}

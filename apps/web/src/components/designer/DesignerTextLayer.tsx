@@ -115,6 +115,21 @@ export function DesignerTextLayer({
     el.fontSize,
   ]);
 
+  const strokeW = (el.strokeWidth ?? 0) > 0 && el.stroke ? el.strokeWidth! * ppiRatio : 0;
+  const strokeColor = el.stroke;
+  const fillColor = el.fill ?? PREVIEW_FILL;
+
+  const sharedTextProps = {
+    y: textY,
+    text,
+    width: hasBoxWidth ? el.width : undefined,
+    wrap: 'none' as const,
+    fontSize: displayFontSize,
+    fontFamily,
+    fontStyle,
+    textDecoration,
+  };
+
   return (
     <Group
       ref={groupRef}
@@ -145,19 +160,19 @@ export function DesignerTextLayer({
           listening={false}
         />
       )}
+      {strokeW > 0 && strokeColor && (
+        <Text
+          {...sharedTextProps}
+          fill="transparent"
+          stroke={strokeColor}
+          strokeWidth={strokeW * 2}
+          listening={false}
+        />
+      )}
       <Text
         ref={textRef}
-        y={textY}
-        text={text}
-        width={hasBoxWidth ? el.width : undefined}
-        wrap="none"
-        fontSize={displayFontSize}
-        fontFamily={fontFamily}
-        fontStyle={fontStyle}
-        textDecoration={textDecoration}
-        fill={el.fill ?? PREVIEW_FILL}
-        stroke={(el.strokeWidth ?? 0) > 0 && el.stroke ? el.stroke : undefined}
-        strokeWidth={(el.strokeWidth ?? 0) > 0 ? el.strokeWidth! * ppiRatio : 0}
+        {...sharedTextProps}
+        fill={fillColor}
       />
       {borderW > 0 && (
         <Rect
