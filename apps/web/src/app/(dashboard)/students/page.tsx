@@ -55,6 +55,11 @@ import { GenerateCardsDialog } from '@/components/id-cards/GenerateCardsDialog';
 import { consumeStudentsClassSectionFilter, consumeEditStudentIntent } from '@/lib/students-navigation';
 import { MODAL_BACKDROP, modalPanelClass } from '@/lib/modal-motion';
 import { StudentExcelImportDialog } from '@/components/students/StudentExcelImportDialog';
+import { StudentEnrollFormFields, type StudentEnrollFormState } from '@/components/students/StudentEnrollFormFields';
+import {
+  buildEnrollFormLayout,
+  extractTemplateStudentFieldTypes,
+} from '@/lib/student-enroll-layout';
 import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import {
   generateIdCards,
@@ -104,28 +109,7 @@ interface TeacherAssignment {
   section: { id: string; name: string };
 }
 
-interface StudentFormState {
-  schoolId: string;
-  classId: string;
-  sectionId: string;
-  firstName: string;
-  lastName: string;
-  rollNumber: string;
-  admissionNumber: string;
-  childId: string;
-  fatherName: string;
-  motherName: string;
-  parentName: string;
-  parentPhone: string;
-  bloodGroup: string;
-  aadharCard: string;
-  penId: string;
-  apaarId: string;
-  address: string;
-  dateOfBirth: string;
-  emergencyContact: string;
-  transportDetails: string;
-}
+type StudentFormState = StudentEnrollFormState;
 
 function emptyStudentForm(schoolId = ''): StudentFormState {
   return {
@@ -196,6 +180,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
   const [templateCode, setTemplateCode] = useState('');
   const deferredTemplateCode = useDeferredValue(templateCode.trim());
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [enrollTemplateId, setEnrollTemplateId] = useState('');
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
@@ -418,6 +403,56 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     enrollClasses.length === 0 &&
     (enrollSchoolId === effectiveSchoolId ? classesPending : enrollAltPending);
 
+  const { data: enrollTemplates = [] } = useQuery({
+    queryKey: ['templates', enrollSchoolId, 'enroll'],
+    queryFn: async () => {
+      const { data } = await api.get('/templates', {
+        params: { schoolId: enrollSchoolId },
+      });
+      return data as {
+        id: string;
+        name: string;
+        code?: string | null;
+        isDefault?: boolean;
+      }[];
+    },
+    enabled: showCreate && !!enrollSchoolId,
+  });
+
+  const { data: enrollTemplateDetail, isLoading: enrollTemplateLoading } = useQuery({
+    queryKey: ['template-detail', enrollTemplateId],
+    queryFn: () =>
+      fetchTemplateWithConfig<{
+        id: string;
+        name: string;
+        frontConfig?: unknown;
+        backConfig?: unknown;
+      }>(enrollTemplateId),
+    enabled: showCreate && !!enrollTemplateId,
+  });
+
+  const enrollLayout = useMemo(() => {
+    if (!enrollTemplateId || !enrollTemplateDetail) {
+      return buildEnrollFormLayout([]);
+    }
+    const types = extractTemplateStudentFieldTypes(
+      enrollTemplateDetail.frontConfig,
+      enrollTemplateDetail.backConfig,
+    );
+    return buildEnrollFormLayout(types);
+  }, [enrollTemplateId, enrollTemplateDetail]);
+
+  useEffect(() => {
+    if (!showCreate || !enrollSchoolId) return;
+    if (enrollTemplates.length === 0) {
+      setEnrollTemplateId('');
+      return;
+    }
+    if (enrollTemplateId && enrollTemplates.some((t) => t.id === enrollTemplateId)) return;
+    const def = enrollTemplates.find((t) => t.isDefault) ?? enrollTemplates[0];
+    setEnrollTemplateId(def.id);
+  }, [showCreate, enrollSchoolId, enrollTemplates, enrollTemplateId]);
+
   const { data: templates = [] } = useQuery({
     queryKey: ['templates', effectiveSchoolId],
     queryFn: async () => {
@@ -478,6 +513,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
 
   const closeEnrollModal = () => {
     setShowCreate(false);
+    setEnrollTemplateId('');
     resetEnrollForm();
   };
 
@@ -1728,6 +1764,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                           value={form.schoolId}
                           onChange={(e) => {
                             const schoolId = e.target.value;
+                            setEnrollTemplateId('');
                             setForm({ ...form, schoolId, classId: '', sectionId: '' });
                             setSections([]);
                             if (schoolId) {
@@ -1751,266 +1788,40 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                       </div>
                     )}
 
-                    {/* Academic placement (optional) */}
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Class <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
-                      </label>
-                      <select
-                        value={form.classId}
-                        onChange={(e) => {
-                          const cid = e.target.value;
-                          setForm({ ...form, classId: cid, sectionId: '' });
-                          const cls = enrollClasses.find((c: { id: string }) => c.id === cid);
-                          setSections(
-                            (cls?.sections || []).filter(
-                              (s: { name?: string }) => !isPlaceholderSectionName(s.name),
-                            ),
-                          );
-                        }}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                      >
-                        <option value="">
-                          {enrollClassesLoading ? 'Loading classes…' : 'Select class'}
-                        </option>
-                        {enrollClasses.map((c: { id: string; name: string }) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Section <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
-                      </label>
-                      <select
-                        value={form.sectionId}
-                        onChange={(e) => setForm({ ...form, sectionId: e.target.value })}
-                        disabled={!form.classId}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm disabled:opacity-50"
-                      >
-                        <option value="">No section</option>
-                        {sections.map((s: { id: string; name: string }) => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Name (required) */}
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        First name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        value={form.firstName}
-                        onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                        required
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                        placeholder="e.g. Tamiri"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Last name
-                      </label>
-                      <input
-                        value={form.lastName}
-                        onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                        placeholder="e.g. Kumari"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Roll number <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
-                      </label>
-                      <input
-                        value={form.rollNumber}
-                        onChange={(e) => setForm({ ...form, rollNumber: e.target.value })}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
-                        placeholder="e.g. 12"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Student Child ID <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
-                      </label>
-                      <input
-                        value={form.childId}
-                        onChange={(e) =>
-                          setForm({ ...form, childId: sanitizeChildIdInput(e.target.value) })
-                        }
-                        inputMode="numeric"
-                        maxLength={12}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
-                        placeholder="Up to 12 digits"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Father name <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
-                      </label>
-                      <input
-                        value={form.fatherName}
-                        onChange={(e) => setForm({ ...form, fatherName: e.target.value })}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                        placeholder="Father's full name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Mother name <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
-                      </label>
-                      <input
-                        value={form.motherName}
-                        onChange={(e) => setForm({ ...form, motherName: e.target.value })}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                        placeholder="Mother's full name"
-                      />
-                    </div>
-
-                    {/* Parent / guardian */}
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Parent / guardian name <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
-                      </label>
-                      <input
-                        value={form.parentName}
-                        onChange={(e) => setForm({ ...form, parentName: e.target.value })}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                        placeholder="Full name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Parent mobile <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        autoComplete="tel"
-                        maxLength={10}
-                        pattern="\d{10}"
-                        value={form.parentPhone}
-                        onChange={(e) =>
-                          setForm({ ...form, parentPhone: sanitizeIndianMobileInput(e.target.value) })
-                        }
-                        required
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono tracking-wide"
-                        placeholder="10-digit mobile"
-                      />
-                      <p className="text-[10px] text-muted-foreground ml-1">Numbers only · exactly 10 digits</p>
-                    </div>
-
-                    <div className="md:col-span-2 space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Address <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={form.address}
-                        onChange={(e) => setForm({ ...form, address: e.target.value })}
-                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm resize-none"
-                        placeholder="Street, area, city, state, PIN..."
-                      />
-                    </div>
-
-                    <div className="md:col-span-2 pt-2 border-t border-border">
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-4">
-                        Optional details
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                            Aadhar Card
-                          </label>
-                          <input
-                            value={form.aadharCard}
-                            onChange={(e) =>
-                              setForm({ ...form, aadharCard: sanitizeAadharInput(e.target.value) })
-                            }
-                            inputMode="numeric"
-                            maxLength={14}
-                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
-                            placeholder="1234 5678 9012"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                            PEN ID
-                          </label>
-                          <input
-                            value={form.penId}
-                            onChange={(e) => setForm({ ...form, penId: e.target.value })}
-                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
-                            placeholder="Permanent Education Number"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                            APAAR ID
-                          </label>
-                          <input
-                            value={form.apaarId}
-                            onChange={(e) => setForm({ ...form, apaarId: e.target.value })}
-                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
-                            placeholder="Automated Permanent Academic Account Registry ID"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                            Blood group
-                          </label>
-                          <input
-                            value={form.bloodGroup}
-                            onChange={(e) => setForm({ ...form, bloodGroup: e.target.value })}
-                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                            placeholder="e.g. O+"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                            Date of birth
-                          </label>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={form.dateOfBirth}
-                            onChange={(e) =>
-                              setForm({ ...form, dateOfBirth: sanitizeDobDdMmYyyyInput(e.target.value) })
-                            }
-                            maxLength={10}
-                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
-                            placeholder="dd/mm/yyyy"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                            Emergency contact
-                          </label>
-                          <input
-                            type="tel"
-                            value={form.emergencyContact}
-                            onChange={(e) => setForm({ ...form, emergencyContact: e.target.value })}
-                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                            placeholder="Alternate phone"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                            Transport
-                          </label>
-                          <input
-                            value={form.transportDetails}
-                            onChange={(e) => setForm({ ...form, transportDetails: e.target.value })}
-                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
-                            placeholder="Bus route, pickup point..."
-                          />
-                        </div>
+                    {enrollSchoolId && enrollTemplates.length > 0 && (
+                      <div className="md:col-span-2 space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1 flex items-center gap-1">
+                          <CreditCard className="h-3 w-3" /> ID card template
+                        </label>
+                        <select
+                          value={enrollTemplateId}
+                          onChange={(e) => setEnrollTemplateId(e.target.value)}
+                          className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
+                        >
+                          {enrollTemplates.map((t) => (
+                            <option key={t.id} value={t.id} className={SELECT_OPTION_CLASS}>
+                              {t.name} ({templateShortId(t)})
+                              {t.isDefault ? ' · Default' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-muted-foreground ml-1">
+                          {enrollTemplateLoading
+                            ? 'Loading template fields…'
+                            : 'Primary fields match this template; other details are optional.'}
+                        </p>
                       </div>
-                    </div>
+                    )}
+
+                    <StudentEnrollFormFields
+                      form={form}
+                      setForm={setForm}
+                      layout={enrollLayout}
+                      enrollClasses={enrollClasses}
+                      enrollClassesLoading={enrollClassesLoading}
+                      sections={sections}
+                      setSections={setSections}
+                    />
                   </div>
 
                   <div className="flex justify-end gap-4 pt-6">
