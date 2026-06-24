@@ -524,15 +524,23 @@ export class StudentsService {
     schoolId: string,
     rows: {
       firstName: string;
-      lastName: string;
+      lastName?: string;
       classId?: string;
       sectionId?: string;
       className?: string;
       sectionName?: string;
-      parentName: string;
-      address: string;
-      rollNumber: string;
-      parentPhone?: string;
+      parentName?: string;
+      fatherName?: string;
+      motherName?: string;
+      address?: string;
+      rollNumber?: string;
+      parentPhone: string;
+      childId?: string;
+      aadharCard?: string;
+      penId?: string;
+      apaarId?: string;
+      bloodGroup?: string;
+      dateOfBirth?: string;
     }[],
     actor?: { role?: string; schoolId?: string },
   ) {
@@ -580,14 +588,35 @@ export class StudentsService {
       return trimmed;
     };
 
+    const optString = (value: unknown): string => {
+      if (value == null) return '';
+      const trimmed = String(value).trim();
+      const lowered = trimmed.toLowerCase();
+      if (!trimmed || lowered === 'undefined' || lowered === 'null') return '';
+      return trimmed;
+    };
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        const rollNumber = reqString(row.rollNumber, 'Roll number');
         const firstName = reqString(row.firstName, 'First name');
-        const lastName = reqString(row.lastName, 'Last name');
-        const parentName = reqString(row.parentName, 'Father / parent name');
-        const address = reqString(row.address, 'Address');
+        const lastName = optString(row.lastName);
+        const parentPhone = reqString(row.parentPhone, 'Parent phone');
+        if (!/^\d{10}$/.test(parentPhone)) {
+          throw new BadRequestException('parentPhone must be exactly 10 digits');
+        }
+
+        const rollNumberRaw = optString(row.rollNumber);
+        const rollNumberValue = rollNumberRaw || null;
+        const parentName = optString(row.parentName) || optString(row.fatherName) || null;
+        const fatherName = optString(row.fatherName) || null;
+        const motherName = optString(row.motherName) || null;
+        const address = optString(row.address) || null;
+        const normalizedChildId = optString(row.childId);
+        if (normalizedChildId && !/^\d{1,12}$/.test(normalizedChildId)) {
+          throw new BadRequestException('childId must be 1–12 digits');
+        }
+        const normalizedAadhar = this.normalizeAadharCard(row.aadharCard);
 
         const classIdFromRow = optId(row.classId);
         const sectionIdFromRow = optId(row.sectionId);
@@ -597,15 +626,14 @@ export class StudentsService {
         let createdClass = false;
         let createdSection = false;
 
-        // Backward-compatible: accept either {classId, sectionId} OR {className, sectionName}.
         if (!classId || !sectionId) {
           if (classId && !sectionId) {
             const placement = await this.resolveStudentPlacement(schoolId, classId, null);
             classId = placement.classId;
             sectionId = placement.sectionId;
-          } else {
-            const className = reqString(row.className, 'Class');
-            const sectionName = typeof row.sectionName === 'string' ? row.sectionName.trim() : '';
+          } else if (optString(row.className)) {
+            const className = optString(row.className);
+            const sectionName = optString(row.sectionName);
             const resolved = await this.classesService.findOrCreateClassSection(
               schoolId,
               className,
@@ -616,33 +644,50 @@ export class StudentsService {
             sectionId = resolved.sectionId;
             createdClass = resolved.createdClass;
             createdSection = resolved.createdSection;
+          } else {
+            const placement = await this.resolveStudentPlacement(schoolId, null, null);
+            classId = placement.classId;
+            sectionId = placement.sectionId;
           }
         }
 
         if (createdClass) classesCreated += 1;
         if (createdSection) sectionsCreated += 1;
 
-        const admissionNumber = this.buildImportAdmissionNumber(classId, sectionId, rollNumber);
+        const admissionNumber = this.buildAdmissionNumber(
+          rollNumberValue,
+          normalizedChildId || null,
+        );
         const studentData = {
           classId,
           sectionId,
           firstName,
           lastName,
-          rollNumber,
+          rollNumber: rollNumberValue,
           parentName,
-          parentPhone: row.parentPhone?.trim() || null,
+          fatherName,
+          motherName,
+          parentPhone,
           address,
           admissionNumber,
+          childId: normalizedChildId || null,
+          aadharCard: normalizedAadhar,
+          penId: optString(row.penId) || null,
+          apaarId: optString(row.apaarId) || null,
+          bloodGroup: optString(row.bloodGroup) || null,
+          dateOfBirth: row.dateOfBirth ? this.parseOptionalDate(row.dateOfBirth) : null,
           deletedAt: null as Date | null,
         };
 
-        const existing = await this.findStudentForImport(
-          schoolId,
-          classId,
-          sectionId,
-          rollNumber,
-          admissionNumber,
-        );
+        const existing = rollNumberValue
+          ? await this.findStudentForImport(
+              schoolId,
+              classId,
+              sectionId,
+              rollNumberValue,
+              admissionNumber,
+            )
+          : null;
 
         const saveImportRow = async (targetId?: string) => {
           if (targetId) {
@@ -655,7 +700,9 @@ export class StudentsService {
               index: i,
               success: true,
               updated: true,
-              message: `Updated existing student (roll ${rollNumber})`,
+              message: rollNumberValue
+                ? `Updated existing student (roll ${rollNumberValue})`
+                : 'Updated existing student',
             });
             return;
           }
@@ -683,13 +730,15 @@ export class StudentsService {
               (createErr as { code: string }).code === 'P2002';
             if (!isUnique) throw createErr;
 
-            const conflict = await this.findStudentForImport(
-              schoolId,
-              classId,
-              sectionId,
-              rollNumber,
-              admissionNumber,
-            );
+            const conflict = rollNumberValue
+              ? await this.findStudentForImport(
+                  schoolId,
+                  classId,
+                  sectionId,
+                  rollNumberValue,
+                  admissionNumber,
+                )
+              : null;
             if (!conflict) {
               throw createErr;
             }

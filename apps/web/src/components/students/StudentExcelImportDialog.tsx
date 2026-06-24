@@ -1,14 +1,19 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileSpreadsheet, Loader2, Upload, X, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import {
-  IMPORT_TEMPLATE_HEADERS,
-  IMPORT_TEMPLATE_SAMPLE,
+  buildExcelImportTemplateFromConfigs,
+  excelTemplateToSheet,
+  DEFAULT_EXCEL_IMPORT_TEMPLATE,
+  type ExcelImportColumn,
+} from '@/lib/student-excel-template';
+import {
   parseExcelRows,
   toImportPayload,
   type ParsedImportRow,
@@ -20,6 +25,27 @@ interface StudentExcelImportDialogProps {
   schoolId: string;
   schoolName?: string;
 }
+
+const PREVIEW_COLUMN_DEFS: {
+  id: ExcelImportColumn['id'] | 'status';
+  label: string;
+  getValue: (row: ParsedImportRow) => string;
+}[] = [
+  { id: 'studentName', label: 'Student', getValue: (r) => r.studentName },
+  { id: 'rollNumber', label: 'Roll No.', getValue: (r) => r.rollNumber || '—' },
+  { id: 'class', label: 'Class', getValue: (r) => r.className || '—' },
+  { id: 'section', label: 'Section', getValue: (r) => r.sectionName || '—' },
+  { id: 'fatherName', label: 'Father', getValue: (r) => r.fatherName || r.parentName || '—' },
+  { id: 'motherName', label: 'Mother', getValue: (r) => r.motherName || '—' },
+  { id: 'parentPhone', label: 'Phone', getValue: (r) => r.parentPhone || '—' },
+  { id: 'address', label: 'Address', getValue: (r) => r.address || '—' },
+  { id: 'childId', label: 'Child ID', getValue: (r) => r.childId || '—' },
+  { id: 'aadharCard', label: 'Aadhar', getValue: (r) => r.aadharCard || '—' },
+  { id: 'penId', label: 'PEN', getValue: (r) => r.penId || '—' },
+  { id: 'apaarId', label: 'APAAR', getValue: (r) => r.apaarId || '—' },
+  { id: 'bloodGroup', label: 'Blood', getValue: (r) => r.bloodGroup || '—' },
+  { id: 'dateOfBirth', label: 'DOB', getValue: (r) => r.dateOfBirth || '—' },
+];
 
 export function StudentExcelImportDialog({
   open,
@@ -40,6 +66,46 @@ export function StudentExcelImportDialog({
     },
     enabled: open && !!schoolId,
   });
+
+  const { data: importTemplate = DEFAULT_EXCEL_IMPORT_TEMPLATE, isLoading: loadingTemplate } =
+    useQuery({
+      queryKey: ['import-template', schoolId],
+      queryFn: async () => {
+        const { data: templates } = await api.get('/templates', { params: { schoolId } });
+        const list = templates as { id: string; isDefault?: boolean; name: string }[];
+        const tpl = list.find((t) => t.isDefault) ?? list[0];
+        if (!tpl) return DEFAULT_EXCEL_IMPORT_TEMPLATE;
+        const detail = await fetchTemplateWithConfig<{
+          name: string;
+          frontConfig?: unknown;
+          backConfig?: unknown;
+        }>(tpl.id);
+        return buildExcelImportTemplateFromConfigs(
+          detail.frontConfig,
+          detail.backConfig,
+          detail.name,
+        );
+      },
+      enabled: open && !!schoolId,
+    });
+
+  const previewColumns = useMemo(() => {
+    const templateIds = new Set(importTemplate.columns.map((c) => c.id));
+    const cols = PREVIEW_COLUMN_DEFS.filter(
+      (c) => c.id !== 'status' && templateIds.has(c.id as ExcelImportColumn['id']),
+    );
+    return cols.length > 0 ? cols : PREVIEW_COLUMN_DEFS.filter((c) => c.id === 'studentName' || c.id === 'parentPhone');
+  }, [importTemplate]);
+
+  const requiredLabels = useMemo(
+    () => importTemplate.columns.filter((c) => c.required).map((c) => c.header),
+    [importTemplate],
+  );
+
+  const optionalLabels = useMemo(
+    () => importTemplate.columns.filter((c) => !c.required).map((c) => c.header),
+    [importTemplate],
+  );
 
   const importMutation = useMutation({
     mutationFn: async (students: ReturnType<typeof toImportPayload>) => {
@@ -107,10 +173,14 @@ export function StudentExcelImportDialog({
 
   const downloadTemplate = () => {
     void import('xlsx').then((XLSX) => {
-      const ws = XLSX.utils.json_to_sheet(IMPORT_TEMPLATE_SAMPLE, { header: IMPORT_TEMPLATE_HEADERS });
+      const { headers, sampleRow } = excelTemplateToSheet(importTemplate);
+      const ws = XLSX.utils.json_to_sheet([sampleRow], { header: headers });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Students');
-      XLSX.writeFile(wb, 'student_import_template.xlsx');
+      const suffix = importTemplate.templateName
+        ? importTemplate.templateName.replace(/[^\w.-]+/g, '_').slice(0, 40)
+        : 'school';
+      XLSX.writeFile(wb, `student_import_${suffix}.xlsx`);
     });
   };
 
@@ -119,8 +189,8 @@ export function StudentExcelImportDialog({
       toast.error('Select a school first');
       return;
     }
-    if (loadingClasses) {
-      toast.error('Loading classes — try again in a moment');
+    if (loadingClasses || loadingTemplate) {
+      toast.error('Loading school data — try again in a moment');
       return;
     }
 
@@ -139,7 +209,7 @@ export function StudentExcelImportDialog({
         toast.error('No data rows found (use row 1 for headers)');
         return;
       }
-      const rows = parseExcelRows(json, classes);
+      const rows = parseExcelRows(json, classes, importTemplate);
       setParsedRows(rows);
       setFileName(file.name);
       const ready = rows.filter((r) => r.status === 'ready').length;
@@ -179,9 +249,14 @@ export function StudentExcelImportDialog({
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
               {schoolName
-                ? `Students are added to ${schoolName}. Missing classes and sections are created automatically.`
-                : 'Upload a sheet with student name, class, section, father name, and address.'}
+                ? `Students are added to ${schoolName}. The template matches your ID card fields.`
+                : 'Upload a sheet with the columns from your ID card template.'}
             </p>
+            {importTemplate.templateName && (
+              <p className="text-xs text-primary font-semibold mt-1">
+                Template: {importTemplate.templateName}
+              </p>
+            )}
           </div>
           <button type="button" onClick={handleClose} className="p-2 rounded-xl hover:bg-muted">
             <X className="h-5 w-5" />
@@ -193,7 +268,8 @@ export function StudentExcelImportDialog({
             <button
               type="button"
               onClick={downloadTemplate}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-border text-xs font-bold hover:bg-muted"
+              disabled={loadingTemplate}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-border text-xs font-bold hover:bg-muted disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
               Download template
@@ -201,7 +277,7 @@ export function StudentExcelImportDialog({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              disabled={loadingClasses}
+              disabled={loadingClasses || loadingTemplate}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold disabled:opacity-50"
             >
               <Upload className="h-4 w-4" />
@@ -220,16 +296,44 @@ export function StudentExcelImportDialog({
             />
           </div>
 
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Required columns: <strong className="text-foreground">Student Name</strong>,{' '}
-            <strong className="text-foreground">Roll Number</strong>,{' '}
-            <strong className="text-foreground">Class</strong>,{' '}
-            <strong className="text-foreground">Section</strong>,{' '}
-            <strong className="text-foreground">Father Name</strong>,{' '}
-            <strong className="text-foreground">Address</strong>. Optional: Parent Phone.
-            Existing classes are matched automatically (e.g. &quot;10&quot; matches &quot;Class 10&quot;).
-            New classes and sections are created when needed.
-          </p>
+          {loadingTemplate ? (
+            <p className="text-[11px] text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading ID card template columns…
+            </p>
+          ) : (
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {importTemplate.templateName ? (
+                <>
+                  Columns follow <strong className="text-foreground">{importTemplate.templateName}</strong>
+                  {' '}— only fields on your ID card are included.
+                </>
+              ) : (
+                <>No ID card template yet — using student name and parent phone only.</>
+              )}
+              {requiredLabels.length > 0 && (
+                <>
+                  {' '}
+                  Required:{' '}
+                  {requiredLabels.map((label, i) => (
+                    <span key={label}>
+                      {i > 0 ? ', ' : ''}
+                      <strong className="text-foreground">{label}</strong>
+                    </span>
+                  ))}
+                  .
+                </>
+              )}
+              {optionalLabels.length > 0 && (
+                <>
+                  {' '}
+                  Optional: {optionalLabels.join(', ')}.
+                </>
+              )}
+              {' '}
+              Existing classes are matched automatically (e.g. &quot;10&quot; matches &quot;Class 10&quot;).
+            </p>
+          )}
 
           {fileName && (
             <p className="text-xs font-bold text-foreground">
@@ -248,34 +352,42 @@ export function StudentExcelImportDialog({
                 <thead className="bg-muted/50 sticky top-0">
                   <tr>
                     <th className="text-left px-3 py-2 font-bold">Row</th>
-                    <th className="text-left px-3 py-2 font-bold">Student</th>
-                    <th className="text-left px-3 py-2 font-bold">Roll No.</th>
-                    <th className="text-left px-3 py-2 font-bold">Class</th>
-                    <th className="text-left px-3 py-2 font-bold">Section</th>
-                    <th className="text-left px-3 py-2 font-bold">Father Name</th>
+                    {previewColumns.map((col) => (
+                      <th key={col.id} className="text-left px-3 py-2 font-bold whitespace-nowrap">
+                        {col.label}
+                      </th>
+                    ))}
+                    <th className="text-left px-3 py-2 font-bold">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
                   {parsedRows.slice(0, 100).map((row) => (
                     <tr key={row.rowNumber} className={row.status === 'error' ? 'bg-red-500/5' : ''}>
                       <td className="px-3 py-2 text-muted-foreground">{row.rowNumber}</td>
-                      <td className="px-3 py-2 font-medium">{row.studentName}</td>
-                      <td className="px-3 py-2 font-mono font-bold">{row.rollNumber || '—'}</td>
-                      <td className="px-3 py-2">{row.className}</td>
-                      <td className="px-3 py-2">{row.sectionName}</td>
+                      {previewColumns.map((col) => (
+                        <td
+                          key={col.id}
+                          className={cn(
+                            'px-3 py-2',
+                            col.id === 'rollNumber' && 'font-mono font-bold',
+                            col.id === 'studentName' && 'font-medium',
+                          )}
+                        >
+                          {col.getValue(row)}
+                        </td>
+                      ))}
                       <td className="px-3 py-2">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-semibold text-foreground">{row.parentName}</span>
-                          {row.status === 'error' && row.message ? (
-                            <span className="text-[10px] text-red-600" title={row.message}>
-                              {row.message}
-                            </span>
-                          ) : row.message ? (
-                            <span className="text-[10px] text-amber-600" title={row.message}>
-                              {row.message}
-                            </span>
-                          ) : null}
-                        </div>
+                        {row.status === 'error' && row.message ? (
+                          <span className="text-[10px] text-red-600" title={row.message}>
+                            {row.message}
+                          </span>
+                        ) : row.message ? (
+                          <span className="text-[10px] text-amber-600" title={row.message}>
+                            {row.message}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-emerald-600 font-semibold">Ready</span>
+                        )}
                       </td>
                     </tr>
                   ))}
