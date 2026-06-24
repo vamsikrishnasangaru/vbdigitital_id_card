@@ -14,7 +14,7 @@ export class StudentsController {
   @Post()
   @ApiOperation({ summary: 'Create a student with optional photo' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('photo'))
+  @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: 15 * 1024 * 1024 } }))
   create(@Body() body: any, @UploadedFile() file?: Express.Multer.File) {
     // If file is provided, it will be handled by the service to save and get a URL
     return this.studentsService.create(body, file);

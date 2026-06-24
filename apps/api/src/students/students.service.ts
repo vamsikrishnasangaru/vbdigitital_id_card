@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { ClassesService } from '../classes/classes.service';
@@ -17,6 +23,46 @@ export class StudentsService {
     private uploadsService: UploadsService,
     private classesService: ClassesService,
   ) {}
+
+  private parseOptionalDate(value: unknown): Date | null {
+    if (!value) return null;
+    const parsed = new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Invalid dateOfBirth');
+    }
+    return parsed;
+  }
+
+  private async writeStudent<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err) {
+        const code = (err as { code: string }).code;
+        if (code === 'P2002') {
+          throw new ConflictException(
+            'A student with this admission or roll number already exists in this school.',
+          );
+        }
+        if (code === 'P2003') {
+          throw new BadRequestException('Invalid class or section for this school.');
+        }
+        if (code === 'P2025') {
+          throw new NotFoundException('Student not found');
+        }
+      }
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: string }).message)
+          : '';
+      if (/Unknown argument|column .* does not exist/i.test(message)) {
+        throw new BadRequestException(
+          'Server database is out of date — run API deploy (prisma migrate deploy) on the server.',
+        );
+      }
+      throw err;
+    }
+  }
 
   private async resolveStudentPlacement(
     schoolId: string,
@@ -75,16 +121,38 @@ export class StudentsService {
       photoUrl = await this.uploadsService.saveFile(file, `schools/${data.schoolId}/students`);
     }
 
-    const { photo, penId, apaarId, childId, fatherName, motherName, ...rest } = data;
+    const {
+      photo: _photo,
+      penId,
+      apaarId,
+      childId,
+      fatherName,
+      motherName,
+      schoolId,
+      firstName,
+      lastName,
+      rollNumber: rollNumberRaw,
+      parentName,
+      parentPhone: parentPhoneRaw,
+      address,
+      classId: classIdRaw,
+      sectionId: sectionIdRaw,
+      bloodGroup,
+      aadharCard,
+      dateOfBirth,
+      emergencyContact,
+      transportDetails,
+      admissionNumber: admissionNumberRaw,
+    } = data;
 
-    let classId = typeof rest.classId === 'string' ? rest.classId.trim() : '';
-    let sectionId = typeof rest.sectionId === 'string' ? rest.sectionId.trim() : '';
-    const placement = await this.resolveStudentPlacement(String(rest.schoolId), classId || null, sectionId || null);
+    let classId = typeof classIdRaw === 'string' ? classIdRaw.trim() : '';
+    let sectionId = typeof sectionIdRaw === 'string' ? sectionIdRaw.trim() : '';
+    const placement = await this.resolveStudentPlacement(String(schoolId), classId || null, sectionId || null);
     classId = placement.classId;
     sectionId = placement.sectionId;
 
-    const rollNumber = String(rest.rollNumber).trim();
-    const parentPhone = String(rest.parentPhone).trim();
+    const rollNumber = String(rollNumberRaw).trim();
+    const parentPhone = String(parentPhoneRaw).trim();
     if (!/^\d{10}$/.test(parentPhone)) {
       throw new BadRequestException('parentPhone must be exactly 10 digits');
     }
@@ -92,31 +160,38 @@ export class StudentsService {
     if (normalizedChildId && !/^\d{1,12}$/.test(normalizedChildId)) {
       throw new BadRequestException('childId must be 1–12 digits');
     }
-    const lastName = typeof rest.lastName === 'string' ? rest.lastName.trim() : '';
     const admissionNumber =
-      (typeof rest.admissionNumber === 'string' && rest.admissionNumber.trim()) ||
+      (typeof admissionNumberRaw === 'string' && admissionNumberRaw.trim()) ||
       `ADM-${rollNumber}`;
 
-    return this.prisma.student.create({
-      data: {
-        ...rest,
-        classId,
-        sectionId,
-        rollNumber,
-        admissionNumber,
-        parentName: String(rest.parentName).trim(),
-        parentPhone,
-        address: String(rest.address).trim(),
-        photoUrl,
-        lastName: lastName || '',
-        penId: penId ? String(penId).trim() : null,
-        apaarId: apaarId ? String(apaarId).trim() : null,
-        childId: normalizedChildId || null,
-        fatherName: fatherName ? String(fatherName).trim() : null,
-        motherName: motherName ? String(motherName).trim() : null,
-      },
-      include: { class: true, section: true, school: true },
-    });
+    return this.writeStudent(() =>
+      this.prisma.student.create({
+        data: {
+          schoolId: String(schoolId).trim(),
+          firstName: String(firstName).trim(),
+          lastName: typeof lastName === 'string' ? lastName.trim() : '',
+          classId,
+          sectionId,
+          rollNumber,
+          admissionNumber,
+          parentName: parentName ? String(parentName).trim() : null,
+          parentPhone,
+          address: String(address).trim(),
+          photoUrl,
+          bloodGroup: bloodGroup ? String(bloodGroup).trim() : null,
+          aadharCard: aadharCard ? String(aadharCard).trim() : null,
+          emergencyContact: emergencyContact ? String(emergencyContact).trim() : null,
+          transportDetails: transportDetails ? String(transportDetails).trim() : null,
+          dateOfBirth: dateOfBirth ? this.parseOptionalDate(dateOfBirth) : null,
+          penId: penId ? String(penId).trim() : null,
+          apaarId: apaarId ? String(apaarId).trim() : null,
+          childId: normalizedChildId || null,
+          fatherName: fatherName ? String(fatherName).trim() : null,
+          motherName: motherName ? String(motherName).trim() : null,
+        },
+        include: { class: true, section: true, school: true },
+      }),
+    );
   }
 
   async findAll(query: {
@@ -176,7 +251,10 @@ export class StudentsService {
           completion === 'INCOMPLETE' ? isStudentIncomplete(s) : !isStudentIncomplete(s),
         )
         .map((s) => s.id);
-      where.id = { in: ids.length > 0 ? ids : ['__none__'] };
+      if (ids.length === 0) {
+        return { data: [], total: 0, page, limit, totalPages: 0 };
+      }
+      where.id = { in: ids };
     }
 
     const [data, total] = await Promise.all([
@@ -258,10 +336,9 @@ export class StudentsService {
       classId,
       sectionId,
       photoUrl,
-      ...rest
     } = data;
 
-    const payload: Record<string, unknown> = { ...rest };
+    const payload: Record<string, unknown> = {};
 
     if (schoolId !== undefined) payload.schoolId = schoolId;
     if (classId !== undefined) {
@@ -315,7 +392,7 @@ export class StudentsService {
       payload.photoUrl = photoUrl;
     }
     if (dateOfBirth !== undefined) {
-      payload.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+      payload.dateOfBirth = dateOfBirth ? this.parseOptionalDate(dateOfBirth) : null;
     }
 
     const classTouched = classId !== undefined;
@@ -336,14 +413,16 @@ export class StudentsService {
       payload.sectionId = placement.sectionId;
     }
 
-    return this.prisma.student.update({
-      where: { id },
-      data: {
-        ...payload,
-        ...(typeof payload.lastName === 'string' && !payload.lastName.trim() ? { lastName: '' } : {}),
-      },
-      include: { class: true, section: true, school: true },
-    });
+    return this.writeStudent(() =>
+      this.prisma.student.update({
+        where: { id },
+        data: {
+          ...payload,
+          ...(typeof payload.lastName === 'string' && !payload.lastName.trim() ? { lastName: '' } : {}),
+        },
+        include: { class: true, section: true, school: true },
+      }),
+    );
   }
 
   async updateStatus(id: string, status: string, approvedBy?: string) {
