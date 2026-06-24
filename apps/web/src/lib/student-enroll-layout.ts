@@ -88,6 +88,59 @@ const SKIP_TEMPLATE_FIELD_TYPES = new Set([
 
 const REQUIRED_PRIMARY: EnrollFormFieldKey[] = ['firstName', 'parentPhone'];
 
+/** Fixed primary block — shown first when those fields exist on the template. */
+const CORE_PRIMARY_BLOCKS: EnrollFormFieldKey[][] = [
+  ['class', 'section'],
+  ['firstName', 'lastName'],
+  ['fatherName', 'motherName'],
+  ['parentPhone'],
+  ['address'],
+];
+
+const CORE_PRIMARY_KEYS = new Set(CORE_PRIMARY_BLOCKS.flat());
+
+function collectTemplateKeys(fieldTypes: string[]): Set<EnrollFormFieldKey> {
+  const keys = new Set<EnrollFormFieldKey>();
+  for (const ft of fieldTypes) {
+    for (const key of TEMPLATE_FIELD_MAP[ft] ?? []) {
+      keys.add(key);
+    }
+  }
+  return keys;
+}
+
+/** Template field keys in designer canvas order. */
+function templateOrderKeys(fieldTypes: string[]): EnrollFormFieldKey[] {
+  const ordered: EnrollFormFieldKey[] = [];
+  for (const ft of fieldTypes) {
+    if (ft === 'studentPhoto') continue;
+    for (const key of TEMPLATE_FIELD_MAP[ft] ?? []) {
+      if (!ordered.includes(key)) ordered.push(key);
+    }
+  }
+  return ordered;
+}
+
+function insertRequiredPrimary(primary: EnrollFormFieldKey[]) {
+  if (!primary.includes('firstName')) {
+    const afterSection = primary.indexOf('section');
+    const afterClass = primary.indexOf('class');
+    const at = afterSection >= 0 ? afterSection + 1 : afterClass >= 0 ? afterClass + 1 : 0;
+    primary.splice(at, 0, 'firstName');
+  }
+  if (!primary.includes('parentPhone')) {
+    const afterAddress = primary.indexOf('address');
+    const afterMother = primary.indexOf('motherName');
+    const afterFather = primary.indexOf('fatherName');
+    const afterLastName = primary.indexOf('lastName');
+    const at =
+      afterAddress >= 0
+        ? afterAddress + 1
+        : Math.max(afterMother, afterFather, afterLastName, primary.indexOf('firstName')) + 1;
+    primary.splice(Math.max(0, at), 0, 'parentPhone');
+  }
+}
+
 function isStudentPhotoElement(el: DesignerElement): boolean {
   if (el.visible === false) return false;
   if (el.type === 'photo' || el.fieldType === 'studentPhoto') return true;
@@ -125,16 +178,17 @@ export function extractTemplateStudentFieldTypes(
   return order;
 }
 
-function appendPrimary(primary: EnrollFormFieldKey[], keys: EnrollFormFieldKey[]) {
-  for (const key of keys) {
-    if (!primary.includes(key)) primary.push(key);
-  }
-}
-
-/** Primary fields = template fields first; everything else optional. */
+/**
+ * Primary fields:
+ * 1. Class & section (if on template)
+ * 2. Student name
+ * 3. Father & mother name
+ * 4. Parent phone
+ * 5. Address
+ * 6. Other template fields (designer order)
+ */
 export function buildEnrollFormLayout(fieldTypes: string[]): EnrollFormLayout {
-  const primaryFields: EnrollFormFieldKey[] = [];
-  let showPhoto = true;
+  const showPhoto = fieldTypes.length === 0 || fieldTypes.includes('studentPhoto');
 
   if (fieldTypes.length === 0) {
     return {
@@ -147,19 +201,27 @@ export function buildEnrollFormLayout(fieldTypes: string[]): EnrollFormLayout {
     };
   }
 
-  for (const ft of fieldTypes) {
-    if (ft === 'studentPhoto') {
-      showPhoto = true;
-      continue;
+  const templateKeys = collectTemplateKeys(fieldTypes);
+  const templateOrdered = templateOrderKeys(fieldTypes);
+  const primaryFields: EnrollFormFieldKey[] = [];
+
+  for (const block of CORE_PRIMARY_BLOCKS) {
+    for (const key of block) {
+      const onTemplate = templateKeys.has(key);
+      const required = REQUIRED_PRIMARY.includes(key);
+      if ((onTemplate || required) && !primaryFields.includes(key)) {
+        primaryFields.push(key);
+      }
     }
-    appendPrimary(primaryFields, TEMPLATE_FIELD_MAP[ft] ?? []);
   }
 
-  for (const required of REQUIRED_PRIMARY) {
-    if (!primaryFields.includes(required)) {
-      primaryFields.unshift(required);
+  for (const key of templateOrdered) {
+    if (!CORE_PRIMARY_KEYS.has(key) && !primaryFields.includes(key)) {
+      primaryFields.push(key);
     }
   }
+
+  insertRequiredPrimary(primaryFields);
 
   const optionalFields = ALL_ENROLL_FIELDS.filter((k) => !primaryFields.includes(k));
 

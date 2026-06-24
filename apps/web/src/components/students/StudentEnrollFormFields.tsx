@@ -374,8 +374,8 @@ export function StudentEnrollFormFields(props: Props) {
             Template fields
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Fields on your school&apos;s ID card template appear first. Everything else is under
-            optional details.
+            Class & name first, then parent details, then other fields from your ID card
+            template. Remaining fields are optional.
           </p>
         </div>
       )}
