@@ -135,6 +135,70 @@ export function isValidChildId(value: string): boolean {
   return t === '' || /^\d{1,12}$/.test(t);
 }
 
+/** Aadhar display: groups of 4 digits (max 12 digits). */
+export function sanitizeAadharInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 12);
+  const parts: string[] = [];
+  for (let i = 0; i < digits.length; i += 4) {
+    parts.push(digits.slice(i, i + 4));
+  }
+  return parts.join(' ');
+}
+
+export function aadharDigitsOnly(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 12);
+}
+
+export function isValidAadhar(value: string): boolean {
+  const digits = aadharDigitsOnly(value);
+  return digits === '' || digits.length === 12;
+}
+
+/** DOB text input in dd/mm/yyyy (auto-inserts slashes). */
+export function sanitizeDobDdMmYyyyInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+export function isoDateToDobDdMmYyyy(iso?: string | null): string {
+  if (!iso) return '';
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+export function dobDdMmYyyyToIso(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const m = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  const day = Number(dd);
+  const month = Number(mm);
+  const year = Number(yyyy);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) {
+    return null;
+  }
+  const iso = `${yyyy}-${mm}-${dd}`;
+  const parsed = new Date(`${iso}T12:00:00.000Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() + 1 !== month ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return iso;
+}
+
+export function isValidDobDdMmYyyy(value: string): boolean {
+  if (!value.trim()) return true;
+  return dobDdMmYyyyToIso(value) !== null;
+}
+
 /** True when last name is empty or the legacy "-" placeholder. */
 export function isPlaceholderLastName(lastName?: string | null): boolean {
   const t = lastName?.trim();

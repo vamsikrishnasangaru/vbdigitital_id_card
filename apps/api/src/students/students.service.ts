@@ -26,11 +26,41 @@ export class StudentsService {
 
   private parseOptionalDate(value: unknown): Date | null {
     if (!value) return null;
-    const parsed = new Date(String(value));
+    const raw = String(value).trim();
+    const isoFromDdMm = raw.match(/^\d{2}\/\d{2}\/\d{4}$/)
+      ? (() => {
+          const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+          return m ? `${m[3]}-${m[2]}-${m[1]}` : raw;
+        })()
+      : raw;
+    const parsed = new Date(isoFromDdMm.includes('T') ? isoFromDdMm : `${isoFromDdMm}T12:00:00.000Z`);
     if (Number.isNaN(parsed.getTime())) {
       throw new BadRequestException('Invalid dateOfBirth');
     }
     return parsed;
+  }
+
+  private normalizeAadharCard(value: unknown): string | null {
+    const digits = value ? String(value).replace(/\D/g, '') : '';
+    if (!digits) return null;
+    if (digits.length !== 12) {
+      throw new BadRequestException('aadharCard must be exactly 12 digits');
+    }
+    return `${digits.slice(0, 4)} ${digits.slice(4, 8)} ${digits.slice(8, 12)}`;
+  }
+
+  private buildAdmissionNumber(
+    rollNumber: string | null,
+    childId: string | null,
+    override?: string | null,
+  ): string {
+    const custom = override?.trim();
+    if (custom) return custom;
+    if (rollNumber) return `ADM-${rollNumber}`;
+    if (childId) return `ADM-C${childId}`;
+    const stamp = Date.now().toString(36).toUpperCase();
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `ADM-${stamp}${rand}`;
   }
 
   private async writeStudent<T>(fn: () => Promise<T>): Promise<T> {
@@ -101,13 +131,7 @@ export class StudentsService {
   }
 
   async create(data: any, file?: Express.Multer.File) {
-    const requiredFields = [
-      'schoolId',
-      'firstName',
-      'rollNumber',
-      'parentPhone',
-      'address',
-    ] as const;
+    const requiredFields = ['schoolId', 'firstName', 'parentPhone'] as const;
     for (const field of requiredFields) {
       const value = typeof data[field] === 'string' ? data[field].trim() : data[field];
       if (!value) {
@@ -151,7 +175,8 @@ export class StudentsService {
     classId = placement.classId;
     sectionId = placement.sectionId;
 
-    const rollNumber = String(rollNumberRaw).trim();
+    const rollNumber = rollNumberRaw ? String(rollNumberRaw).trim() : '';
+    const rollNumberValue = rollNumber || null;
     const parentPhone = String(parentPhoneRaw).trim();
     if (!/^\d{10}$/.test(parentPhone)) {
       throw new BadRequestException('parentPhone must be exactly 10 digits');
@@ -160,9 +185,12 @@ export class StudentsService {
     if (normalizedChildId && !/^\d{1,12}$/.test(normalizedChildId)) {
       throw new BadRequestException('childId must be 1–12 digits');
     }
-    const admissionNumber =
-      (typeof admissionNumberRaw === 'string' && admissionNumberRaw.trim()) ||
-      `ADM-${rollNumber}`;
+    const admissionNumber = this.buildAdmissionNumber(
+      rollNumberValue,
+      normalizedChildId || null,
+      typeof admissionNumberRaw === 'string' ? admissionNumberRaw : null,
+    );
+    const normalizedAadhar = this.normalizeAadharCard(aadharCard);
 
     return this.writeStudent(() =>
       this.prisma.student.create({
@@ -172,14 +200,14 @@ export class StudentsService {
           lastName: typeof lastName === 'string' ? lastName.trim() : '',
           classId,
           sectionId,
-          rollNumber,
+          rollNumber: rollNumberValue,
           admissionNumber,
           parentName: parentName ? String(parentName).trim() : null,
           parentPhone,
-          address: String(address).trim(),
+          address: address ? String(address).trim() : null,
           photoUrl,
           bloodGroup: bloodGroup ? String(bloodGroup).trim() : null,
-          aadharCard: aadharCard ? String(aadharCard).trim() : null,
+          aadharCard: normalizedAadhar,
           emergencyContact: emergencyContact ? String(emergencyContact).trim() : null,
           transportDetails: transportDetails ? String(transportDetails).trim() : null,
           dateOfBirth: dateOfBirth ? this.parseOptionalDate(dateOfBirth) : null,
@@ -365,7 +393,7 @@ export class StudentsService {
     }
     if (address !== undefined) payload.address = address ? String(address).trim() : null;
     if (bloodGroup !== undefined) payload.bloodGroup = bloodGroup ? String(bloodGroup).trim() : null;
-    if (aadharCard !== undefined) payload.aadharCard = aadharCard ? String(aadharCard).trim() : null;
+    if (aadharCard !== undefined) payload.aadharCard = this.normalizeAadharCard(aadharCard);
     if (penId !== undefined) payload.penId = penId ? String(penId).trim() : null;
     if (apaarId !== undefined) payload.apaarId = apaarId ? String(apaarId).trim() : null;
     if (childId !== undefined) {

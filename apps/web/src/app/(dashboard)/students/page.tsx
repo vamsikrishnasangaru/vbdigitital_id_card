@@ -24,6 +24,13 @@ import {
   isTenDigitMobile,
   sanitizeChildIdInput,
   isValidChildId,
+  sanitizeAadharInput,
+  aadharDigitsOnly,
+  isValidAadhar,
+  sanitizeDobDdMmYyyyInput,
+  isoDateToDobDdMmYyyy,
+  dobDdMmYyyyToIso,
+  isValidDobDdMmYyyy,
 } from '@/lib/utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
@@ -545,11 +552,11 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       parentName: student.parentName || '',
       parentPhone: sanitizeIndianMobileInput(student.parentPhone || ''),
       bloodGroup: student.bloodGroup || '',
-      aadharCard: student.aadharCard || '',
+      aadharCard: student.aadharCard ? sanitizeAadharInput(student.aadharCard) : '',
       penId: student.penId || '',
       apaarId: student.apaarId || '',
       address: student.address || '',
-      dateOfBirth: student.dateOfBirth ? String(student.dateOfBirth).slice(0, 10) : '',
+      dateOfBirth: isoDateToDobDdMmYyyy(student.dateOfBirth),
       emergencyContact: student.emergencyContact || '',
       transportDetails: student.transportDetails || '',
     });
@@ -801,15 +808,27 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       toast.error('Student Child ID must be up to 12 digits');
       return;
     }
+    if (!isValidAadhar(form.aadharCard)) {
+      toast.error('Aadhar number must be exactly 12 digits');
+      return;
+    }
+    if (!isValidDobDdMmYyyy(form.dateOfBirth)) {
+      toast.error('Date of birth must be in dd/mm/yyyy format');
+      return;
+    }
+    const dobIso = dobDdMmYyyyToIso(form.dateOfBirth);
+    const aadharStored = form.aadharCard.trim()
+      ? sanitizeAadharInput(aadharDigitsOnly(form.aadharCard))
+      : '';
 
     if (editingStudentId) {
       const formData = new FormData();
       formData.append('schoolId', schoolId);
       formData.append('firstName', form.firstName.trim());
       formData.append('lastName', form.lastName.trim());
-      formData.append('rollNumber', form.rollNumber.trim());
+      if (form.rollNumber.trim()) formData.append('rollNumber', form.rollNumber.trim());
       formData.append('parentPhone', parentPhone);
-      formData.append('address', form.address.trim());
+      if (form.address.trim()) formData.append('address', form.address.trim());
       if (form.childId.trim()) formData.append('childId', form.childId.trim());
       if (form.fatherName.trim()) formData.append('fatherName', form.fatherName.trim());
       if (form.motherName.trim()) formData.append('motherName', form.motherName.trim());
@@ -819,10 +838,10 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         formData.append('sectionId', form.sectionId.trim());
       }
       if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
-      if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
+      if (aadharStored) formData.append('aadharCard', aadharStored);
       if (form.penId?.trim()) formData.append('penId', form.penId.trim());
       if (form.apaarId?.trim()) formData.append('apaarId', form.apaarId.trim());
-      if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
+      if (dobIso) formData.append('dateOfBirth', dobIso);
       if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
       if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
 
@@ -843,22 +862,22 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     formData.append('schoolId', schoolId);
     formData.append('firstName', form.firstName.trim());
     formData.append('lastName', form.lastName.trim());
-    formData.append('rollNumber', form.rollNumber.trim());
+    if (form.rollNumber.trim()) formData.append('rollNumber', form.rollNumber.trim());
     if (form.childId.trim()) formData.append('childId', form.childId.trim());
     if (form.fatherName.trim()) formData.append('fatherName', form.fatherName.trim());
     if (form.motherName.trim()) formData.append('motherName', form.motherName.trim());
     if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
     formData.append('parentPhone', parentPhone);
-    formData.append('address', form.address.trim());
+    if (form.address.trim()) formData.append('address', form.address.trim());
     if (form.classId.trim()) {
       formData.append('classId', form.classId.trim());
       formData.append('sectionId', form.sectionId.trim());
     }
     if (form.bloodGroup?.trim()) formData.append('bloodGroup', form.bloodGroup.trim());
-    if (form.aadharCard?.trim()) formData.append('aadharCard', form.aadharCard.trim());
+    if (aadharStored) formData.append('aadharCard', aadharStored);
     if (form.penId?.trim()) formData.append('penId', form.penId.trim());
     if (form.apaarId?.trim()) formData.append('apaarId', form.apaarId.trim());
-    if (form.dateOfBirth) formData.append('dateOfBirth', form.dateOfBirth);
+    if (dobIso) formData.append('dateOfBirth', dobIso);
     if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
     if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
     if (photo) {
@@ -1735,7 +1754,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                     {/* Academic placement (optional) */}
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Class
+                        Class <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
                       </label>
                       <select
                         value={form.classId}
@@ -1803,12 +1822,11 @@ export default function StudentsPage({ params }: NextClientPageProps) {
 
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Roll number <span className="text-red-500">*</span>
+                        Roll number <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
                       </label>
                       <input
                         value={form.rollNumber}
                         onChange={(e) => setForm({ ...form, rollNumber: e.target.value })}
-                        required
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
                         placeholder="e.g. 12"
                       />
@@ -1888,13 +1906,12 @@ export default function StudentsPage({ params }: NextClientPageProps) {
 
                     <div className="md:col-span-2 space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Address <span className="text-red-500">*</span>
+                        Address <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
                       </label>
                       <textarea
                         rows={3}
                         value={form.address}
                         onChange={(e) => setForm({ ...form, address: e.target.value })}
-                        required
                         className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm resize-none"
                         placeholder="Street, area, city, state, PIN..."
                       />
@@ -1911,11 +1928,13 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                           </label>
                           <input
                             value={form.aadharCard}
-                            onChange={(e) => setForm({ ...form, aadharCard: e.target.value })}
+                            onChange={(e) =>
+                              setForm({ ...form, aadharCard: sanitizeAadharInput(e.target.value) })
+                            }
                             inputMode="numeric"
-                            maxLength={12}
+                            maxLength={14}
                             className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
-                            placeholder="12-digit Aadhar number"
+                            placeholder="1234 5678 9012"
                           />
                         </div>
                         <div className="space-y-2">
@@ -1956,10 +1975,15 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                             Date of birth
                           </label>
                           <input
-                            type="date"
+                            type="text"
+                            inputMode="numeric"
                             value={form.dateOfBirth}
-                            onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
-                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
+                            onChange={(e) =>
+                              setForm({ ...form, dateOfBirth: sanitizeDobDdMmYyyyInput(e.target.value) })
+                            }
+                            maxLength={10}
+                            className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
+                            placeholder="dd/mm/yyyy"
                           />
                         </div>
                         <div className="space-y-2">
