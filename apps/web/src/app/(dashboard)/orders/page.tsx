@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -14,7 +15,8 @@ import { StatCard } from '@/components/ui/stat-card';
 import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
 
-export default function OrdersPage() {
+export default function OrdersPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');

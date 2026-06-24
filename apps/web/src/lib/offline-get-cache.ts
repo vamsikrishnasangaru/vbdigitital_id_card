@@ -76,8 +76,11 @@ export const offlineGetCache = {
     if (schoolId) {
       const hit = this.get('/templates', { schoolId });
       if (hit) return hit;
+      return null;
     }
-    return this.get('/templates', schoolId ? { schoolId } : undefined) ?? this.get('/templates', {});
+    const allHit = this.get('/templates', { allSchools: 'true' });
+    if (allHit) return allHit;
+    return this.get('/templates', { allSchools: 'true' });
   },
 
   clear() {

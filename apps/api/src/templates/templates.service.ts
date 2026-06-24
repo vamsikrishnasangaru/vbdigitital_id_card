@@ -121,7 +121,14 @@ export class TemplatesService {
 
   async findAll(schoolId?: string, search?: string, allSchools?: boolean) {
     const where: Record<string, unknown> = { deletedAt: null, isActive: true };
-    if (!allSchools && schoolId) where.schoolId = schoolId;
+    if (allSchools) {
+      // Super admin: list every school
+    } else if (schoolId) {
+      where.schoolId = schoolId;
+    } else {
+      // Non–super-admin callers without a school should see nothing
+      return [];
+    }
     if (search?.trim()) {
       const q = search.trim();
       where.OR = [

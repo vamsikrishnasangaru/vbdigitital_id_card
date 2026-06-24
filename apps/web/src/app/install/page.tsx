@@ -1,10 +1,12 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import Link from 'next/link';
 import { CreditCard, ArrowLeft } from 'lucide-react';
 import { PwaInstallInstructions } from '@/components/pwa/PwaInstallInstructions';
 
-export default function InstallPage() {
+export default function InstallPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">

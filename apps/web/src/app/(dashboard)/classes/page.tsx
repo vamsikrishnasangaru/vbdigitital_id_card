@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -95,7 +96,8 @@ type DeleteConfirmState =
 
 const SELECT_OPTION_CLASS = 'bg-popover text-popover-foreground';
 
-export default function ClassesPage() {
+export default function ClassesPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const router = useRouter();
   const { user } = useAuthStore();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';

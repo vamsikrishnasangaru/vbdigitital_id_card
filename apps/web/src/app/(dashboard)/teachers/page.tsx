@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -52,7 +53,8 @@ const STATUS_FILTERS = [
   { value: 'inactive', label: 'Inactive' },
 ] as const;
 
-export default function TeachersPage() {
+export default function TeachersPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { isOffline, pendingCount, offlineStudentCount, offlineClassCount, offlineTeacherCount } =

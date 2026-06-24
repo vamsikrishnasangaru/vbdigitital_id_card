@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useAuthStore } from '@/stores/auth-store';
 import api from '@/lib/api';
 import {
@@ -191,7 +192,8 @@ const QUICK_ACTIONS: QuickAction[] = [
   { label: 'Settings', href: '/settings', icon: Settings, roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
 ];
 
-export default function DashboardPage() {
+export default function DashboardPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const { user } = useAuthStore();
 
   const { data, isLoading: loading } = useQuery({

@@ -1,4 +1,4 @@
-import { parseBackground } from '@/lib/background-utils';
+import { parseBackground, type GradientBackground } from '@/lib/background-utils';
 import {
   formatSectionName,
   formatStudentFullName,
@@ -19,7 +19,7 @@ export const DESIGNER_PHOTO_PLACEHOLDER =
       '</svg>',
   );
 
-export type PhotoShape = 'rectangle' | 'rounded' | 'circle' | 'ellipse';
+export type PhotoShape = 'rectangle' | 'rounded' | 'circle' | 'ellipse' | 'custom';
 export type BorderStyle = 'solid' | 'dashed' | 'dotted';
 
 export interface ImageCrop {
@@ -35,9 +35,25 @@ export interface ColorAdjust {
   saturation?: number;
 }
 
+export interface PhotoFit {
+  zoom?: number;
+  offsetX?: number;
+  offsetY?: number;
+}
+
+export type FrameFillMode = 'transparent' | 'solid' | 'gradient';
+
+export interface FrameShadow {
+  color?: string;
+  blur?: number;
+  offsetX?: number;
+  offsetY?: number;
+  opacity?: number;
+}
+
 export interface DesignerElement {
   id: string;
-  type: 'text' | 'photo' | 'image' | 'qr' | 'barcode' | 'shape';
+  type: 'text' | 'photo' | 'image' | 'qr' | 'barcode' | 'shape' | 'customPhotoFrame';
   x: number;
   y: number;
   width?: number;
@@ -63,6 +79,14 @@ export interface DesignerElement {
   borderStyle?: BorderStyle;
   crop?: ImageCrop;
   colorAdjust?: ColorAdjust;
+  topLeftRadius?: number;
+  topRightRadius?: number;
+  bottomLeftRadius?: number;
+  bottomRightRadius?: number;
+  frameFillMode?: FrameFillMode;
+  frameGradient?: GradientBackground;
+  frameShadow?: FrameShadow;
+  photoFit?: PhotoFit;
 }
 
 export function scaleElementsForPpi(
@@ -82,6 +106,25 @@ export function scaleElementsForPpi(
     strokeWidth: el.strokeWidth ? el.strokeWidth * factor : el.strokeWidth,
     borderWidth: el.borderWidth ? el.borderWidth * factor : el.borderWidth,
     cornerRadius: el.cornerRadius ? el.cornerRadius * factor : el.cornerRadius,
+    topLeftRadius: el.topLeftRadius ? el.topLeftRadius * factor : el.topLeftRadius,
+    topRightRadius: el.topRightRadius ? el.topRightRadius * factor : el.topRightRadius,
+    bottomLeftRadius: el.bottomLeftRadius ? el.bottomLeftRadius * factor : el.bottomLeftRadius,
+    bottomRightRadius: el.bottomRightRadius ? el.bottomRightRadius * factor : el.bottomRightRadius,
+    photoFit: el.photoFit
+      ? {
+          zoom: el.photoFit.zoom,
+          offsetX: el.photoFit.offsetX != null ? el.photoFit.offsetX * factor : el.photoFit.offsetX,
+          offsetY: el.photoFit.offsetY != null ? el.photoFit.offsetY * factor : el.photoFit.offsetY,
+        }
+      : el.photoFit,
+    frameShadow: el.frameShadow
+      ? {
+          ...el.frameShadow,
+          blur: el.frameShadow.blur != null ? el.frameShadow.blur * factor : el.frameShadow.blur,
+          offsetX: el.frameShadow.offsetX != null ? el.frameShadow.offsetX * factor : el.frameShadow.offsetX,
+          offsetY: el.frameShadow.offsetY != null ? el.frameShadow.offsetY * factor : el.frameShadow.offsetY,
+        }
+      : el.frameShadow,
   }));
 }
 
@@ -100,6 +143,86 @@ type ClipContext = {
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void;
   rect(x: number, y: number, w: number, h: number): void;
 };
+
+export function clampCornerRadii(
+  tl: number,
+  tr: number,
+  br: number,
+  bl: number,
+  w: number,
+  h: number,
+): [number, number, number, number] {
+  const maxR = Math.max(0, Math.min(w, h) / 2);
+  return [
+    Math.min(Math.max(0, tl), maxR),
+    Math.min(Math.max(0, tr), maxR),
+    Math.min(Math.max(0, br), maxR),
+    Math.min(Math.max(0, bl), maxR),
+  ];
+}
+
+export function getElementCornerRadii(
+  el: DesignerElement,
+  ppiScale = 1,
+): [number, number, number, number] {
+  const boxW = (el.width ?? 72) * ppiScale;
+  const boxH = (el.height ?? 96) * ppiScale;
+  if (el.type === 'customPhotoFrame' || el.photoShape === 'custom') {
+    return clampCornerRadii(
+      (el.topLeftRadius ?? 0) * ppiScale,
+      (el.topRightRadius ?? 0) * ppiScale,
+      (el.bottomRightRadius ?? 0) * ppiScale,
+      (el.bottomLeftRadius ?? 0) * ppiScale,
+      boxW,
+      boxH,
+    );
+  }
+  const r = (el.cornerRadius ?? 0) * ppiScale;
+  return [r, r, r, r];
+}
+
+export function getPhotoClipFunc(el: DesignerElement, w: number, h: number, ppiScale = 1) {
+  const shape = el.photoShape || 'rectangle';
+  if (shape === 'custom') {
+    const [tl, tr, br, bl] = getElementCornerRadii(el, ppiScale);
+    return getCustomFrameClipFunc(tl, tr, br, bl, w, h);
+  }
+  return getClipFunc(shape, w, h, (el.cornerRadius ?? 8) * ppiScale);
+}
+
+export function drawRoundedRectPath(
+  ctx: ClipContext,
+  w: number,
+  h: number,
+  tl: number,
+  tr: number,
+  br: number,
+  bl: number,
+) {
+  const [a, b, c, d] = clampCornerRadii(tl, tr, br, bl, w, h);
+  ctx.beginPath();
+  ctx.moveTo(a, 0);
+  ctx.lineTo(w - b, 0);
+  ctx.quadraticCurveTo(w, 0, w, b);
+  ctx.lineTo(w, h - c);
+  ctx.quadraticCurveTo(w, h, w - c, h);
+  ctx.lineTo(d, h);
+  ctx.quadraticCurveTo(0, h, 0, h - d);
+  ctx.lineTo(0, a);
+  ctx.quadraticCurveTo(0, 0, a, 0);
+  ctx.closePath();
+}
+
+export function getCustomFrameClipFunc(
+  tl: number,
+  tr: number,
+  br: number,
+  bl: number,
+  w: number,
+  h: number,
+) {
+  return (ctx: ClipContext) => drawRoundedRectPath(ctx, w, h, tl, tr, br, bl);
+}
 
 export function getClipFunc(shape: PhotoShape | undefined, w: number, h: number, radius?: number) {
   const r = radius ?? 8;
@@ -126,6 +249,31 @@ export function getClipFunc(shape: PhotoShape | undefined, w: number, h: number,
     } else {
       ctx.rect(0, 0, w, h);
     }
+  };
+}
+
+/** Cover layout with optional zoom and pan inside a photo frame. */
+export function getImageFitLayout(
+  srcWidth: number,
+  srcHeight: number,
+  boxW: number,
+  boxH: number,
+  fit?: PhotoFit,
+  ppiScale = 1,
+): { x: number; y: number; width: number; height: number } {
+  const cover = getImageCoverLayout(srcWidth, srcHeight, boxW, boxH);
+  const zoom = Math.max(0.25, Math.min(4, fit?.zoom ?? 1));
+  const width = cover.width * zoom;
+  const height = cover.height * zoom;
+  const cx = cover.x + cover.width / 2;
+  const cy = cover.y + cover.height / 2;
+  const offsetX = (fit?.offsetX ?? 0) * ppiScale;
+  const offsetY = (fit?.offsetY ?? 0) * ppiScale;
+  return {
+    x: cx - width / 2 + offsetX,
+    y: cy - height / 2 + offsetY,
+    width,
+    height,
   };
 }
 
@@ -161,11 +309,26 @@ export function getDashPattern(style: BorderStyle | undefined, width: number): n
   return undefined;
 }
 
-/** Border draws only when color and an explicit width > 0 are set. */
+/** Default stroke width when a border color is set without an explicit width. */
+export const DEFAULT_PHOTO_BORDER_WIDTH = 2;
+
+/** Border draws when color is set; width defaults to {@link DEFAULT_PHOTO_BORDER_WIDTH}. */
 export function getEffectiveBorderWidth(el: Pick<DesignerElement, 'borderColor' | 'borderWidth'>): number {
   if (!el.borderColor?.trim()) return 0;
-  if (el.borderWidth == null || el.borderWidth <= 0) return 0;
-  return el.borderWidth;
+  const w = el.borderWidth;
+  if (w == null || w <= 0) return DEFAULT_PHOTO_BORDER_WIDTH;
+  return w;
+}
+
+/** Ensure media borders persist when only color is provided in template JSON. */
+export function normalizeMediaBorder(el: DesignerElement): DesignerElement {
+  if (!el.borderColor?.trim()) return el;
+  if (el.borderWidth != null && el.borderWidth > 0) return el;
+  return {
+    ...el,
+    borderWidth: DEFAULT_PHOTO_BORDER_WIDTH,
+    borderStyle: el.borderStyle ?? 'solid',
+  };
 }
 
 export function resolveStudentField(
@@ -369,7 +532,7 @@ export function getDragClampSize(
   const normalized = isSchoolAssetSlot(el) ? normalizeSchoolAssetSizes(el, orientation) : el;
   let { width, height } = getElementBounds(normalized, orientation);
 
-  if (isStudentPhotoSlot(normalized)) {
+  if (isStudentPhotoSlot(normalized) || isCustomPhotoFrameElement(normalized)) {
     const maxW = cardW * 0.52;
     const maxH = cardH * 0.58;
     width = Math.min(width, maxW);
@@ -487,6 +650,9 @@ export function getElementSize(el: DesignerElement): { width: number; height: nu
   if (el.type === 'shape') {
     return { width: el.width ?? 80, height: el.height ?? (el.fieldType === 'divider' ? 2 : 40) };
   }
+  if (el.type === 'customPhotoFrame') {
+    return { width: el.width ?? 140, height: el.height ?? 180 };
+  }
   if (el.type === 'photo' || el.type === 'image' || el.fieldType === 'studentPhoto') {
     return { width: el.width ?? 72, height: el.height ?? 96 };
   }
@@ -502,6 +668,7 @@ export function clampCrop(crop: ImageCrop): ImageCrop {
 }
 
 function isStudentPhotoSlot(el: DesignerElement): boolean {
+  if (el.type === 'customPhotoFrame') return false;
   return el.type === 'photo' || el.fieldType === 'studentPhoto';
 }
 
@@ -540,16 +707,14 @@ function stripLegacyStudentPhotoBorder(el: DesignerElement): DesignerElement {
   if (!isStudentPhotoSlot(el)) return el;
   if (!el.borderWidth || el.borderWidth <= 0) return el;
   const c = (el.borderColor || '').toLowerCase().trim();
-  const isRedFrame =
-    !c ||
-    c === 'red' ||
-    c === '#f00' ||
-    c === '#ff0000' ||
-    c.startsWith('#ef') ||
-    c.startsWith('#dc') ||
-    c.startsWith('#b91') ||
-    c.startsWith('#f00');
-  if (!isRedFrame) return el;
+  // Stuck transformer: width with no color
+  if (!c) {
+    const { borderWidth: _bw, borderColor: _bc, borderStyle: _bs, ...rest } = el;
+    return rest as DesignerElement;
+  }
+  // Legacy exact red selection frame only — do not strip user-chosen reds like #ef4444
+  const isLegacyRed = c === 'red' || c === '#f00' || c === '#ff0000';
+  if (!isLegacyRed) return el;
   const { borderWidth: _bw, borderColor: _bc, borderStyle: _bs, ...rest } = el;
   return rest as DesignerElement;
 }
@@ -558,6 +723,15 @@ export function sanitizeElement(el: DesignerElement, orientation: 'HORIZONTAL' |
   let next = el;
   if (isSchoolAssetSlot(el)) {
     next = normalizeSchoolAssetSizes(el, orientation);
+  } else if (isCustomPhotoFrameElement(el)) {
+    const { width, height } = getElementSize(el);
+    if (width < 20 || height < 20) {
+      next = {
+        ...el,
+        width: 140,
+        height: 180,
+      };
+    }
   } else if (isMediaElement(el)) {
     const { width, height } = getElementSize(el);
     if (width < 20 || height < 20) {
@@ -591,11 +765,22 @@ export function sanitizeElement(el: DesignerElement, orientation: 'HORIZONTAL' |
     next = { ...next, borderColor: undefined, borderStyle: undefined };
   }
 
-  if (isMediaElement(next) && next.borderColor?.trim() && (next.borderWidth == null || next.borderWidth <= 0)) {
-    next = { ...next, borderColor: undefined, borderStyle: undefined };
+  if (
+    (isMediaElement(next) || isCustomPhotoFrameElement(next)) &&
+    next.borderColor?.trim()
+  ) {
+    next = normalizeMediaBorder(next);
   }
 
   return clampElementToCard(next, orientation);
+}
+
+export function isCustomPhotoFrameElement(el: DesignerElement): boolean {
+  return el.type === 'customPhotoFrame';
+}
+
+export function isCroppableMediaElement(el: DesignerElement): boolean {
+  return isMediaElement(el) || isCustomPhotoFrameElement(el);
 }
 
 /** Use dashed frame selection instead of Konva Transformer (avoids stuck handles on photo slots). */
@@ -615,6 +800,13 @@ export function getElementImageUrl(
   if (el.type === 'image' && el.imageUrl) return resolveMediaUrl(el.imageUrl);
   if (el.fieldType === 'schoolLogo' || el.fieldType === 'schoolSignature') {
     if (el.imageUrl) return resolveMediaUrl(el.imageUrl);
+    return '';
+  }
+  if (el.type === 'customPhotoFrame') {
+    if (el.imageUrl) return resolveMediaUrl(el.imageUrl);
+    const url = getStudentPhotoUrl(student);
+    if (url) return url;
+    if (options?.usePlaceholder) return DESIGNER_PHOTO_PLACEHOLDER;
     return '';
   }
   if (el.type === 'photo' || el.fieldType === 'studentPhoto') {
@@ -641,7 +833,7 @@ export function collectRenderImageUrls(
   }
 
   for (const el of elements) {
-    if (!isMediaElement(el)) continue;
+    if (!isMediaElement(el) && !isCustomPhotoFrameElement(el)) continue;
     const url = getElementImageUrl(el, student, options);
     if (url && !url.startsWith('data:')) urls.push(resolve(url));
   }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -50,7 +51,8 @@ function formatRole(role?: string) {
   return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default function SettingsPage() {
+export default function SettingsPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, setUser, logout } = useAuthStore();

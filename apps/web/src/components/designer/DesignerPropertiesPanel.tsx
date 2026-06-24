@@ -2,7 +2,7 @@
 
 import { Crop, Trash2, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { DesignerElement } from '@/lib/designer-utils';
+import type { DesignerElement, PhotoFit } from '@/lib/designer-utils';
 import {
   getCardSize,
   getDragClampSize,
@@ -11,6 +11,12 @@ import {
 } from '@/lib/designer-utils';
 import { FONT_FAMILIES, PHOTO_SHAPES, BORDER_STYLES, DEFAULT_COLOR_ADJUST } from './designer-constants';
 
+const DEFAULT_FRAME_GRADIENT = {
+  angle: 135,
+  colorStart: '#e2e8f0',
+  colorEnd: '#94a3b8',
+};
+
 interface DesignerPropertiesPanelProps {
   selected: DesignerElement | null;
   onUpdate: (patch: Partial<DesignerElement>) => void;
@@ -18,6 +24,7 @@ interface DesignerPropertiesPanelProps {
   onOpenCrop: () => void;
   onCenterOnCard?: () => void;
   onReplaceAsset?: (kind: 'schoolLogo' | 'schoolSignature') => void;
+  onUploadFramePhoto?: () => void;
   orientation?: 'HORIZONTAL' | 'VERTICAL';
 }
 
@@ -218,6 +225,52 @@ function RangeBar({
   );
 }
 
+function CornerRadiusControl({
+  label,
+  value,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  const safeMax = Math.max(0, max);
+  const clamped = Math.max(0, Math.min(safeMax, value));
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <Label>{label}</Label>
+        <span className="text-[10px] font-bold tabular-nums text-white/55">{clamped}px</span>
+      </div>
+      <div className="flex gap-2 items-center">
+        <input
+          type="range"
+          min={0}
+          max={safeMax}
+          step={1}
+          value={clamped}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="flex-1 h-2 rounded-full appearance-none cursor-pointer bg-white/10 accent-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+        />
+        <Input
+          type="number"
+          min={0}
+          max={safeMax}
+          className="w-[4.5rem] shrink-0 px-2"
+          value={clamped}
+          onChange={(e) => {
+            const n = parseNumInput(e.target.value);
+            if (n != null) onChange(Math.max(0, Math.min(safeMax, n)));
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function PositionControls({
   selected,
   orientation,
@@ -325,9 +378,17 @@ function PositionControls({
   );
 }
 
-function colorPatchWithBorder(color: string | undefined): Partial<DesignerElement> {
+function colorPatchWithBorder(
+  color: string | undefined,
+  currentWidth?: number | null,
+): Partial<DesignerElement> {
   if (!color) return { borderColor: undefined, borderWidth: undefined, borderStyle: undefined };
-  return { borderColor: color };
+  const patch: Partial<DesignerElement> = { borderColor: color };
+  if (currentWidth == null || currentWidth <= 0) {
+    patch.borderWidth = 2;
+    patch.borderStyle = 'solid';
+  }
+  return patch;
 }
 
 function colorPatchWithStroke(color: string | undefined): Partial<DesignerElement> {
@@ -377,6 +438,7 @@ export function DesignerPropertiesPanel({
   onOpenCrop,
   onCenterOnCard,
   onReplaceAsset,
+  onUploadFramePhoto,
   orientation = 'HORIZONTAL',
 }: DesignerPropertiesPanelProps) {
   if (!selected) {
@@ -389,13 +451,28 @@ export function DesignerPropertiesPanel({
   }
 
   const isText = selected.type === 'text';
+  const isCustomFrame = selected.type === 'customPhotoFrame';
   const isSignature = selected.fieldType === 'schoolSignature';
   const isLogo = selected.fieldType === 'schoolLogo';
   const mediaLabel = isSignature ? 'Signature' : isLogo ? 'Logo' : 'Photo';
-  const isMedia = selected.type === 'photo' || selected.type === 'image' || isSignature || isLogo;
+  const isMedia =
+    !isCustomFrame &&
+    (selected.type === 'photo' || selected.type === 'image' || isSignature || isLogo);
   const isBox = selected.type === 'qr' || selected.type === 'barcode';
   const isShape = selected.type === 'shape';
   const adjust = { ...DEFAULT_COLOR_ADJUST, ...selected.colorAdjust };
+  const photoFit: PhotoFit = selected.photoFit ?? { zoom: 1, offsetX: 0, offsetY: 0 };
+  const frameShadow = selected.frameShadow ?? {};
+  const cornerMax = Math.max(
+    0,
+    Math.floor(Math.min(selected.width ?? 140, selected.height ?? 180) / 2),
+  );
+
+  const patchPhotoFit = (patch: Partial<PhotoFit>) =>
+    onUpdate({ photoFit: { ...photoFit, ...patch } });
+
+  const patchFrameShadow = (patch: Partial<NonNullable<DesignerElement['frameShadow']>>) =>
+    onUpdate({ frameShadow: { ...frameShadow, ...patch } });
 
   return (
     <div className="space-y-5 px-2 pb-8">
@@ -485,7 +562,7 @@ export function DesignerPropertiesPanel({
           <ColorRow
             label="Border color"
             value={selected.borderColor ?? ''}
-            onChange={(v) => onUpdate(colorPatchWithBorder(v))}
+            onChange={(v) => onUpdate(colorPatchWithBorder(v, selected.borderWidth))}
           />
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
@@ -507,6 +584,249 @@ export function DesignerPropertiesPanel({
               />
             </div>
           </div>
+        </>
+      )}
+
+      {isCustomFrame && (
+        <>
+          <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Photo settings</p>
+          {onUploadFramePhoto && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onUploadFramePhoto}
+                className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-[11px] font-bold text-primary hover:bg-primary/20"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {selected.imageUrl ? 'Replace' : 'Upload'}
+              </button>
+              <button
+                type="button"
+                onClick={onOpenCrop}
+                className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-white/10 bg-white/5 text-[11px] font-bold text-white hover:bg-white/10"
+              >
+                <Crop className="h-3.5 w-3.5" />
+                Crop
+              </button>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <Label>Zoom</Label>
+              <span className="text-[10px] font-bold tabular-nums text-white/55">
+                {Math.round((photoFit.zoom ?? 1) * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={25}
+              max={300}
+              step={5}
+              value={Math.round((photoFit.zoom ?? 1) * 100)}
+              onChange={(e) => patchPhotoFit({ zoom: Number(e.target.value) / 100 })}
+              className="w-full accent-primary"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label>Position X</Label>
+              <Input
+                type="number"
+                value={numInputValue(photoFit.offsetX)}
+                onChange={(e) => patchPhotoFit({ offsetX: parseNumInput(e.target.value) ?? 0 })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Position Y</Label>
+              <Input
+                type="number"
+                value={numInputValue(photoFit.offsetY)}
+                onChange={(e) => patchPhotoFit({ offsetY: parseNumInput(e.target.value) ?? 0 })}
+              />
+            </div>
+          </div>
+
+          <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider pt-2 border-t border-white/10">
+            Shape settings
+          </p>
+          <SizeRow
+            label="Frame"
+            width={selected.width}
+            height={selected.height}
+            onWidth={(v) => onUpdate({ width: v })}
+            onHeight={(v) => onUpdate({ height: v })}
+          />
+          <div className="space-y-1.5">
+            <Label>Rotation (°)</Label>
+            <Input
+              type="number"
+              min={-180}
+              max={180}
+              value={numInputValue(selected.rotation ?? 0)}
+              onChange={(e) => onUpdate({ rotation: parseNumInput(e.target.value) ?? 0 })}
+            />
+          </div>
+          <CornerRadiusControl
+            label="Top left radius"
+            value={selected.topLeftRadius ?? 0}
+            max={cornerMax}
+            onChange={(v) => onUpdate({ topLeftRadius: v })}
+          />
+          <CornerRadiusControl
+            label="Top right radius"
+            value={selected.topRightRadius ?? 0}
+            max={cornerMax}
+            onChange={(v) => onUpdate({ topRightRadius: v })}
+          />
+          <CornerRadiusControl
+            label="Bottom left radius"
+            value={selected.bottomLeftRadius ?? 0}
+            max={cornerMax}
+            onChange={(v) => onUpdate({ bottomLeftRadius: v })}
+          />
+          <CornerRadiusControl
+            label="Bottom right radius"
+            value={selected.bottomRightRadius ?? 0}
+            max={cornerMax}
+            onChange={(v) => onUpdate({ bottomRightRadius: v })}
+          />
+          <ColorRow
+            label="Border color"
+            value={selected.borderColor ?? ''}
+            onChange={(v) => onUpdate(colorPatchWithBorder(v, selected.borderWidth))}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label>Border width</Label>
+              <Input
+                type="number"
+                min={0}
+                max={20}
+                placeholder="Width"
+                value={borderWidthInputValue(selected)}
+                onChange={(e) => onUpdate(borderWidthPatch(parseNumInput(e.target.value)))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Border style</Label>
+              <BorderStyleSelect value={borderStyleSelectValue(selected)} onChange={onUpdate} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Background</Label>
+            <Select
+              value={selected.frameFillMode ?? 'solid'}
+              onChange={(e) => {
+                const mode = e.target.value as DesignerElement['frameFillMode'];
+                const patch: Partial<DesignerElement> = { frameFillMode: mode };
+                if (mode === 'gradient' && !selected.frameGradient) {
+                  patch.frameGradient = DEFAULT_FRAME_GRADIENT;
+                }
+                onUpdate(patch);
+              }}
+            >
+              <option value="transparent" className="bg-zinc-900">Transparent</option>
+              <option value="solid" className="bg-zinc-900">Solid color</option>
+              <option value="gradient" className="bg-zinc-900">Gradient</option>
+            </Select>
+          </div>
+          {(selected.frameFillMode ?? 'solid') === 'solid' && (
+            <ColorRow label="Background color" value={selected.fill ?? '#e2e8f0'} onChange={(v) => onUpdate({ fill: v })} />
+          )}
+          {selected.frameFillMode === 'gradient' && selected.frameGradient && (
+            <>
+              <ColorRow
+                label="Gradient start"
+                value={selected.frameGradient.colorStart}
+                onChange={(v) =>
+                  onUpdate({
+                    frameGradient: { ...selected.frameGradient!, colorStart: v || DEFAULT_FRAME_GRADIENT.colorStart },
+                  })
+                }
+              />
+              <ColorRow
+                label="Gradient end"
+                value={selected.frameGradient.colorEnd}
+                onChange={(v) =>
+                  onUpdate({
+                    frameGradient: { ...selected.frameGradient!, colorEnd: v || DEFAULT_FRAME_GRADIENT.colorEnd },
+                  })
+                }
+              />
+              <div className="space-y-1.5">
+                <Label>Gradient angle: {selected.frameGradient.angle}°</Label>
+                <input
+                  type="range"
+                  min={0}
+                  max={360}
+                  step={5}
+                  value={selected.frameGradient.angle}
+                  onChange={(e) =>
+                    onUpdate({
+                      frameGradient: { ...selected.frameGradient!, angle: Number(e.target.value) },
+                    })
+                  }
+                  className="w-full accent-primary"
+                />
+              </div>
+            </>
+          )}
+          <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider pt-2">Shadow</p>
+          <ColorRow
+            label="Shadow color"
+            value={frameShadow.color ?? '#000000'}
+            onChange={(v) => patchFrameShadow({ color: v })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label>Blur</Label>
+              <Input
+                type="number"
+                min={0}
+                max={40}
+                value={numInputValue(frameShadow.blur ?? 0)}
+                onChange={(e) => patchFrameShadow({ blur: parseNumInput(e.target.value) ?? 0 })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Opacity</Label>
+              <Input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={frameShadow.opacity ?? 0}
+                onChange={(e) => patchFrameShadow({ opacity: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label>Offset X</Label>
+              <Input
+                type="number"
+                value={numInputValue(frameShadow.offsetX ?? 0)}
+                onChange={(e) => patchFrameShadow({ offsetX: parseNumInput(e.target.value) ?? 0 })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Offset Y</Label>
+              <Input
+                type="number"
+                value={numInputValue(frameShadow.offsetY ?? 0)}
+                onChange={(e) => patchFrameShadow({ offsetY: parseNumInput(e.target.value) ?? 0 })}
+              />
+            </div>
+          </div>
+          {onCenterOnCard && (
+            <button
+              type="button"
+              onClick={onCenterOnCard}
+              className="w-full py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-xs font-bold text-primary hover:bg-primary/20 transition-colors"
+            >
+              Center on card
+            </button>
+          )}
         </>
       )}
 
@@ -537,6 +857,13 @@ export function DesignerPropertiesPanel({
                     patch.height = size;
                   }
                 }
+                if (photoShape === 'custom') {
+                  const fallback = selected.cornerRadius ?? 8;
+                  patch.topLeftRadius = selected.topLeftRadius ?? fallback;
+                  patch.topRightRadius = selected.topRightRadius ?? fallback;
+                  patch.bottomLeftRadius = selected.bottomLeftRadius ?? fallback;
+                  patch.bottomRightRadius = selected.bottomRightRadius ?? fallback;
+                }
                 onUpdate(patch);
               }}
             >
@@ -559,6 +886,38 @@ export function DesignerPropertiesPanel({
               />
             </div>
           )}
+          {selected.photoShape === 'custom' && (() => {
+            const { width, height } = getElementSize(selected);
+            const cornerMax = Math.max(0, Math.floor(Math.min(width, height) / 2));
+            return (
+              <>
+                <CornerRadiusControl
+                  label="Top left"
+                  value={selected.topLeftRadius ?? 0}
+                  max={cornerMax}
+                  onChange={(v) => onUpdate({ topLeftRadius: v })}
+                />
+                <CornerRadiusControl
+                  label="Top right"
+                  value={selected.topRightRadius ?? 0}
+                  max={cornerMax}
+                  onChange={(v) => onUpdate({ topRightRadius: v })}
+                />
+                <CornerRadiusControl
+                  label="Bottom left"
+                  value={selected.bottomLeftRadius ?? 0}
+                  max={cornerMax}
+                  onChange={(v) => onUpdate({ bottomLeftRadius: v })}
+                />
+                <CornerRadiusControl
+                  label="Bottom right"
+                  value={selected.bottomRightRadius ?? 0}
+                  max={cornerMax}
+                  onChange={(v) => onUpdate({ bottomRightRadius: v })}
+                />
+              </>
+            );
+          })()}
           <SizeRow
             label={mediaLabel}
             width={selected.width}
@@ -578,7 +937,7 @@ export function DesignerPropertiesPanel({
           <ColorRow
             label="Border color"
             value={selected.borderColor ?? ''}
-            onChange={(v) => onUpdate(colorPatchWithBorder(v))}
+            onChange={(v) => onUpdate(colorPatchWithBorder(v, selected.borderWidth))}
           />
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
@@ -656,21 +1015,44 @@ export function DesignerPropertiesPanel({
       )}
 
       <div className="space-y-2 pt-2 border-t border-white/10">
-        <div className="flex items-center justify-between gap-2">
-          <Label>Opacity</Label>
-          <span className="text-[10px] font-bold tabular-nums text-white/55">
-            {Math.round((selected.opacity ?? 1) * 100)}%
-          </span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={selected.opacity ?? 1}
-          onChange={(e) => onUpdate({ opacity: Number(e.target.value) })}
-          className="w-full accent-primary"
-        />
+        {!isCustomFrame && (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <Label>Opacity</Label>
+              <span className="text-[10px] font-bold tabular-nums text-white/55">
+                {Math.round((selected.opacity ?? 1) * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={selected.opacity ?? 1}
+              onChange={(e) => onUpdate({ opacity: Number(e.target.value) })}
+              className="w-full accent-primary"
+            />
+          </>
+        )}
+        {isCustomFrame && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label>Frame opacity</Label>
+              <span className="text-[10px] font-bold tabular-nums text-white/55">
+                {Math.round((selected.opacity ?? 1) * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={selected.opacity ?? 1}
+              onChange={(e) => onUpdate({ opacity: Number(e.target.value) })}
+              className="w-full accent-primary"
+            />
+          </div>
+        )}
         <label className="flex items-center gap-2 text-xs text-white/60 cursor-pointer">
           <input
             type="checkbox"

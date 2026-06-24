@@ -1,22 +1,23 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
-import { Group, Image, Rect, Circle, Ellipse, Shape } from 'react-konva';
+import { Group, Image, Rect, Shape } from 'react-konva';
 import Konva from 'konva';
 import { useCorsImage } from '@/hooks/useCorsImage';
-import type { DesignerElement, PhotoShape } from '@/lib/designer-utils';
+import { gradientEndPoint } from '@/lib/background-utils';
+import type { DesignerElement } from '@/lib/designer-utils';
 import {
   drawRoundedRectPath,
+  getCustomFrameClipFunc,
   getDashPattern,
   getEffectiveBorderWidth,
   getElementCornerRadii,
   getElementSize,
-  getImageCoverLayout,
-  getPhotoClipFunc,
+  getImageFitLayout,
 } from '@/lib/designer-utils';
 import { useLayerSnapDrag } from './useLayerSnapDrag';
 
-interface DesignerMediaLayerProps {
+interface DesignerCustomPhotoFrameLayerProps {
   el: DesignerElement;
   imageUrl: string;
   selected: boolean;
@@ -31,54 +32,38 @@ interface DesignerMediaLayerProps {
   onTransformEnd?: (node: Konva.Group) => void;
 }
 
-function ShapeOutline({
-  shape,
+function CustomFrameOutline({
   w,
   h,
-  cornerRadius,
-  cornerRadii,
+  radii,
   stroke,
   strokeWidth,
   dash,
 }: {
-  shape: PhotoShape;
   w: number;
   h: number;
-  cornerRadius: number;
-  cornerRadii?: [number, number, number, number];
+  radii: [number, number, number, number];
   stroke: string;
   strokeWidth: number;
   dash?: number[];
 }) {
-  const common = { stroke, strokeWidth, dash, fill: 'transparent' as const, listening: false as const };
-
-  if (shape === 'custom' && cornerRadii) {
-    const [tl, tr, br, bl] = cornerRadii;
-    return (
-      <Shape
-        sceneFunc={(ctx, node) => {
-          drawRoundedRectPath(ctx, w, h, tl, tr, br, bl);
-          ctx.strokeShape(node);
-        }}
-        fillEnabled={false}
-        {...common}
-      />
-    );
-  }
-
-  if (shape === 'circle') {
-    return <Circle x={w / 2} y={h / 2} radius={Math.min(w, h) / 2} {...common} />;
-  }
-  if (shape === 'ellipse') {
-    return <Ellipse x={w / 2} y={h / 2} radiusX={w / 2} radiusY={h / 2} {...common} />;
-  }
-  if (shape === 'rounded') {
-    return <Rect width={w} height={h} cornerRadius={Math.min(cornerRadius, w / 2, h / 2)} {...common} />;
-  }
-  return <Rect width={w} height={h} {...common} />;
+  const [tl, tr, br, bl] = radii;
+  return (
+    <Shape
+      sceneFunc={(ctx, shape) => {
+        drawRoundedRectPath(ctx, w, h, tl, tr, br, bl);
+        ctx.fillStrokeShape(shape);
+      }}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      dash={dash}
+      fill="transparent"
+      listening={false}
+    />
+  );
 }
 
-export function DesignerMediaLayer({
+export function DesignerCustomPhotoFrameLayer({
   el,
   imageUrl,
   selected,
@@ -91,8 +76,12 @@ export function DesignerMediaLayer({
   onSelect,
   onDragEnd,
   onTransformEnd,
-}: DesignerMediaLayerProps) {
+}: DesignerCustomPhotoFrameLayerProps) {
   const { width: w, height: h } = getElementSize(el);
+  const radii = getElementCornerRadii(el, 1);
+  const borderW = getEffectiveBorderWidth(el) * ppiRatio;
+  const shadow = el.frameShadow;
+  const fillMode = el.frameFillMode ?? 'solid';
 
   const { groupRef, dragBoundFunc, onDragStart, onDragEnd: onDragEndKonva } = useLayerSnapDrag(
     el,
@@ -104,12 +93,6 @@ export function DesignerMediaLayer({
 
   const [image, status] = useCorsImage(imageUrl || '');
   const imageRef = useRef<Konva.Image>(null);
-  const isStudentPhoto = el.type === 'photo' || el.fieldType === 'studentPhoto';
-  const borderW = getEffectiveBorderWidth(el) * ppiRatio;
-  const borderStroke = el.borderColor?.trim() || '#000000';
-  const shape = (el.photoShape || 'rectangle') as PhotoShape;
-  const cornerRadius = (el.cornerRadius ?? 8) * ppiRatio;
-  const cornerRadii = shape === 'custom' ? getElementCornerRadii(el, 1) : undefined;
   const adjust = el.colorAdjust || {};
 
   const crop = el.crop;
@@ -127,26 +110,21 @@ export function DesignerMediaLayer({
 
   const srcW = crop && image ? crop.width * image.width : image?.width ?? w;
   const srcH = crop && image ? crop.height * image.height : image?.height ?? h;
-  const cover = useMemo(() => getImageCoverLayout(srcW, srcH, w, h), [srcW, srcH, w, h]);
-
-  const clipFunc = useMemo(
-    () => getPhotoClipFunc(el, w, h, 1),
-    [
-      shape,
-      w,
-      h,
-      cornerRadius,
-      el.topLeftRadius,
-      el.topRightRadius,
-      el.bottomLeftRadius,
-      el.bottomRightRadius,
-    ],
+  const layout = useMemo(
+    () => getImageFitLayout(srcW, srcH, w, h, el.photoFit, 1),
+    [srcW, srcH, w, h, el.photoFit?.zoom, el.photoFit?.offsetX, el.photoFit?.offsetY],
   );
 
-  const clipKey =
-    shape === 'custom'
-      ? `clip-custom-${cornerRadii?.join('-')}-${Math.round(w)}-${Math.round(h)}`
-      : `clip-${shape}-${Math.round(w)}-${Math.round(h)}-${Math.round(cornerRadius)}`;
+  const clipFunc = useMemo(
+    () => getCustomFrameClipFunc(radii[0], radii[1], radii[2], radii[3], w, h),
+    [radii, w, h],
+  );
+
+  const gradientStops = useMemo(() => {
+    if (fillMode !== 'gradient' || !el.frameGradient) return null;
+    const { start, end } = gradientEndPoint(el.frameGradient.angle, w, h);
+    return { start, end, colorStart: el.frameGradient.colorStart, colorEnd: el.frameGradient.colorEnd };
+  }, [fillMode, el.frameGradient, w, h]);
 
   useEffect(() => {
     const node = imageRef.current;
@@ -164,13 +142,16 @@ export function DesignerMediaLayer({
       node.cache();
     }
     node.getLayer()?.batchDraw();
-  }, [image, adjust.brightness, adjust.contrast, adjust.saturation, cover.x, cover.y, cover.width, cover.height, shape]);
+  }, [image, adjust.brightness, adjust.contrast, adjust.saturation, layout.x, layout.y, layout.width, layout.height]);
+
+  const clipKey = `clip-${radii.join('-')}-${Math.round(w)}-${Math.round(h)}`;
 
   return (
     <Group
       ref={groupRef}
       id={el.id}
       opacity={el.opacity ?? 1}
+      rotation={el.rotation ?? 0}
       draggable={draggable && !el.locked}
       dragBoundFunc={dragBoundFunc}
       onDragStart={onDragStart}
@@ -178,32 +159,47 @@ export function DesignerMediaLayer({
       onTransformEnd={(e) => onTransformEnd?.(e.target as Konva.Group)}
       onClick={onSelect}
       onTap={onSelect}
+      shadowColor={shadow?.color ?? undefined}
+      shadowBlur={shadow?.blur != null ? shadow.blur * ppiRatio : undefined}
+      shadowOffsetX={shadow?.offsetX != null ? shadow.offsetX * ppiRatio : undefined}
+      shadowOffsetY={shadow?.offsetY != null ? shadow.offsetY * ppiRatio : undefined}
+      shadowOpacity={shadow?.opacity ?? undefined}
     >
       <Group clipX={0} clipY={0} clipWidth={w} clipHeight={h} listening={false}>
         <Group key={clipKey} clipFunc={clipFunc}>
+          {fillMode === 'gradient' && gradientStops ? (
+            <Rect
+              width={w}
+              height={h}
+              fillLinearGradientStartPoint={gradientStops.start}
+              fillLinearGradientEndPoint={gradientStops.end}
+              fillLinearGradientColorStops={[0, gradientStops.colorStart, 1, gradientStops.colorEnd]}
+            />
+          ) : fillMode === 'solid' ? (
+            <Rect width={w} height={h} fill={el.fill ?? '#e2e8f0'} />
+          ) : null}
+
           {image && imageUrl && status !== 'failed' ? (
             <Image
               ref={imageRef}
               image={image}
-              x={cover.x}
-              y={cover.y}
-              width={cover.width}
-              height={cover.height}
+              x={layout.x}
+              y={layout.y}
+              width={layout.width}
+              height={layout.height}
               {...cropProps}
             />
-          ) : (
+          ) : fillMode === 'transparent' ? (
             <Rect width={w} height={h} fill="#e2e8f0" />
-          )}
+          ) : null}
         </Group>
       </Group>
 
       {showFrame && selected && (
-        <ShapeOutline
-          shape={shape}
+        <CustomFrameOutline
           w={w}
           h={h}
-          cornerRadius={cornerRadius}
-          cornerRadii={cornerRadii}
+          radii={radii}
           stroke="#3b82f6"
           strokeWidth={Math.max(1, ppiRatio * 0.75)}
           dash={[4 * ppiRatio, 3 * ppiRatio]}
@@ -211,44 +207,27 @@ export function DesignerMediaLayer({
       )}
 
       {borderW > 0 && (
-        <ShapeOutline
-          shape={shape}
+        <CustomFrameOutline
           w={w}
           h={h}
-          cornerRadius={cornerRadius}
-          cornerRadii={cornerRadii}
-          stroke={borderStroke}
+          radii={radii}
+          stroke={el.borderColor || '#000000'}
           strokeWidth={borderW}
           dash={getDashPattern(el.borderStyle, borderW)}
         />
       )}
 
-      {!imageUrl && !selected && isStudentPhoto && borderW === 0 && (
-        <ShapeOutline
-          shape={shape}
+      {!imageUrl && !selected && borderW === 0 && (
+        <CustomFrameOutline
           w={w}
           h={h}
-          cornerRadius={cornerRadius}
-          cornerRadii={cornerRadii}
+          radii={radii}
           stroke="#cbd5e1"
           strokeWidth={Math.max(1, ppiRatio * 0.5)}
           dash={[3 * ppiRatio, 3 * ppiRatio]}
         />
       )}
-      {!imageUrl && !isStudentPhoto && (
-        <ShapeOutline
-          shape={shape}
-          w={w}
-          h={h}
-          cornerRadius={cornerRadius}
-          cornerRadii={cornerRadii}
-          stroke={selected ? '#3b82f6' : '#94a3b8'}
-          strokeWidth={Math.max(1, ppiRatio)}
-          dash={[4 * ppiRatio, 4 * ppiRatio]}
-        />
-      )}
 
-      {/* Hit target — clipped children use listening={false} */}
       <Rect width={w} height={h} fill="rgba(0,0,0,0.001)" listening />
     </Group>
   );

@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
@@ -77,7 +78,8 @@ async function fetchStudentsForBatch(params: {
   return all;
 }
 
-export default function IdCardsPage() {
+export default function IdCardsPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const router = useRouter();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();

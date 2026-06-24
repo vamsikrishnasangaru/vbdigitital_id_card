@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -7,7 +8,8 @@ import { Printer, Loader2, Play, CheckCircle } from 'lucide-react';
 import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
 
-export default function PrintPage() {
+export default function PrintPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const [batches, setBatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 

@@ -16,6 +16,7 @@ export const PHOTO_SHAPES = [
   { id: 'rounded', label: 'Rounded' },
   { id: 'circle', label: 'Circle' },
   { id: 'ellipse', label: 'Oval' },
+  { id: 'custom', label: 'Custom' },
 ] as const;
 
 export const BORDER_STYLES = [

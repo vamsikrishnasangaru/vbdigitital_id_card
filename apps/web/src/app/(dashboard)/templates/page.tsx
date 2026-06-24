@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/stores/auth-store';
 import {
   Plus, Trash2, Loader2, Image as ImageIcon,
   Settings2, Layout, Palette, X, School, Search, Upload, Copy, Layers,
@@ -15,6 +16,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { fetchSchoolsPicker, getCachedSchoolsPicker, type SchoolPickerOption } from '@/lib/schools-query';
 import { offlineGetCache } from '@/lib/offline-get-cache';
 import { offlineStore } from '@/lib/offline-store';
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 
 const IdCardDesigner = dynamic(
   () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
@@ -23,7 +25,7 @@ const IdCardDesigner = dynamic(
 import { TemplateBackgroundPicker, createEmptyBackground } from '@/components/designer/TemplateBackgroundPicker';
 import { cn, resolveMediaUrl } from '@/lib/utils';
 import { normalizeFrontConfig, uploadTemplateBackground } from '@/lib/template-utils';
-import { CR80_SIZE_OPTIONS, formatCr80Label, formatCr80Short } from '@/lib/card-sizes';
+import { CR80_SIZE_OPTIONS, formatCr80Label } from '@/lib/card-sizes';
 import {
   type TemplateBackground,
   encodeBackground,
@@ -61,8 +63,11 @@ function suggestDuplicateCode(
   return `${prefix}${base}`.slice(0, 40);
 }
 
-export default function TemplatesPage() {
+export default function TemplatesPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const [selectedSchoolId, setSelectedSchoolId] = useState('');
   const [designerOpen, setDesignerOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
@@ -88,26 +93,34 @@ export default function TemplatesPage() {
   const [newTemplateBackground, setNewTemplateBackground] = useState<TemplateBackground>(createEmptyBackground());
   const [newTemplateBgFile, setNewTemplateBgFile] = useState<File | null>(null);
   const [newTemplateBgFileName, setNewTemplateBgFileName] = useState('');
+  const [createTargetSchoolId, setCreateTargetSchoolId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   const { data: schools = [] } = useQuery({
     queryKey: queryKeys.schools.picker,
     queryFn: fetchSchoolsPicker,
     placeholderData: getCachedSchoolsPicker,
+    enabled: isSuperAdmin,
   });
 
+  const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
+
   useEffect(() => {
+    if (!isSuperAdmin) {
+      if (user?.schoolId) setSelectedSchoolId(user.schoolId);
+      return;
+    }
     if (schools.length === 0) return;
     const saved = localStorage.getItem('templates_selected_school_id');
     const valid = saved && schools.some((s) => s.id === saved);
     setSelectedSchoolId(valid ? saved! : schools[0].id);
-  }, [schools]);
+  }, [schools, isSuperAdmin, user?.schoolId]);
 
   useEffect(() => {
-    if (selectedSchoolId) {
+    if (isSuperAdmin && selectedSchoolId) {
       localStorage.setItem('templates_selected_school_id', selectedSchoolId);
     }
-  }, [selectedSchoolId]);
+  }, [isSuperAdmin, selectedSchoolId]);
 
   useEffect(() => {
     setSearch('');
@@ -115,51 +128,59 @@ export default function TemplatesPage() {
 
   const selectedSchool = schools.find((s) => s.id === selectedSchoolId);
   const allSchoolsFilter = schools.find((s) => s.id === allSchoolsFilterId);
-  /** School used when uploading a new template (all mode: filtered school, else last selected). */
-  const uploadSchoolId = viewMode === 'all' ? allSchoolsFilterId || selectedSchoolId : selectedSchoolId;
-  const uploadSchool = schools.find((s) => s.id === uploadSchoolId);
+  /** School used when uploading a new template. */
+  const uploadSchoolId = isSuperAdmin
+    ? viewMode === 'all'
+      ? createTargetSchoolId || allSchoolsFilterId || selectedSchoolId
+      : selectedSchoolId
+    : effectiveSchoolId;
+  const uploadSchool =
+    schools.find((s) => s.id === uploadSchoolId) ||
+    (user?.school && user.school.id === uploadSchoolId ? user.school : undefined);
   
   // Queries
   const templatesQueryKey =
-    viewMode === 'all' ? ['templates', 'all'] : ['templates', selectedSchoolId];
+    viewMode === 'all' ? (['templates', 'all'] as const) : (['templates', effectiveSchoolId] as const);
 
-  const { data: templates = [], isLoading } = useQuery({
+  const { data: templates = [], isLoading, isFetching } = useQuery({
     queryKey: templatesQueryKey,
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (viewMode === 'school' && selectedSchoolId) {
-        params.schoolId = selectedSchoolId;
+      if (viewMode === 'school') {
+        if (!effectiveSchoolId) return [] as Template[];
+        params.schoolId = effectiveSchoolId;
       } else {
         params.allSchools = 'true';
       }
       const { data } = await api.get('/templates', { params });
-      if (viewMode === 'school' && selectedSchoolId) {
-        offlineStore.cacheTemplates(selectedSchoolId, data as Template[]);
+      const list = data as Template[];
+      if (viewMode === 'school' && effectiveSchoolId) {
+        offlineStore.cacheTemplates(effectiveSchoolId, list);
       }
-      return data as Template[];
+      return list;
     },
     placeholderData: () => {
-      const params: Record<string, string> = {};
-      if (viewMode === 'school' && selectedSchoolId) {
-        params.schoolId = selectedSchoolId;
-      } else {
-        params.allSchools = 'true';
-      }
-      const cached = offlineGetCache.get('/templates', params);
-      if (Array.isArray(cached)) return cached as Template[];
-      if (viewMode === 'school' && selectedSchoolId) {
-        const fromStore = offlineStore.getTemplates(selectedSchoolId);
+      if (viewMode === 'school' && effectiveSchoolId) {
+        const fromStore = offlineStore.getTemplates(effectiveSchoolId);
         if (fromStore) return fromStore as Template[];
+        const cached = offlineGetCache.get('/templates', { schoolId: effectiveSchoolId });
+        if (Array.isArray(cached)) return cached as Template[];
+      }
+      if (viewMode === 'all') {
+        const cached = offlineGetCache.get('/templates', { allSchools: 'true' });
+        if (Array.isArray(cached)) return cached as Template[];
       }
       return undefined;
     },
-    enabled: viewMode === 'all' || !!selectedSchoolId,
+    enabled: viewMode === 'all' || !!effectiveSchoolId,
   });
 
   const filteredTemplates = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = templates;
-    if (viewMode === 'all' && allSchoolsFilterId) {
+    if (viewMode === 'school' && effectiveSchoolId) {
+      list = list.filter((tpl) => tpl.schoolId === effectiveSchoolId);
+    } else if (viewMode === 'all' && allSchoolsFilterId) {
       list = list.filter((tpl) => tpl.schoolId === allSchoolsFilterId);
     }
     if (!q) return list;
@@ -179,7 +200,7 @@ export default function TemplatesPage() {
         schoolCode.includes(q)
       );
     });
-  }, [templates, search, viewMode, allSchoolsFilterId]);
+  }, [templates, search, viewMode, allSchoolsFilterId, effectiveSchoolId]);
 
   const duplicateMutation = useMutation({
     mutationFn: async ({
@@ -205,7 +226,7 @@ export default function TemplatesPage() {
       queryClient.invalidateQueries({ queryKey: ['templates'] });
       setDuplicatingTemplate(null);
       setDuplicateCodeTouched(false);
-      if (vars.targetSchoolId === selectedSchoolId || viewMode === 'all') {
+      if (vars.targetSchoolId === effectiveSchoolId || viewMode === 'all') {
         setEditingTemplate({
           ...created,
           frontConfig: normalizeFrontConfig(created.frontConfig) as Template['frontConfig'],
@@ -360,6 +381,7 @@ export default function TemplatesPage() {
     setNewTemplateBackground(createEmptyBackground());
     setNewTemplateBgFile(null);
     setNewTemplateBgFileName('');
+    setCreateTargetSchoolId(uploadSchoolId);
     setShowCreateDialog(true);
   };
 
@@ -425,7 +447,8 @@ export default function TemplatesPage() {
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadSchoolId) {
+    const targetSchoolId = isSuperAdmin ? createTargetSchoolId || uploadSchoolId : effectiveSchoolId;
+    if (!targetSchoolId) {
       toast.error('Select a school to assign this template');
       return;
     }
@@ -458,14 +481,18 @@ export default function TemplatesPage() {
         orientation: newTemplateOrientation,
         frontBgUrl,
         frontConfig: [],
-        schoolId: uploadSchoolId,
+        schoolId: targetSchoolId,
       });
       
-      toast.success('Template created successfully');
+      toast.success(`Template created for ${schools.find((s) => s.id === targetSchoolId)?.name ?? user?.school?.name ?? 'school'}`);
       setShowCreateDialog(false);
       
       // Invalidate templates list query
       queryClient.invalidateQueries({ queryKey: ['templates'] });
+      
+      if (isSuperAdmin && viewMode === 'school' && targetSchoolId !== selectedSchoolId) {
+        setSelectedSchoolId(targetSchoolId);
+      }
       
       setEditingTemplate({
         ...data,
@@ -514,6 +541,7 @@ export default function TemplatesPage() {
             {formatCr80Label('VERTICAL').replace('CR80 · ', '')}
           </p>
         </div>
+        {isSuperAdmin && (
         <button 
           onClick={handleCreateNew}
           disabled={!uploadSchoolId}
@@ -522,10 +550,12 @@ export default function TemplatesPage() {
           <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
           <Plus className="h-5 w-5" /> Upload Template
         </button>
+        )}
       </div>
 
       {/* School selector & view mode */}
       <div className="panel-toolbar rounded-2xl p-4 sm:p-5 flex flex-col gap-4">
+        {isSuperAdmin && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
           <div className="flex p-1 rounded-xl bg-muted/50 border border-border shrink-0">
             <button
@@ -581,11 +611,28 @@ export default function TemplatesPage() {
             ))}
           </select>
         </div>
+        )}
+        {!isSuperAdmin && user?.school && (
+          <div className="flex items-center gap-2 px-4 py-3 bg-card border border-border rounded-xl">
+            <School className="h-4 w-4 text-primary shrink-0" />
+            <span className="text-sm font-bold text-foreground">{user.school.name}</span>
+            <span className="text-xs font-mono text-muted-foreground">({user.school.code})</span>
+          </div>
+        )}
         <p className="text-xs text-muted-foreground font-medium">
-          {viewMode === 'school' && selectedSchool ? (
+          {viewMode === 'school' && (selectedSchool || user?.school) ? (
             <>
-              Templates for <span className="text-foreground font-bold">{selectedSchool.name}</span> only.
-              Use <span className="font-bold">Copy to school</span> on any card to reuse the same design elsewhere with a new code.
+              Templates for{' '}
+              <span className="text-foreground font-bold">
+                {selectedSchool?.name ?? user?.school?.name}
+              </span>{' '}
+              only.
+              {isSuperAdmin && (
+                <>
+                  {' '}
+                  Use <span className="font-bold">Copy to school</span> on any card to reuse the same design elsewhere with a new code.
+                </>
+              )}
             </>
           ) : allSchoolsFilter ? (
             <>
@@ -604,7 +651,7 @@ export default function TemplatesPage() {
         </p>
       </div>
 
-      {(viewMode === 'all' || selectedSchoolId) && !isLoading && templates.length > 0 && (
+      {(viewMode === 'all' || effectiveSchoolId) && !isLoading && templates.length > 0 && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1 group min-w-0">
             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-muted-foreground group-focus-within:text-primary transition-colors">
@@ -636,15 +683,15 @@ export default function TemplatesPage() {
       )}
 
       {/* Grid Layout */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-[400px] panel-empty animate-pulse flex flex-col items-center justify-center gap-4">
-              <Loader2 className="h-10 w-10 animate-spin text-primary/20" />
+      {isLoading || isFetching ? (
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-[200px] panel-empty animate-pulse flex flex-col items-center justify-center gap-3 rounded-xl">
+              <Loader2 className="h-8 w-8 animate-spin text-primary/20" />
             </div>
           ))}
         </div>
-      ) : viewMode === 'school' && !selectedSchoolId ? (
+      ) : viewMode === 'school' && !effectiveSchoolId ? (
         <div className="flex flex-col items-center justify-center py-24 panel-empty rounded-[2.5rem] border-2">
           <School className="h-12 w-12 text-muted-foreground/30 mb-4" />
           <p className="text-muted-foreground font-medium">Select a school to manage its ID card backgrounds.</p>
@@ -658,7 +705,7 @@ export default function TemplatesPage() {
             </div>
           </div>
           <h3 className="text-2xl font-black text-foreground mb-2">
-            {viewMode === 'all' ? 'No templates yet' : `No templates for ${selectedSchool?.name}`}
+            {viewMode === 'all' ? 'No templates yet' : `No templates for ${selectedSchool?.name ?? user?.school?.name}`}
           </h3>
           <p className="text-muted-foreground text-center max-w-sm px-6 font-medium">
             Upload a background image, solid color, or gradient for this school&apos;s student ID cards, then place name, photo, and QR fields in the designer.
@@ -686,29 +733,29 @@ export default function TemplatesPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
           {filteredTemplates.map((tpl) => (
             <div 
               key={tpl.id} 
-              className="group relative panel rounded-[2rem] overflow-hidden transition-all duration-500 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-2"
+              className="group relative panel rounded-xl overflow-hidden transition-all duration-300 hover:shadow-md hover:shadow-primary/5 hover:-translate-y-0.5"
             >
-              {/* Preview Container */}
-              <div className={cn(
-                "relative bg-muted/30 aspect-[1.58/1] overflow-hidden flex items-center justify-center p-4",
-                tpl.orientation === 'VERTICAL' && "aspect-[1/1.58]"
-              )}>
+              {/* Preview — fixed height so vertical cards do not stretch the grid */}
+              <div className="relative bg-muted/30 h-[108px] sm:h-[120px] flex items-center justify-center p-2 overflow-hidden">
                 {tpl.frontBgUrl ? (
                   <div
-                    className="w-full h-full rounded-xl shadow-2xl transition-transform duration-700 group-hover:scale-105"
+                    className={cn(
+                      'h-full max-w-full rounded-md shadow-md transition-transform duration-500 group-hover:scale-[1.03] bg-cover bg-center bg-no-repeat',
+                      tpl.orientation === 'VERTICAL' ? 'aspect-[1/1.58] w-auto' : 'aspect-[1.58/1] w-auto',
+                    )}
                     style={templateCardBackgroundStyle(tpl.frontBgUrl, tpl.orientation, resolveMediaUrl)}
                     aria-label={tpl.name}
                   />
                 ) : (
-                  <ImageIcon className="h-12 w-12 text-muted-foreground/20" />
+                  <ImageIcon className="h-8 w-8 text-muted-foreground/20" />
                 )}
                 
                 {/* Desktop hover overlay */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 backdrop-blur-[2px] transition-all duration-300 hidden sm:flex items-center justify-center gap-3">
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 backdrop-blur-[2px] transition-all duration-300 hidden sm:flex items-center justify-center gap-1.5">
                   <button 
                     type="button"
                     title="Replace background"
@@ -717,12 +764,12 @@ export default function TemplatesPage() {
                       openReplaceBackground(tpl);
                     }}
                     disabled={updateBgMutation.isPending && replacingBgTemplate?.id === tpl.id}
-                    className="p-3 bg-white text-black rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl disabled:opacity-60"
+                    className="p-2 bg-white text-black rounded-lg hover:scale-105 active:scale-95 transition-all shadow-lg disabled:opacity-60"
                   >
                     {updateBgMutation.isPending && replacingBgTemplate?.id === tpl.id ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Upload className="h-5 w-5" />
+                      <Upload className="h-4 w-4" />
                     )}
                   </button>
                   <button
@@ -732,17 +779,17 @@ export default function TemplatesPage() {
                       e.stopPropagation();
                       openDuplicateToSchool(tpl);
                     }}
-                    className="p-3 bg-white text-black rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl"
+                    className="p-2 bg-white text-black rounded-lg hover:scale-105 active:scale-95 transition-all shadow-lg"
                   >
-                    <Copy className="h-5 w-5" />
+                    <Copy className="h-4 w-4" />
                   </button>
                   <button 
                     type="button"
                     title="Edit layout"
                     onClick={(e) => { e.stopPropagation(); handleEdit(tpl); }}
-                    className="p-3 bg-white text-black rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl"
+                    className="p-2 bg-white text-black rounded-lg hover:scale-105 active:scale-95 transition-all shadow-lg"
                   >
-                    <Settings2 className="h-5 w-5" />
+                    <Settings2 className="h-4 w-4" />
                   </button>
                   <button 
                     type="button"
@@ -751,24 +798,21 @@ export default function TemplatesPage() {
                       e.stopPropagation();
                       if (confirm('Delete this template?')) deleteMutation.mutate(tpl.id);
                     }}
-                    className="p-3 bg-red-500 text-white rounded-2xl hover:scale-110 active:scale-95 transition-all shadow-xl"
+                    className="p-2 bg-red-500 text-white rounded-lg hover:scale-105 active:scale-95 transition-all shadow-lg"
                   >
-                    <Trash2 className="h-5 w-5" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
 
-                <div className="absolute top-4 left-4 flex flex-wrap gap-2 max-w-[85%]">
-                  <span className="px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-wider font-mono">
+                <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 max-w-[90%]">
+                  <span className="px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-white text-[8px] font-black uppercase tracking-wider font-mono">
                     {templateDisplayCode(tpl)}
                   </span>
-                  <span className="px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-wider">
-                    {tpl.orientation === 'VERTICAL' ? 'Vertical' : 'Horizontal'}
+                  <span className="px-1.5 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-white text-[8px] font-black uppercase tracking-wider">
+                    {tpl.orientation === 'VERTICAL' ? 'V' : 'H'}
                   </span>
-                  <span className="px-3 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[10px] font-bold tracking-wide">
-                    {formatCr80Short(tpl.orientation)}
-                  </span>
-                  {viewMode === 'all' && tpl.school && (
-                    <span className="px-3 py-1 rounded-lg bg-primary/80 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-wider">
+                  {(viewMode === 'all' || isSuperAdmin) && tpl.school && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-primary/80 backdrop-blur-md text-white text-[8px] font-black uppercase tracking-wider">
                       {tpl.school.code}
                     </span>
                   )}
@@ -776,63 +820,57 @@ export default function TemplatesPage() {
               </div>
 
               {/* Content Section */}
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="font-bold text-lg text-foreground truncate max-w-[180px]">{tpl.name}</h3>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <span className="text-[10px] font-mono font-black text-primary uppercase">
-                        {templateDisplayCode(tpl)}
-                      </span>
-                      <span className="text-[10px] font-bold text-muted-foreground">
-                        · {formatCr80Label(tpl.orientation)}
-                      </span>
+              <div className="p-3 sm:p-3.5">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-sm text-foreground truncate">{tpl.name}</h3>
+                    <p className="text-[10px] font-bold text-muted-foreground mt-0.5 truncate">
+                      <span className="font-mono text-primary">{templateDisplayCode(tpl)}</span>
                       {tpl.school && (
-                        <span className="text-[10px] font-bold text-muted-foreground">· {tpl.school.name}</span>
+                        <span className="text-muted-foreground"> · {tpl.school.name}</span>
                       )}
-                    </div>
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs font-black text-primary">{tpl._count?.idCards || 0}</div>
-                    <div className="text-[8px] font-bold text-muted-foreground uppercase tracking-widest">Cards Printed</div>
+                  <div className="text-right shrink-0">
+                    <div className="text-[11px] font-black text-primary tabular-nums">{tpl._count?.idCards || 0}</div>
+                    <div className="text-[7px] font-bold text-muted-foreground uppercase tracking-wider">Printed</div>
                   </div>
                 </div>
 
-                <div className="flex gap-2 pt-2 border-t border-border sm:hidden">
+                <div className="flex gap-1.5 pt-2 mt-2 border-t border-border sm:hidden">
                   <button
                     type="button"
                     onClick={() => openDuplicateToSchool(tpl)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-muted border border-border text-[10px] font-black uppercase"
+                    className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-muted border border-border text-[9px] font-black uppercase"
                   >
-                    <Copy className="h-3.5 w-3.5" /> Copy
+                    <Copy className="h-3 w-3" /> Copy
                   </button>
                   <button
                     type="button"
                     onClick={() => handleEdit(tpl)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-primary/10 text-primary text-[10px] font-black uppercase"
+                    className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-primary/10 text-primary text-[9px] font-black uppercase"
                   >
-                    <Settings2 className="h-3.5 w-3.5" /> Edit
+                    <Settings2 className="h-3 w-3" /> Edit
                   </button>
                   <button
                     type="button"
                     onClick={() => openReplaceBackground(tpl)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-muted border border-border text-[10px] font-black uppercase"
+                    className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-muted border border-border text-[9px] font-black uppercase"
                   >
-                    <Upload className="h-3.5 w-3.5" /> Bg
+                    <Upload className="h-3 w-3" /> Bg
                   </button>
                   <button
                     type="button"
                     onClick={() => { if (confirm('Delete this template?')) deleteMutation.mutate(tpl.id); }}
-                    className="p-2.5 rounded-xl bg-red-500/10 text-red-600"
+                    className="p-2 rounded-lg bg-red-500/10 text-red-600"
                     aria-label="Delete"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
 
-              {/* Hover Glow */}
-              <div className="absolute inset-0 border-2 border-primary/0 group-hover:border-primary/20 rounded-[2rem] transition-all duration-500 pointer-events-none" />
+              <div className="absolute inset-0 border border-primary/0 group-hover:border-primary/20 rounded-xl transition-all duration-300 pointer-events-none" />
             </div>
           ))}
         </div>
@@ -844,7 +882,7 @@ export default function TemplatesPage() {
           <IdCardDesigner 
             key={editingTemplate.id}
             templateId={editingTemplate.id}
-            schoolId={editingTemplate.schoolId || selectedSchoolId}
+            schoolId={editingTemplate.schoolId || effectiveSchoolId}
             onClose={() => {
               setDesignerOpen(false);
               setEditingTemplate(null);
@@ -879,7 +917,9 @@ export default function TemplatesPage() {
                 <div>
                   <h3 className="text-2xl font-black text-foreground">New School Template</h3>
                   <p className="text-muted-foreground text-sm font-medium">
-                    {selectedSchool ? `Background for ${selectedSchool.name}` : 'Select a school first'}
+                    {uploadSchool || user?.school
+                      ? `Assign to ${(uploadSchool ?? user?.school)?.name}`
+                      : 'Select a school first'}
                   </p>
                 </div>
               </div>
@@ -891,6 +931,26 @@ export default function TemplatesPage() {
             {/* Body */}
             <form onSubmit={handleCreateSubmit} className="flex-1 overflow-y-auto p-8 custom-scrollbar">
               <div className="space-y-8">
+                {isSuperAdmin && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                      Assign to school <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={createTargetSchoolId}
+                      onChange={(e) => setCreateTargetSchoolId(e.target.value)}
+                      required
+                      className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
+                    >
+                      <option value="">Select school</option>
+                      {schools.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {/* Template Name & Code */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">

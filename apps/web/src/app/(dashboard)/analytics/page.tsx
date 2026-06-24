@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useAuthStore } from '@/stores/auth-store';
 import api from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
@@ -17,7 +18,8 @@ import {
 } from 'lucide-react';
 import { StatCard } from '@/components/ui/stat-card';
 
-export default function AnalyticsPage() {
+export default function AnalyticsPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const { user } = useAuthStore();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 

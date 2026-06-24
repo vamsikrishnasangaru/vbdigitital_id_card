@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -7,7 +8,8 @@ import { Package, Loader2, Truck, CheckCircle, MapPin } from 'lucide-react';
 import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
 
-export default function DeliveriesPage() {
+export default function DeliveriesPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const [deliveries, setDeliveries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 

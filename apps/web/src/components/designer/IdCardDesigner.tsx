@@ -15,6 +15,8 @@ import {
   getElementImageUrl,
   getElementSize,
   isMediaElement,
+  isCustomPhotoFrameElement,
+  isCroppableMediaElement,
   collectRenderImageUrls,
   isShapeElement,
   sanitizeElement,
@@ -33,6 +35,7 @@ import { cn, resolveMediaUrl, resolveMediaUrlAbsolute } from '@/lib/utils';
 import { DESIGNER_MOCK_STUDENT } from '@/lib/designer-mock-student';
 import { DesignerExportError, exportStageToPdf, exportStageToPng } from '@/lib/designer-export';
 import { DesignerMediaLayer } from './DesignerMediaLayer';
+import { DesignerCustomPhotoFrameLayer } from './DesignerCustomPhotoFrameLayer';
 import { DesignerTextLayer } from './DesignerTextLayer';
 import { DesignerBoxLayer } from './DesignerBoxLayer';
 import { DesignerShapeLayer } from './DesignerShapeLayer';
@@ -174,8 +177,10 @@ export function IdCardDesigner({
 
   const assetInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const framePhotoInputRef = useRef<HTMLInputElement>(null);
   const pendingAssetKind = useRef<'schoolLogo' | 'schoolSignature'>('schoolLogo');
   const pendingReplaceElementId = useRef<string | null>(null);
+  const pendingFrameUploadId = useRef<string | null>(null);
   const assetUploadScope = schoolId || (templateId ? `tpl-${templateId}` : '');
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -374,6 +379,29 @@ export function IdCardDesigner({
       imageInputRef.current?.click();
       return;
     }
+    if (action.kind === 'customPhotoFrame') {
+      insertDesignerElement(
+        {
+          type: 'customPhotoFrame',
+          fieldType: 'studentPhoto',
+          width: 140,
+          height: 180,
+          topLeftRadius: 16,
+          topRightRadius: 16,
+          bottomLeftRadius: 16,
+          bottomRightRadius: 16,
+          frameFillMode: 'solid',
+          fill: '#e2e8f0',
+          borderWidth: 2,
+          borderColor: '#000000',
+          borderStyle: 'solid',
+          photoFit: { zoom: 1, offsetX: 0, offsetY: 0 },
+          ...extra,
+        },
+        'studentPhoto',
+      );
+      return;
+    }
 
     const type = catalogActionToElementType(action);
     const fieldType =
@@ -457,6 +485,35 @@ export function IdCardDesigner({
       toast.success(kind === 'schoolLogo' ? 'Logo added' : 'Signature added');
     } catch {
       toast.error('Failed to upload image');
+    }
+  };
+
+  const openFramePhotoUpload = useCallback(
+    (replaceElementId: string) => {
+      if (!assetUploadScope) {
+        toast.error('Select a school before uploading a photo');
+        return;
+      }
+      pendingFrameUploadId.current = replaceElementId;
+      framePhotoInputRef.current?.click();
+    },
+    [assetUploadScope],
+  );
+
+  const handleFramePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const replaceId = pendingFrameUploadId.current;
+    pendingFrameUploadId.current = null;
+    if (!assetUploadScope || !replaceId) return;
+    try {
+      const url = await uploadDesignerAsset(file, assetUploadScope, 'templateAsset');
+      updateElement(replaceId, { imageUrl: url }, true);
+      setSelectedId(replaceId);
+      toast.success('Photo uploaded');
+    } catch {
+      toast.error('Failed to upload photo');
     }
   };
 
@@ -559,6 +616,9 @@ export function IdCardDesigner({
               y: node.y() / ppiRatio,
               width: nextW,
               height: nextH,
+              ...(el.type === 'customPhotoFrame' || el.type === 'shape'
+                ? { rotation: node.rotation() }
+                : {}),
             },
             orientation,
           );
@@ -779,6 +839,27 @@ export function IdCardDesigner({
                   />
                 );
               }
+              if (isCustomPhotoFrameElement(el)) {
+                return (
+                  <DesignerCustomPhotoFrameLayer
+                    key={el.id}
+                    el={el}
+                    imageUrl={
+                      isRenderMode
+                        ? resolveMediaUrlAbsolute(getElementImageUrl(el, student, mediaOptions))
+                        : getElementImageUrl(el, student, mediaOptions)
+                    }
+                    selected={false}
+                    ppiRatio={ppiRatio}
+                    cardWidth={CARD_WIDTH}
+                    cardHeight={CARD_HEIGHT}
+                    orientation={orientation}
+                    draggable={false}
+                    onSelect={() => {}}
+                    onDragEnd={() => {}}
+                  />
+                );
+              }
               if (isMediaElement(el)) {
                 return (
                   <DesignerMediaLayer
@@ -887,8 +968,10 @@ export function IdCardDesigner({
         }}
         assetInputRef={assetInputRef}
         imageInputRef={imageInputRef}
+        framePhotoInputRef={framePhotoInputRef}
         onAssetFile={handleAssetFile}
         onGenericImageFile={handleGenericImageFile}
+        onFramePhotoFile={handleFramePhotoFile}
         onSaveProp={onSave}
         addElementFromAction={addElementFromAction}
         canvasScrollRef={canvasScrollRef}
@@ -904,6 +987,7 @@ export function IdCardDesigner({
           }
           imageInputRef.current?.click();
         }}
+        onUploadFramePhoto={openFramePhotoUpload}
         setSelectedId={setSelectedId}
         parsedBg={parsedBg}
         backgroundImage={backgroundImage}
@@ -958,10 +1042,13 @@ type DesignerEditorShellProps = {
   onToggleSide: () => void;
   assetInputRef: React.RefObject<HTMLInputElement | null>;
   imageInputRef: React.RefObject<HTMLInputElement | null>;
+  framePhotoInputRef: React.RefObject<HTMLInputElement | null>;
   onAssetFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onGenericImageFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFramePhotoFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onUploadAsset: (kind: 'schoolLogo' | 'schoolSignature', replaceElementId?: string | null) => void;
   onUploadImage: () => void;
+  onUploadFramePhoto: (elementId: string) => void;
   onSaveProp?: (elements: DesignerElement[], meta?: { side: 'front' | 'back' }) => void | Promise<void>;
   addElementFromAction: (action: ElementCatalogAction, extra?: Partial<DesignerElement>) => void;
   canvasScrollRef: React.RefObject<HTMLDivElement | null>;
@@ -1039,6 +1126,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
 
       <input ref={p.assetInputRef} type="file" accept="image/*" className="hidden" onChange={p.onAssetFile} />
       <input ref={p.imageInputRef} type="file" accept="image/*" className="hidden" onChange={p.onGenericImageFile} />
+      <input ref={p.framePhotoInputRef} type="file" accept="image/*" className="hidden" onChange={p.onFramePhotoFile} />
 
       <div className="flex-1 flex min-h-0">
         {p.onSaveProp && (
@@ -1138,6 +1226,25 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                       />
                     );
                   }
+                  if (isCustomPhotoFrameElement(el)) {
+                    return (
+                      <DesignerCustomPhotoFrameLayer
+                        key={el.id}
+                        el={el}
+                        imageUrl={getElementImageUrl(el, p.previewStudent, p.mediaOptions)}
+                        selected={p.selectedId === sourceId}
+                        ppiRatio={p.ppiRatio}
+                        cardWidth={p.cardWidth}
+                        cardHeight={p.cardHeight}
+                        orientation={p.orientation}
+                        showFrame={!!p.onSaveProp}
+                        draggable={!!p.onSaveProp && !el.locked}
+                        onSelect={() => p.setSelectedId(sourceId)}
+                        onDragEnd={(x, y) => p.updatePosition(sourceId, x, y)}
+                        onTransformEnd={(node) => p.handleTransformEnd(sourceId, node)}
+                      />
+                    );
+                  }
                   if (isMediaElement(el)) {
                     return (
                       <DesignerMediaLayer
@@ -1224,7 +1331,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                 }
               }}
               onOpenCrop={() => {
-                if (!p.selected || !isMediaElement(p.selected)) return;
+                if (!p.selected || !isCroppableMediaElement(p.selected)) return;
                 const url = getElementImageUrl(p.selected, p.previewStudentForPanel, p.mediaOptions);
                 if (!url) {
                   toast.error('Add an image before cropping');
@@ -1232,6 +1339,11 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                 }
                 p.setCropElementId(p.selected.id);
               }}
+              onUploadFramePhoto={
+                p.selected?.type === 'customPhotoFrame' && p.selectedId
+                  ? () => p.onUploadFramePhoto(p.selectedId!)
+                  : undefined
+              }
               onReplaceAsset={
                 p.selected?.fieldType === 'schoolLogo' || p.selected?.fieldType === 'schoolSignature'
                   ? (kind) => {

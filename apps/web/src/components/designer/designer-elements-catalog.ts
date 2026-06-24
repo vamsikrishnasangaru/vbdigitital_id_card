@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Type, ImageIcon, User, QrCode, Barcode, Square, Minus, Stamp, Building2,
-  GraduationCap, Hash, Droplets, Phone, MapPin, Calendar, Radio,
+  GraduationCap, Hash, Droplets, Phone, MapPin, Calendar, Radio, Frame,
 } from 'lucide-react';
 import type { DesignerElement } from '@/lib/designer-utils';
 import { STUDENT_FIELD_CATALOG } from '@/lib/designer-mock-student';
@@ -14,6 +14,7 @@ export type ElementCatalogAction =
   | { kind: 'barcode' }
   | { kind: 'shape' }
   | { kind: 'divider' }
+  | { kind: 'customPhotoFrame' }
   | { kind: 'asset'; asset: 'schoolLogo' | 'schoolSignature' };
 
 export interface CatalogItem {
@@ -47,6 +48,13 @@ export const BASIC_ELEMENTS: CatalogItem[] = [
   { id: 'text', label: 'Text', icon: Type, action: { kind: 'text', fieldType: 'custom', text: 'New Text' } },
   { id: 'image', label: 'Image', icon: ImageIcon, action: { kind: 'image' } },
   { id: 'photo', label: 'Student Photo', icon: User, action: { kind: 'photo' } },
+  {
+    id: 'customPhotoFrame',
+    label: 'Custom Shape Photo Frame',
+    icon: Frame,
+    action: { kind: 'customPhotoFrame' },
+    hint: 'Per-corner radius photo container',
+  },
   { id: 'qr', label: 'QR Code', icon: QrCode, action: { kind: 'qr' } },
   { id: 'barcode', label: 'Barcode', icon: Barcode, action: { kind: 'barcode' } },
   { id: 'shape', label: 'Shape', icon: Square, action: { kind: 'shape' } },
@@ -83,6 +91,8 @@ export function catalogActionToElementType(action: ElementCatalogAction): Design
     case 'shape':
     case 'divider':
       return 'shape';
+    case 'customPhotoFrame':
+      return 'customPhotoFrame';
     default:
       return 'image';
   }

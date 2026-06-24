@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -23,7 +24,8 @@ interface School {
   _count: { students: number; classes: number; users: number };
 }
 
-export default function SchoolsPage() {
+export default function SchoolsPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());

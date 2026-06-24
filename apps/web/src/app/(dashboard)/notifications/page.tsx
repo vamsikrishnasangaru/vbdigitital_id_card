@@ -1,10 +1,12 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { Bell, Check, Loader2 } from 'lucide-react';
 
-export default function NotificationsPage() {
+export default function NotificationsPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 

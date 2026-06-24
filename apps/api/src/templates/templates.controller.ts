@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TemplatesService } from './templates.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -23,11 +23,15 @@ export class TemplatesController {
   @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER')
   @ApiOperation({ summary: 'List templates' })
   findAll(
+    @Request() req: { user: { role: string; schoolId?: string } },
     @Query('schoolId') schoolId?: string,
     @Query('search') search?: string,
     @Query('allSchools') allSchools?: string,
   ) {
-    return this.templatesService.findAll(schoolId, search, allSchools === 'true');
+    const scopedSchoolId =
+      req.user.role === 'SUPER_ADMIN' ? schoolId : (req.user.schoolId as string | undefined);
+    const scopedAllSchools = req.user.role === 'SUPER_ADMIN' && allSchools === 'true';
+    return this.templatesService.findAll(scopedSchoolId, search, scopedAllSchools);
   }
 
   @Post(':id/duplicate')

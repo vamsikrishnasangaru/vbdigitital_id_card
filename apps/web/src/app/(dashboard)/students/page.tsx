@@ -48,6 +48,7 @@ import { GenerateCardsDialog } from '@/components/id-cards/GenerateCardsDialog';
 import { consumeStudentsClassSectionFilter, consumeEditStudentIntent } from '@/lib/students-navigation';
 import { MODAL_BACKDROP, modalPanelClass } from '@/lib/modal-motion';
 import { StudentExcelImportDialog } from '@/components/students/StudentExcelImportDialog';
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import {
   generateIdCards,
   triggerIdCardDownload,
@@ -144,7 +145,8 @@ function emptyStudentForm(schoolId = ''): StudentFormState {
   };
 }
 
-export default function StudentsPage() {
+export default function StudentsPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { isOffline, pendingCount, offlineStudentCount } = useOfflineSync();

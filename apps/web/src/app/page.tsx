@@ -1,5 +1,6 @@
 'use client';
 
+import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -8,7 +9,8 @@ import api from '@/lib/api';
 import { Eye, EyeOff, CreditCard, Loader2 } from 'lucide-react';
 import { PwaInstallBanner } from '@/components/PwaInstallBanner';
 
-export default function LoginPage() {
+export default function LoginPage({ params }: NextClientPageProps) {
+  useNextPageParams(params);
   const router = useRouter();
   const { login } = useAuthStore();
   const [email, setEmail] = useState('');
