@@ -537,7 +537,7 @@ export function DesignerPropertiesPanel({
           />
           <div className="space-y-1.5">
             <Label>Text box width (px)</Label>
-            <p className="text-[9px] text-white/25">Optional — set to wrap long text; leave empty for auto width</p>
+            <p className="text-[9px] text-white/25">Optional — long names shrink to fit on one line inside this width</p>
             <Input
               type="number"
               min={20}

@@ -1,11 +1,12 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Group, Text, Rect } from 'react-konva';
 import Konva from 'konva';
 import type { DesignerElement } from '@/lib/designer-utils';
 import { getDashPattern, getEffectiveBorderWidth, getKonvaFontStyle } from '@/lib/designer-utils';
 import { useLayerSnapDrag } from './useLayerSnapDrag';
+import { fitSingleLineFontSize, singleLineTextHeight } from './designer-text-fit';
 
 interface DesignerTextLayerProps {
   el: DesignerElement;
@@ -25,6 +26,16 @@ interface DesignerTextLayerProps {
 const PREVIEW_FONT_SIZE = 12;
 const PREVIEW_FILL = '#111827';
 
+const SHRINK_FIELD_TYPES = new Set([
+  'fullName',
+  'studentName',
+  'firstName',
+  'lastName',
+  'fatherName',
+  'motherName',
+  'parentName',
+]);
+
 export function DesignerTextLayer({
   el,
   text,
@@ -40,10 +51,33 @@ export function DesignerTextLayer({
   onTransformEnd,
 }: DesignerTextLayerProps) {
   const hasBoxWidth = el.width != null && el.width > 0;
-  const previewFontSize = el.fontSize ?? PREVIEW_FONT_SIZE;
+  const baseFontSize = el.fontSize ?? PREVIEW_FONT_SIZE;
+  const fontFamily = el.fontFamily || 'Arial';
+  const fontStyle = getKonvaFontStyle(el);
+  const textDecoration = el.textDecoration || '';
+
+  const fitWidth = useMemo(() => {
+    if (hasBoxWidth) return el.width!;
+    if (el.fieldType && SHRINK_FIELD_TYPES.has(el.fieldType)) {
+      return Math.max(48, cardWidth - el.x - 6);
+    }
+    return null;
+  }, [hasBoxWidth, el.width, el.fieldType, el.x, cardWidth]);
+
+  const displayFontSize = useMemo(() => {
+    if (!fitWidth || !text.trim()) return baseFontSize;
+    return fitSingleLineFontSize(text, fitWidth, baseFontSize, fontFamily, fontStyle, textDecoration);
+  }, [fitWidth, text, baseFontSize, fontFamily, fontStyle, textDecoration]);
+
+  const lineHeight = singleLineTextHeight(displayFontSize);
+  const boxHeight = hasBoxWidth ? (el.height ?? lineHeight) : lineHeight;
+  const textY = hasBoxWidth && el.height != null && el.height > lineHeight
+    ? (el.height - lineHeight) / 2
+    : 0;
+
   const [frameSize, setFrameSize] = useState({
     width: hasBoxWidth ? el.width! : 40,
-    height: previewFontSize * 1.4,
+    height: boxHeight,
   });
   const borderW = getEffectiveBorderWidth(el) * ppiRatio;
 
@@ -61,7 +95,7 @@ export function DesignerTextLayer({
     if (!node) return;
     const next = {
       width: hasBoxWidth ? el.width! : Math.max(node.width(), 8),
-      height: Math.max(node.height(), previewFontSize * 1.2),
+      height: hasBoxWidth ? boxHeight : Math.max(node.height(), lineHeight),
     };
     setFrameSize((prev) =>
       prev.width === next.width && prev.height === next.height ? prev : next,
@@ -69,11 +103,14 @@ export function DesignerTextLayer({
   }, [
     text,
     el.width,
+    el.height,
     hasBoxWidth,
-    previewFontSize,
-    el.fontFamily,
-    el.fontStyle,
-    el.textDecoration,
+    displayFontSize,
+    lineHeight,
+    boxHeight,
+    fontFamily,
+    fontStyle,
+    textDecoration,
     el.fill,
     el.fontSize,
   ]);
@@ -90,6 +127,11 @@ export function DesignerTextLayer({
       onTransformEnd={(e) => onTransformEnd(e.target as Konva.Group)}
       onClick={onSelect}
       onTap={onSelect}
+      clip={
+        hasBoxWidth
+          ? { x: 0, y: 0, width: el.width!, height: boxHeight }
+          : undefined
+      }
     >
       {showFrame && selected && (
         <Rect
@@ -105,12 +147,14 @@ export function DesignerTextLayer({
       )}
       <Text
         ref={textRef}
+        y={textY}
         text={text}
-        {...(hasBoxWidth ? { width: el.width, wrap: 'word' as const } : {})}
-        fontSize={previewFontSize}
-        fontFamily={el.fontFamily || 'Arial'}
-        fontStyle={getKonvaFontStyle(el)}
-        textDecoration={el.textDecoration || ''}
+        width={hasBoxWidth ? el.width : undefined}
+        wrap="none"
+        fontSize={displayFontSize}
+        fontFamily={fontFamily}
+        fontStyle={fontStyle}
+        textDecoration={textDecoration}
         fill={el.fill ?? PREVIEW_FILL}
         stroke={(el.strokeWidth ?? 0) > 0 && el.stroke ? el.stroke : undefined}
         strokeWidth={(el.strokeWidth ?? 0) > 0 ? el.strokeWidth! * ppiRatio : 0}
