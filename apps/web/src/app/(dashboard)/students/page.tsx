@@ -1805,11 +1805,11 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                             </option>
                           ))}
                         </select>
-                        <p className="text-[10px] text-muted-foreground ml-1">
-                          {enrollTemplateLoading
-                            ? 'Loading template fields…'
-                            : 'Primary fields match this template; other details are optional.'}
-                        </p>
+                        {enrollTemplateLoading && (
+                          <p className="text-[10px] text-muted-foreground ml-1">
+                            Loading template fields…
+                          </p>
+                        )}
                       </div>
                     )}
 

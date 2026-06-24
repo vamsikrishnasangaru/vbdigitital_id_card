@@ -368,18 +368,6 @@ export function StudentEnrollFormFields(props: Props) {
 
   return (
     <>
-      {layout.templateFieldTypes.length > 0 && (
-        <div className="md:col-span-2 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">
-            Template fields
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Class & name first, then parent details, then other fields from your ID card
-            template. Remaining fields are optional.
-          </p>
-        </div>
-      )}
-
       {layout.primaryFields.map((fieldKey) => (
         <EnrollField key={`primary-${fieldKey}`} fieldKey={fieldKey} primary {...props} />
       ))}
