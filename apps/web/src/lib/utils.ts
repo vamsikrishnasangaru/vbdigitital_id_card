@@ -125,6 +125,16 @@ export function isTenDigitMobile(value: string): boolean {
   return /^\d{10}$/.test(value.trim());
 }
 
+/** Keep digits only, max 12 — for student child ID input fields. */
+export function sanitizeChildIdInput(raw: string): string {
+  return raw.replace(/\D/g, '').slice(0, 12);
+}
+
+export function isValidChildId(value: string): boolean {
+  const t = value.trim();
+  return t === '' || /^\d{1,12}$/.test(t);
+}
+
 /** True when last name is empty or the legacy "-" placeholder. */
 export function isPlaceholderLastName(lastName?: string | null): boolean {
   const t = lastName?.trim();

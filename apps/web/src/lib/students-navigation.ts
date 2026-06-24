@@ -25,6 +25,9 @@ export type EditStudentPayload = {
   aadharCard?: string | null;
   penId?: string | null;
   apaarId?: string | null;
+  childId?: string | null;
+  fatherName?: string | null;
+  motherName?: string | null;
   address?: string | null;
   dateOfBirth?: string | null;
   emergencyContact?: string | null;

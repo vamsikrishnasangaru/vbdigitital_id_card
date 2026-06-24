@@ -140,6 +140,9 @@ model Student {
   aadharCard       String?
   penId            String?
   apaarId          String?
+  childId          String?
+  fatherName       String?
+  motherName       String?
   photoUrl         String?
   parentName       String?
   parentPhone      String?

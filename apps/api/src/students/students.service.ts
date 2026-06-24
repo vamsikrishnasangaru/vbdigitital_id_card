@@ -75,7 +75,7 @@ export class StudentsService {
       photoUrl = await this.uploadsService.saveFile(file, `schools/${data.schoolId}/students`);
     }
 
-    const { photo, penId, apaarId, ...rest } = data;
+    const { photo, penId, apaarId, childId, fatherName, motherName, ...rest } = data;
 
     let classId = typeof rest.classId === 'string' ? rest.classId.trim() : '';
     let sectionId = typeof rest.sectionId === 'string' ? rest.sectionId.trim() : '';
@@ -87,6 +87,10 @@ export class StudentsService {
     const parentPhone = String(rest.parentPhone).trim();
     if (!/^\d{10}$/.test(parentPhone)) {
       throw new BadRequestException('parentPhone must be exactly 10 digits');
+    }
+    const normalizedChildId = childId ? String(childId).trim() : '';
+    if (normalizedChildId && !/^\d{1,12}$/.test(normalizedChildId)) {
+      throw new BadRequestException('childId must be 1–12 digits');
     }
     const lastName = typeof rest.lastName === 'string' ? rest.lastName.trim() : '';
     const admissionNumber =
@@ -107,6 +111,9 @@ export class StudentsService {
         lastName: lastName || '',
         penId: penId ? String(penId).trim() : null,
         apaarId: apaarId ? String(apaarId).trim() : null,
+        childId: normalizedChildId || null,
+        fatherName: fatherName ? String(fatherName).trim() : null,
+        motherName: motherName ? String(motherName).trim() : null,
       },
       include: { class: true, section: true, school: true },
     });
@@ -135,6 +142,9 @@ export class StudentsService {
         { aadharCard: { contains: search, mode: 'insensitive' } },
         { penId: { contains: search, mode: 'insensitive' } },
         { apaarId: { contains: search, mode: 'insensitive' } },
+        { childId: { contains: search, mode: 'insensitive' } },
+        { fatherName: { contains: search, mode: 'insensitive' } },
+        { motherName: { contains: search, mode: 'insensitive' } },
         { parentPhone: { contains: search, mode: 'insensitive' } },
         { parentName: { contains: search, mode: 'insensitive' } },
       ];
@@ -233,6 +243,9 @@ export class StudentsService {
       aadharCard,
       penId,
       apaarId,
+      childId,
+      fatherName,
+      motherName,
       emergencyContact,
       transportDetails,
       parentName,
@@ -278,6 +291,15 @@ export class StudentsService {
     if (aadharCard !== undefined) payload.aadharCard = aadharCard ? String(aadharCard).trim() : null;
     if (penId !== undefined) payload.penId = penId ? String(penId).trim() : null;
     if (apaarId !== undefined) payload.apaarId = apaarId ? String(apaarId).trim() : null;
+    if (childId !== undefined) {
+      const trimmed = childId ? String(childId).trim() : '';
+      if (trimmed && !/^\d{1,12}$/.test(trimmed)) {
+        throw new BadRequestException('childId must be 1–12 digits');
+      }
+      payload.childId = trimmed || null;
+    }
+    if (fatherName !== undefined) payload.fatherName = fatherName ? String(fatherName).trim() : null;
+    if (motherName !== undefined) payload.motherName = motherName ? String(motherName).trim() : null;
     if (emergencyContact !== undefined) {
       payload.emergencyContact = emergencyContact ? String(emergencyContact).trim() : null;
     }

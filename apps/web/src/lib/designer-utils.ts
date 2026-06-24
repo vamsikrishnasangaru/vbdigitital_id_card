@@ -187,6 +187,9 @@ export function resolveStudentField(
     aadharCard?: string;
     penId?: string;
     apaarId?: string;
+    childId?: string;
+    fatherName?: string;
+    motherName?: string;
     parentName?: string;
     parentPhone?: string;
     address?: string;
@@ -227,6 +230,12 @@ export function resolveStudentField(
       return s.penId || 'N/A';
     case 'apaarId':
       return s.apaarId || 'N/A';
+    case 'childId':
+      return s.childId || 'N/A';
+    case 'fatherName':
+      return s.fatherName || 'N/A';
+    case 'motherName':
+      return s.motherName || 'N/A';
     case 'parentName':
       return s.parentName || 'N/A';
     case 'parentPhone':

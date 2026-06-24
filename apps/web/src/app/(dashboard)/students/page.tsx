@@ -22,6 +22,8 @@ import {
   resolveMediaUrl,
   sanitizeIndianMobileInput,
   isTenDigitMobile,
+  sanitizeChildIdInput,
+  isValidChildId,
 } from '@/lib/utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
@@ -102,6 +104,9 @@ interface StudentFormState {
   lastName: string;
   rollNumber: string;
   admissionNumber: string;
+  childId: string;
+  fatherName: string;
+  motherName: string;
   parentName: string;
   parentPhone: string;
   bloodGroup: string;
@@ -123,6 +128,9 @@ function emptyStudentForm(schoolId = ''): StudentFormState {
     lastName: '',
     rollNumber: '',
     admissionNumber: '',
+    childId: '',
+    fatherName: '',
+    motherName: '',
     parentName: '',
     parentPhone: '',
     bloodGroup: '',
@@ -499,6 +507,9 @@ export default function StudentsPage() {
     lastName?: string;
     rollNumber?: string | null;
     admissionNumber?: string;
+    childId?: string | null;
+    fatherName?: string | null;
+    motherName?: string | null;
     parentName?: string | null;
     parentPhone?: string | null;
     bloodGroup?: string | null;
@@ -526,6 +537,9 @@ export default function StudentsPage() {
       lastName: student.lastName || '',
       rollNumber: student.rollNumber || '',
       admissionNumber: student.admissionNumber || '',
+      childId: student.childId || '',
+      fatherName: student.fatherName || '',
+      motherName: student.motherName || '',
       parentName: student.parentName || '',
       parentPhone: sanitizeIndianMobileInput(student.parentPhone || ''),
       bloodGroup: student.bloodGroup || '',
@@ -781,6 +795,10 @@ export default function StudentsPage() {
       toast.error('Parent mobile must be exactly 10 digits');
       return;
     }
+    if (!isValidChildId(form.childId)) {
+      toast.error('Student Child ID must be up to 12 digits');
+      return;
+    }
 
     if (editingStudentId) {
       const formData = new FormData();
@@ -790,6 +808,9 @@ export default function StudentsPage() {
       formData.append('rollNumber', form.rollNumber.trim());
       formData.append('parentPhone', parentPhone);
       formData.append('address', form.address.trim());
+      if (form.childId.trim()) formData.append('childId', form.childId.trim());
+      if (form.fatherName.trim()) formData.append('fatherName', form.fatherName.trim());
+      if (form.motherName.trim()) formData.append('motherName', form.motherName.trim());
       if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
       if (form.classId.trim()) {
         formData.append('classId', form.classId.trim());
@@ -821,6 +842,9 @@ export default function StudentsPage() {
     formData.append('firstName', form.firstName.trim());
     formData.append('lastName', form.lastName.trim());
     formData.append('rollNumber', form.rollNumber.trim());
+    if (form.childId.trim()) formData.append('childId', form.childId.trim());
+    if (form.fatherName.trim()) formData.append('fatherName', form.fatherName.trim());
+    if (form.motherName.trim()) formData.append('motherName', form.motherName.trim());
     if (form.parentName.trim()) formData.append('parentName', form.parentName.trim());
     formData.append('parentPhone', parentPhone);
     formData.append('address', form.address.trim());
@@ -859,6 +883,9 @@ export default function StudentsPage() {
       'Status': s.status,
       'Parent Name': s.parentName || '—',
       'Parent Phone': s.parentPhone || '—',
+      'Father Name': s.fatherName || '—',
+      'Mother Name': s.motherName || '—',
+      'Child ID': s.childId || '—',
       'Blood Group': s.bloodGroup || '—',
       'PEN ID': s.penId || '—',
       'APAAR ID': s.apaarId || '—',
@@ -1513,6 +1540,24 @@ export default function StudentsPage() {
                     <p className="font-bold text-foreground font-mono">{viewStudent.apaarId}</p>
                   </div>
                 )}
+                {viewStudent.childId && (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Student Child ID</p>
+                    <p className="font-bold text-foreground font-mono">{viewStudent.childId}</p>
+                  </div>
+                )}
+                {viewStudent.fatherName && (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Father</p>
+                    <p className="font-bold text-foreground">{viewStudent.fatherName}</p>
+                  </div>
+                )}
+                {viewStudent.motherName && (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Mother</p>
+                    <p className="font-bold text-foreground">{viewStudent.motherName}</p>
+                  </div>
+                )}
               </div>
               {(viewStudent.parentName || viewStudent.parentPhone) && (
                 <div className="p-4 rounded-2xl bg-muted/50 border border-border">
@@ -1767,10 +1812,49 @@ export default function StudentsPage() {
                       />
                     </div>
 
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                        Student Child ID <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
+                      </label>
+                      <input
+                        value={form.childId}
+                        onChange={(e) =>
+                          setForm({ ...form, childId: sanitizeChildIdInput(e.target.value) })
+                        }
+                        inputMode="numeric"
+                        maxLength={12}
+                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm font-mono"
+                        placeholder="Up to 12 digits"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                        Father name <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
+                      </label>
+                      <input
+                        value={form.fatherName}
+                        onChange={(e) => setForm({ ...form, fatherName: e.target.value })}
+                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
+                        placeholder="Father's full name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                        Mother name <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
+                      </label>
+                      <input
+                        value={form.motherName}
+                        onChange={(e) => setForm({ ...form, motherName: e.target.value })}
+                        className="w-full px-5 py-4 bg-card border border-border rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
+                        placeholder="Mother's full name"
+                      />
+                    </div>
+
                     {/* Parent / guardian */}
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
-                        Parent / guardian name
+                        Parent / guardian name <span className="normal-case font-bold text-muted-foreground/70">(optional)</span>
                       </label>
                       <input
                         value={form.parentName}
