@@ -33,10 +33,7 @@ export function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-300"
-        onClick={isLoading ? undefined : onClose}
-      />
+      <div className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-300" />
       <div
         className="relative bg-card border border-border w-full max-w-md rounded-[2rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.25)] overflow-hidden animate-in zoom-in-95 duration-300"
         onClick={(e) => e.stopPropagation()}

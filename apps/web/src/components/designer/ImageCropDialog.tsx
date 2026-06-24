@@ -133,7 +133,7 @@ export function ImageCropDialog({ imageUrl, initialCrop, onClose, onApply }: Ima
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-      <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-label="Close" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden />
       <div className="relative bg-card border border-border rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-lg font-bold text-foreground">Crop image</h3>

@@ -359,7 +359,7 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
 
       {/* Improved Modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200" onClick={closeModal}>
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
           <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-border bg-muted/20">
               <h3 className="font-bold text-xl tracking-tight">{editingSchool ? 'Edit School' : 'Add New School'}</h3>

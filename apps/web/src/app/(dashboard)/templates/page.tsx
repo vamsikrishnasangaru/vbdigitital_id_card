@@ -903,7 +903,7 @@ export default function TemplatesPage({ params }: NextClientPageProps) {
       {/* Create Template Dialog (Full Screen Glassmorphism) */}
       {showCreateDialog && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-500" onClick={() => setShowCreateDialog(false)} />
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-xl animate-in fade-in duration-500" />
           <div
             className="relative bg-card border border-border w-full max-w-2xl max-h-[90vh] rounded-[3rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col animate-in zoom-in-95 duration-300"
             onClick={(e) => e.stopPropagation()}
@@ -1071,10 +1071,7 @@ export default function TemplatesPage({ params }: NextClientPageProps) {
       {/* Copy template to another school */}
       {duplicatingTemplate && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-xl"
-            onClick={() => !duplicateMutation.isPending && setDuplicatingTemplate(null)}
-          />
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-xl" />
           <div className="relative w-full max-w-lg bg-card border border-border rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="flex items-center justify-between p-6 border-b border-border">
               <div>
@@ -1194,10 +1191,7 @@ export default function TemplatesPage({ params }: NextClientPageProps) {
       {/* Replace background dialog */}
       {replacingBgTemplate && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-xl"
-            onClick={() => !updateBgMutation.isPending && setReplacingBgTemplate(null)}
-          />
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-xl" />
           <div className="relative w-full max-w-lg bg-card border border-border rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="flex items-center justify-between p-6 border-b border-border">
               <div>

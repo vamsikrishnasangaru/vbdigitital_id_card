@@ -224,13 +224,9 @@ export function StudentPhotoPicker({
       </div>
 
       {showOptions && (
-        <div
-          className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-          onClick={() => setShowOptions(false)}
-        >
+        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div
             className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5 border-b border-border flex items-center justify-between">
               <h4 className="font-black text-foreground">Student photo</h4>

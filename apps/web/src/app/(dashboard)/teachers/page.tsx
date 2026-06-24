@@ -636,10 +636,7 @@ export default function TeachersPage({ params }: NextClientPageProps) {
 
       {viewTeacher && !showCreate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-xl"
-            onClick={() => setViewTeacher(null)}
-          />
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-xl" />
           <div className="relative bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-border flex justify-between items-start gap-4">
               <div className="flex items-center gap-4 min-w-0">
@@ -731,10 +728,7 @@ export default function TeachersPage({ params }: NextClientPageProps) {
       )}
 
       {showCreate && (
-        <div
-          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200"
-          onClick={closeModal}
-        >
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
           <div
             className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto flex flex-col"
             onClick={(e) => e.stopPropagation()}

@@ -647,10 +647,7 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
       {/* Student detail — bottom sheet on mobile, centered on desktop */}
       {viewStudent && !cardPreviewOpen && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4">
-          <div
-            className={MODAL_BACKDROP}
-            onClick={() => setViewStudent(null)}
-          />
+          <div className={MODAL_BACKDROP} />
           <div
             className={cn(
               'relative bg-card border border-border w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]',

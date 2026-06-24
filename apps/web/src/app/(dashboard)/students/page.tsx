@@ -1536,7 +1536,6 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-background/80 backdrop-blur-xl"
-            onClick={() => setViewStudent(null)}
           />
           <div className="relative bg-card border border-border w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-border flex justify-between items-start gap-4">
@@ -1704,10 +1703,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       {/* Enrollment Modal (Full Screen Glassmorphism) */}
       {showCreate && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4">
-          <div
-            className={MODAL_BACKDROP}
-            onClick={closeEnrollModal}
-          />
+          <div className={MODAL_BACKDROP} />
           <div
             className={cn(
               'relative bg-card border border-border w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] flex flex-col min-h-0',

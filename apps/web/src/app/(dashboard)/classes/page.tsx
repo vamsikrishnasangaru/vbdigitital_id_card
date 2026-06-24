@@ -779,8 +779,8 @@ export default function ClassesPage({ params }: NextClientPageProps) {
 
       {/* Modals */}
       {showAddClass && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200" onClick={() => setShowAddClass(false)}>
-          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="p-6 border-b border-border bg-muted/20">
               <h3 className="font-black text-xl tracking-tight">Create Class</h3>
               <p className="text-sm text-muted-foreground mt-1">
@@ -828,8 +828,8 @@ export default function ClassesPage({ params }: NextClientPageProps) {
       )}
 
       {showAddSection && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200" onClick={() => setShowAddSection(null)}>
-          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="p-6 border-b border-border bg-muted/20">
               <h3 className="font-black text-xl tracking-tight">Add Section</h3>
               <p className="text-sm text-muted-foreground mt-1">
@@ -876,8 +876,8 @@ export default function ClassesPage({ params }: NextClientPageProps) {
       )}
 
       {showAssign && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200" onClick={() => setShowAssign(null)}>
-          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="p-6 border-b border-border bg-muted/20">
               <h3 className="font-black text-xl tracking-tight">Assign Teacher</h3>
               <p className="text-sm text-muted-foreground mt-1">

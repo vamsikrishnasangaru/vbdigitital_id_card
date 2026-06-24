@@ -169,7 +169,7 @@ export function StudentExcelImportDialog({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={handleClose} />
+      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
       <div className="relative bg-card border border-border w-full max-w-3xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
         <div className="p-6 border-b border-border flex justify-between items-start gap-4">
           <div>
