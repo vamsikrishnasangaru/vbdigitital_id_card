@@ -2,21 +2,15 @@ import { Prisma } from '@prisma/client';
 
 export type StudentCompletionFields = {
   photoUrl?: string | null;
-  rollNumber?: string | null;
-  parentName?: string | null;
+  firstName?: string | null;
   parentPhone?: string | null;
-  classId?: string | null;
-  class?: { id?: string; name?: string | null } | null;
 };
 
 /** Same rules as the Students page badge — trim-aware, not just null/empty DB values. */
 export function isStudentIncomplete(s: StudentCompletionFields): boolean {
   return (
     !String(s?.photoUrl ?? '').trim() ||
-    !String(s?.rollNumber ?? '').trim() ||
-    !String(s?.classId ?? s?.class?.id ?? '').trim() ||
-    String(s?.class?.name ?? '').trim().toLowerCase() === 'unassigned' ||
-    !String(s?.parentName ?? '').trim() ||
+    !String(s?.firstName ?? '').trim() ||
     !String(s?.parentPhone ?? '').trim()
   );
 }
@@ -25,24 +19,17 @@ export const STUDENT_COMPLETION_SELECT = {
   id: true,
   status: true,
   photoUrl: true,
-  rollNumber: true,
-  parentName: true,
+  firstName: true,
   parentPhone: true,
-  classId: true,
-  class: { select: { id: true, name: true } },
 } as const;
 
 /** @deprecated Prefer isStudentIncomplete() for counts — Prisma OR misses trim-only blanks. */
 export const INCOMPLETE_STUDENT_OR: Prisma.StudentWhereInput[] = [
   { photoUrl: null },
   { photoUrl: '' },
-  { rollNumber: null },
-  { rollNumber: '' },
-  { parentName: null },
-  { parentName: '' },
+  { firstName: '' },
   { parentPhone: null },
   { parentPhone: '' },
-  { class: { name: { equals: 'Unassigned', mode: 'insensitive' } } },
 ];
 
 export function incompleteStudentWhere(
@@ -71,16 +58,8 @@ export function completeStudentWhere(
     ...rest,
     deletedAt: null,
     photoUrl: { not: null },
-    rollNumber: { not: null },
-    parentName: { not: null },
     parentPhone: { not: null },
-    NOT: [
-      { photoUrl: '' },
-      { rollNumber: '' },
-      { parentName: '' },
-      { parentPhone: '' },
-      { class: { name: { equals: 'Unassigned', mode: 'insensitive' } } },
-    ],
+    NOT: [{ photoUrl: '' }, { firstName: '' }, { parentPhone: '' }],
   };
   if (scopeOr?.length) {
     return { ...completeRules, AND: [{ OR: scopeOr }, completeRules] };
