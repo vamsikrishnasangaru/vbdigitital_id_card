@@ -8,8 +8,8 @@ import {
 
 export const DESIGN_PPI = 96;
 
-/** Supersample factor for preview/export PNG — layout stays at DESIGN_PPI. */
-export const EXPORT_PIXEL_RATIO = 4;
+/** Supersample factor for preview/export PNG — layout stays at DESIGN_PPI (96×6 ≈ 576 DPI). */
+export const EXPORT_PIXEL_RATIO = 6;
 
 /** Placeholder used in template designer when no student photo is available. */
 export const DESIGNER_PHOTO_PLACEHOLDER =

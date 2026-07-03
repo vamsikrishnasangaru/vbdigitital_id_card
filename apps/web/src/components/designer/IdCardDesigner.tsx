@@ -833,6 +833,7 @@ export function IdCardDesigner({
                     selected={false}
                     ppiRatio={ppiRatio}
                     unitScale={unitScale}
+                    highQuality
                     cardWidth={CARD_WIDTH}
                     cardHeight={CARD_HEIGHT}
                     orientation={orientation}
@@ -1228,6 +1229,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                         selected={p.selectedId === sourceId}
                         ppiRatio={p.ppiRatio}
                         unitScale={p.unitScale}
+                        highQuality={p.stagePixelRatio > 1}
                         cardWidth={p.cardWidth}
                         cardHeight={p.cardHeight}
                         orientation={p.orientation}

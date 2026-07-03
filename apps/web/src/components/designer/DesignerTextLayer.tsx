@@ -23,6 +23,8 @@ interface DesignerTextLayerProps {
   onSelect: () => void;
   onDragEnd: (x: number, y: number) => void;
   onTransformEnd: (node: Konva.Group) => void;
+  /** Sharper text when supersampling for preview/export. */
+  highQuality?: boolean;
 }
 
 const PREVIEW_FONT_SIZE = 12;
@@ -50,6 +52,7 @@ export function DesignerTextLayer({
   onSelect,
   onDragEnd,
   onTransformEnd,
+  highQuality = false,
 }: DesignerTextLayerProps) {
   const unitScale = unitScaleProp ?? ppiRatio;
   const hasBoxWidth = el.width != null && el.width > 0;
@@ -133,6 +136,7 @@ export function DesignerTextLayer({
     fontStyle,
     textDecoration,
     listening: false,
+    perfectDrawEnabled: highQuality,
   };
 
   return (

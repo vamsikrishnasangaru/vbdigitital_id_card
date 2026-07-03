@@ -9,9 +9,17 @@ export class DesignerExportError extends Error {
   }
 }
 
+function exportPixelRatioForStage(stage: Konva.Stage): number {
+  const stageRatio = Number(stage.getAttr('pixelRatio')) || 1;
+  return stageRatio >= EXPORT_PIXEL_RATIO ? 1 : EXPORT_PIXEL_RATIO;
+}
+
 function dataUrlFromStage(stage: Konva.Stage): string {
   try {
-    return stage.toDataURL({ pixelRatio: EXPORT_PIXEL_RATIO });
+    return stage.toDataURL({
+      pixelRatio: exportPixelRatioForStage(stage),
+      mimeType: 'image/png',
+    });
   } catch (err) {
     const message =
       err instanceof Error && err.message.includes('Tainted')

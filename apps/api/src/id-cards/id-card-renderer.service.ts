@@ -225,11 +225,31 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   private async captureCanvasPng(page: Page): Promise<Buffer> {
     const dataUrl = await page.evaluate(() => {
       const KonvaGlobal = (window as unknown as {
-        Konva?: { stages?: Array<{ toDataURL: (config?: { pixelRatio?: number }) => string }> };
+        Konva?: {
+          stages?: Array<{
+            width: () => number;
+            height: () => number;
+            toDataURL: (config?: {
+              pixelRatio?: number;
+              mimeType?: string;
+              x?: number;
+              y?: number;
+              width?: number;
+              height?: number;
+            }) => string;
+          }>;
+        };
       }).Konva;
       const stage = KonvaGlobal?.stages?.[0];
       if (stage) {
-        return stage.toDataURL({ pixelRatio: 1 });
+        return stage.toDataURL({
+          pixelRatio: 1,
+          mimeType: 'image/png',
+          x: 0,
+          y: 0,
+          width: stage.width(),
+          height: stage.height(),
+        });
       }
       const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
       if (!canvas?.width || !canvas?.height) {
