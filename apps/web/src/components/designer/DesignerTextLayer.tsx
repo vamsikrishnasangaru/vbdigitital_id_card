@@ -55,6 +55,7 @@ export function DesignerTextLayer({
   highQuality = false,
 }: DesignerTextLayerProps) {
   const unitScale = unitScaleProp ?? ppiRatio;
+  const isNameField = Boolean(el.fieldType && SHRINK_FIELD_TYPES.has(el.fieldType));
   const hasBoxWidth = el.width != null && el.width > 0;
   const baseFontSize = el.fontSize ?? PREVIEW_FONT_SIZE;
   const fontFamily = el.fontFamily || 'Arial';
@@ -62,15 +63,10 @@ export function DesignerTextLayer({
   const textDecoration = el.textDecoration || '';
 
   const fitWidth = useMemo(() => {
-    if (hasBoxWidth) {
-      if (el.fieldType && SHRINK_FIELD_TYPES.has(el.fieldType)) return el.width!;
-      return null;
-    }
-    if (el.fieldType && SHRINK_FIELD_TYPES.has(el.fieldType)) {
-      return Math.max(48, cardWidth - el.x - 6);
-    }
-    return null;
-  }, [hasBoxWidth, el.width, el.fieldType, el.x, cardWidth]);
+    if (!isNameField) return null;
+    if (hasBoxWidth) return el.width!;
+    return Math.max(48, cardWidth - el.x - 6);
+  }, [isNameField, hasBoxWidth, el.width, el.x, cardWidth]);
 
   const displayFontSize = useMemo(() => {
     if (!fitWidth || !text.trim()) return baseFontSize;
@@ -78,13 +74,19 @@ export function DesignerTextLayer({
   }, [fitWidth, text, baseFontSize, fontFamily, fontStyle, textDecoration]);
 
   const lineHeight = singleLineTextHeight(displayFontSize);
-  const boxHeight = hasBoxWidth ? (el.height ?? lineHeight) : lineHeight;
+  const textBoxWidth = hasBoxWidth ? el.width! : isNameField && fitWidth ? fitWidth : undefined;
+  const textBoxHeight = hasBoxWidth ? Math.max(lineHeight, el.height ?? lineHeight) : lineHeight;
+  const centerInBox = isNameField && textBoxWidth != null;
   const textY =
-    hasBoxWidth && el.height != null && el.height > lineHeight ? (el.height - lineHeight) / 2 : 0;
+    centerInBox && hasBoxWidth
+      ? 0
+      : hasBoxWidth && el.height != null && el.height > lineHeight
+        ? (el.height - lineHeight) / 2
+        : 0;
 
   const [frameSize, setFrameSize] = useState({
-    width: hasBoxWidth ? el.width! : 40,
-    height: boxHeight,
+    width: textBoxWidth ?? (hasBoxWidth ? el.width! : 40),
+    height: hasBoxWidth ? textBoxHeight : lineHeight,
   });
   const borderW = getEffectiveBorderWidth(el) * unitScale;
 
@@ -101,8 +103,8 @@ export function DesignerTextLayer({
     const node = textRef.current;
     if (!node) return;
     const next = {
-      width: hasBoxWidth ? el.width! : Math.max(node.width(), 8),
-      height: hasBoxWidth ? boxHeight : Math.max(node.height(), lineHeight),
+      width: textBoxWidth ?? (hasBoxWidth ? el.width! : Math.max(node.width(), 8)),
+      height: hasBoxWidth ? textBoxHeight : Math.max(node.height(), lineHeight),
     };
     setFrameSize((prev) =>
       prev.width === next.width && prev.height === next.height ? prev : next,
@@ -114,7 +116,8 @@ export function DesignerTextLayer({
     hasBoxWidth,
     displayFontSize,
     lineHeight,
-    boxHeight,
+    textBoxHeight,
+    textBoxWidth,
     fontFamily,
     fontStyle,
     textDecoration,
@@ -129,7 +132,10 @@ export function DesignerTextLayer({
   const sharedTextProps = {
     y: textY,
     text,
-    width: hasBoxWidth ? el.width : undefined,
+    width: textBoxWidth,
+    height: centerInBox && hasBoxWidth ? textBoxHeight : undefined,
+    align: centerInBox ? ('center' as const) : undefined,
+    verticalAlign: centerInBox && hasBoxWidth ? ('middle' as const) : undefined,
     wrap: 'none' as const,
     fontSize: displayFontSize,
     fontFamily,
@@ -153,7 +159,7 @@ export function DesignerTextLayer({
       onClick={onSelect}
       onTap={onSelect}
       clip={
-        hasBoxWidth ? { x: 0, y: 0, width: el.width!, height: boxHeight } : undefined
+        hasBoxWidth ? { x: 0, y: 0, width: el.width!, height: textBoxHeight } : undefined
       }
     >
       {showFrame && selected && (
