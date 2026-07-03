@@ -22,6 +22,7 @@ interface DesignerCustomPhotoFrameLayerProps {
   imageUrl: string;
   selected: boolean;
   ppiRatio: number;
+  unitScale?: number;
   cardWidth: number;
   cardHeight: number;
   orientation: 'HORIZONTAL' | 'VERTICAL';
@@ -68,6 +69,7 @@ export function DesignerCustomPhotoFrameLayer({
   imageUrl,
   selected,
   ppiRatio,
+  unitScale: unitScaleProp,
   showFrame = false,
   cardWidth,
   cardHeight,
@@ -77,9 +79,10 @@ export function DesignerCustomPhotoFrameLayer({
   onDragEnd,
   onTransformEnd,
 }: DesignerCustomPhotoFrameLayerProps) {
+  const unitScale = unitScaleProp ?? ppiRatio;
   const { width: w, height: h } = getElementSize(el);
   const radii = getElementCornerRadii(el, 1);
-  const borderW = getEffectiveBorderWidth(el) * ppiRatio;
+  const borderW = getEffectiveBorderWidth(el) * unitScale;
   const shadow = el.frameShadow;
   const fillMode = el.frameFillMode ?? 'solid';
 
@@ -160,9 +163,9 @@ export function DesignerCustomPhotoFrameLayer({
       onClick={onSelect}
       onTap={onSelect}
       shadowColor={shadow?.color ?? undefined}
-      shadowBlur={shadow?.blur != null ? shadow.blur * ppiRatio : undefined}
-      shadowOffsetX={shadow?.offsetX != null ? shadow.offsetX * ppiRatio : undefined}
-      shadowOffsetY={shadow?.offsetY != null ? shadow.offsetY * ppiRatio : undefined}
+      shadowBlur={shadow?.blur ?? undefined}
+      shadowOffsetX={shadow?.offsetX ?? undefined}
+      shadowOffsetY={shadow?.offsetY ?? undefined}
       shadowOpacity={shadow?.opacity ?? undefined}
     >
       <Group clipX={0} clipY={0} clipWidth={w} clipHeight={h} listening={false}>

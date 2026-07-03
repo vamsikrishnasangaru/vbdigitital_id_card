@@ -13,6 +13,8 @@ interface DesignerTextLayerProps {
   text: string;
   selected: boolean;
   ppiRatio: number;
+  /** Multiply border/stroke widths; use 1 when element geometry is already scaled (render export). */
+  unitScale?: number;
   cardWidth: number;
   cardHeight: number;
   orientation: 'HORIZONTAL' | 'VERTICAL';
@@ -31,9 +33,6 @@ const SHRINK_FIELD_TYPES = new Set([
   'studentName',
   'firstName',
   'lastName',
-  'fatherName',
-  'motherName',
-  'parentName',
 ]);
 
 export function DesignerTextLayer({
@@ -41,6 +40,7 @@ export function DesignerTextLayer({
   text,
   selected,
   ppiRatio,
+  unitScale: unitScaleProp,
   cardWidth,
   cardHeight,
   orientation,
@@ -50,6 +50,7 @@ export function DesignerTextLayer({
   onDragEnd,
   onTransformEnd,
 }: DesignerTextLayerProps) {
+  const unitScale = unitScaleProp ?? ppiRatio;
   const hasBoxWidth = el.width != null && el.width > 0;
   const baseFontSize = el.fontSize ?? PREVIEW_FONT_SIZE;
   const fontFamily = el.fontFamily || 'Arial';
@@ -79,7 +80,7 @@ export function DesignerTextLayer({
     width: hasBoxWidth ? el.width! : 40,
     height: boxHeight,
   });
-  const borderW = getEffectiveBorderWidth(el) * ppiRatio;
+  const borderW = getEffectiveBorderWidth(el) * unitScale;
 
   const { groupRef, dragBoundFunc, onDragStart, onDragEnd: onDragEndKonva } = useLayerSnapDrag(
     el,
@@ -115,7 +116,7 @@ export function DesignerTextLayer({
     el.fontSize,
   ]);
 
-  const strokeW = (el.strokeWidth ?? 0) > 0 && el.stroke ? el.strokeWidth! * ppiRatio : 0;
+  const strokeW = (el.strokeWidth ?? 0) > 0 && el.stroke ? el.strokeWidth! * unitScale : 0;
   const strokeColor = el.stroke;
   const fillColor = el.fill ?? PREVIEW_FILL;
 
@@ -128,6 +129,8 @@ export function DesignerTextLayer({
     fontFamily,
     fontStyle,
     textDecoration,
+    listening: false,
+    perfectDrawEnabled: true,
   };
 
   return (
@@ -135,6 +138,7 @@ export function DesignerTextLayer({
       ref={groupRef}
       id={el.id}
       opacity={el.opacity ?? 1}
+      rotation={el.rotation ?? 0}
       draggable={draggable}
       dragBoundFunc={dragBoundFunc}
       onDragStart={onDragStart}

@@ -65,36 +65,38 @@ export class IdCardsService {
   private async generateDownloadPack(templateId: string, studentIds: string[]) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
+    const rendered = await this.rendererService.renderCardsBatch(
+      templateId,
+      studentIds,
+      renderToken,
+      template.orientation as Orientation,
+    );
+
     const files: { name: string; buffer: Buffer }[] = [];
     const errors: { studentId: string; error: string }[] = [];
 
-    for (let i = 0; i < studentIds.length; i++) {
-      const studentId = studentIds[i];
+    for (const result of rendered) {
+      if (!result.buffer) {
+        this.logger.warn(`Download render failed for ${result.studentId}: ${result.error}`);
+        errors.push({ studentId: result.studentId, error: result.error || 'Render failed' });
+        continue;
+      }
       try {
-        const student = await this.loadStudent(studentId);
-        await this.ensureIdCardRecord(studentId, templateId);
-        const pngBuffer = await this.rendererService.renderCard(
-          templateId,
-          studentId,
-          renderToken,
-          template.orientation as Orientation,
-        );
+        const student = await this.loadStudent(result.studentId);
+        await this.ensureIdCardRecord(result.studentId, templateId);
         const pngFileName = `${idCardFileBaseName(student)}.png`;
         files.push({
           name: idCardZipEntryPath(student, pngFileName),
-          buffer: pngBuffer,
+          buffer: result.buffer,
         });
         await this.prisma.idCard.updateMany({
-          where: { studentId, templateId },
+          where: { studentId: result.studentId, templateId },
           data: { status: 'PRINTED' },
         });
-        if (i < studentIds.length - 1) {
-          await new Promise((r) => setTimeout(r, 300));
-        }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`Download render failed for ${studentId}: ${message}`);
-        errors.push({ studentId, error: message });
+        this.logger.warn(`Download post-process failed for ${result.studentId}: ${message}`);
+        errors.push({ studentId: result.studentId, error: message });
       }
     }
 
@@ -130,6 +132,13 @@ export class IdCardsService {
   private async generateToDrive(templateId: string, studentIds: string[]) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
+    const rendered = await this.rendererService.renderCardsBatch(
+      templateId,
+      studentIds,
+      renderToken,
+      template.orientation as Orientation,
+    );
+
     const results: {
       studentId: string;
       status: string;
@@ -137,21 +146,19 @@ export class IdCardsService {
       driveFileId?: string;
     }[] = [];
 
-    for (let i = 0; i < studentIds.length; i++) {
-      const studentId = studentIds[i];
+    for (const result of rendered) {
+      if (!result.buffer) {
+        this.logger.warn(`ID card render failed for student ${result.studentId}: ${result.error}`);
+        results.push({ studentId: result.studentId, status: 'FAILED', error: result.error || 'Render failed' });
+        continue;
+      }
+
       try {
-        await this.ensureIdCardRecord(studentId, templateId);
-        const student = await this.loadStudent(studentId);
+        await this.ensureIdCardRecord(result.studentId, templateId);
+        const student = await this.loadStudent(result.studentId);
         const schoolName = student.school?.name || student.section?.class?.school?.name || 'School';
         const className = student.class?.name || student.section?.class?.name || 'Class';
         const sectionName = student.section?.name || 'Section';
-
-        const pngBuffer = await this.rendererService.renderCard(
-          templateId,
-          studentId,
-          renderToken,
-          template.orientation as Orientation,
-        );
 
         const fileName = `${idCardFileBaseName(student)}.png`;
         let driveFileId: string | undefined;
@@ -160,30 +167,27 @@ export class IdCardsService {
           driveFileId = await this.driveService.uploadFile(
             fileName,
             'image/png',
-            pngBuffer,
+            result.buffer,
             [schoolName, className, sectionName],
           );
         } catch (driveErr: unknown) {
           const driveMessage =
             driveErr instanceof Error ? driveErr.message : 'Google Drive upload failed';
           this.logger.warn(`Drive upload failed for ${fileName}: ${driveMessage}`);
-          results.push({ studentId, status: 'FAILED', error: driveMessage });
+          results.push({ studentId: result.studentId, status: 'FAILED', error: driveMessage });
           continue;
         }
 
         await this.prisma.idCard.updateMany({
-          where: { studentId, templateId },
+          where: { studentId: result.studentId, templateId },
           data: { status: 'PRINTED' },
         });
 
-        results.push({ studentId, status: 'SUCCESS', driveFileId });
-        if (i < studentIds.length - 1) {
-          await new Promise((r) => setTimeout(r, 300));
-        }
+        results.push({ studentId: result.studentId, status: 'SUCCESS', driveFileId });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn(`ID card render failed for student ${studentId}: ${message}`);
-        results.push({ studentId, status: 'FAILED', error: message });
+        this.logger.warn(`ID card post-process failed for student ${result.studentId}: ${message}`);
+        results.push({ studentId: result.studentId, status: 'FAILED', error: message });
       }
     }
 

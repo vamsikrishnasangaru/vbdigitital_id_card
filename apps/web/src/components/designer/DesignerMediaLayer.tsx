@@ -21,6 +21,7 @@ interface DesignerMediaLayerProps {
   imageUrl: string;
   selected: boolean;
   ppiRatio: number;
+  unitScale?: number;
   cardWidth: number;
   cardHeight: number;
   orientation: 'HORIZONTAL' | 'VERTICAL';
@@ -83,6 +84,7 @@ export function DesignerMediaLayer({
   imageUrl,
   selected,
   ppiRatio,
+  unitScale: unitScaleProp,
   showFrame = false,
   cardWidth,
   cardHeight,
@@ -92,6 +94,7 @@ export function DesignerMediaLayer({
   onDragEnd,
   onTransformEnd,
 }: DesignerMediaLayerProps) {
+  const unitScale = unitScaleProp ?? ppiRatio;
   const { width: w, height: h } = getElementSize(el);
 
   const { groupRef, dragBoundFunc, onDragStart, onDragEnd: onDragEndKonva } = useLayerSnapDrag(
@@ -105,10 +108,10 @@ export function DesignerMediaLayer({
   const [image, status] = useCorsImage(imageUrl || '');
   const imageRef = useRef<Konva.Image>(null);
   const isStudentPhoto = el.type === 'photo' || el.fieldType === 'studentPhoto';
-  const borderW = getEffectiveBorderWidth(el) * ppiRatio;
+  const borderW = getEffectiveBorderWidth(el) * unitScale;
   const borderStroke = el.borderColor?.trim() || '#000000';
   const shape = (el.photoShape || 'rectangle') as PhotoShape;
-  const cornerRadius = (el.cornerRadius ?? 8) * ppiRatio;
+  const cornerRadius = el.cornerRadius ?? 8 * ppiRatio;
   const cornerRadii = shape === 'custom' ? getElementCornerRadii(el, 1) : undefined;
   const adjust = el.colorAdjust || {};
 

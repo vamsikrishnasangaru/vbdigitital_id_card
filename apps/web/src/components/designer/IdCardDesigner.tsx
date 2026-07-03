@@ -190,6 +190,8 @@ export function IdCardDesigner({
 
   const PPI = isRenderMode ? 300 : DESIGN_PPI;
   const ppiRatio = PPI / DESIGN_PPI;
+  const renderUnitScale = isRenderMode ? 1 : ppiRatio;
+  const renderStagePixelRatio = 3;
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;
@@ -799,7 +801,7 @@ export function IdCardDesigner({
         className="bg-white overflow-hidden"
         style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
       >
-        <Stage width={CARD_WIDTH} height={CARD_HEIGHT} pixelRatio={2} ref={stageRef}>
+        <Stage width={CARD_WIDTH} height={CARD_HEIGHT} pixelRatio={renderStagePixelRatio} ref={stageRef}>
           <Layer clipX={0} clipY={0} clipWidth={CARD_WIDTH} clipHeight={CARD_HEIGHT}>
             <Rect width={CARD_WIDTH} height={CARD_HEIGHT} fill="#ffffff" />
             {parsedBg.mode === 'solid' && (
@@ -828,6 +830,7 @@ export function IdCardDesigner({
                     text={displayText}
                     selected={false}
                     ppiRatio={ppiRatio}
+                    unitScale={renderUnitScale}
                     cardWidth={CARD_WIDTH}
                     cardHeight={CARD_HEIGHT}
                     orientation={orientation}
@@ -851,6 +854,7 @@ export function IdCardDesigner({
                     }
                     selected={false}
                     ppiRatio={ppiRatio}
+                    unitScale={renderUnitScale}
                     cardWidth={CARD_WIDTH}
                     cardHeight={CARD_HEIGHT}
                     orientation={orientation}
@@ -872,6 +876,7 @@ export function IdCardDesigner({
                     }
                     selected={false}
                     ppiRatio={ppiRatio}
+                    unitScale={renderUnitScale}
                     cardWidth={CARD_WIDTH}
                     cardHeight={CARD_HEIGHT}
                     orientation={orientation}

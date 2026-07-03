@@ -212,7 +212,82 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       await document.fonts?.ready;
     });
 
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  private async captureCanvasPng(page: Page): Promise<Buffer> {
+    const dataUrl = await page.evaluate(() => {
+      const KonvaGlobal = (window as unknown as {
+        Konva?: { stages?: Array<{ toDataURL: (config?: { pixelRatio?: number }) => string }> };
+      }).Konva;
+      const stage = KonvaGlobal?.stages?.[0];
+      if (stage) {
+        return stage.toDataURL({ pixelRatio: 1 });
+      }
+      const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
+      if (!canvas?.width || !canvas?.height) {
+        throw new Error('Konva canvas not found');
+      }
+      return canvas.toDataURL('image/png');
+    });
+
+    const base64 = dataUrl.split(',')[1];
+    if (!base64) throw new Error('Failed to export card PNG');
+    return Buffer.from(base64, 'base64');
+  }
+
+  private async renderCardOnPage(
+    page: Page,
+    templateId: string,
+    studentId: string,
+    token: string | undefined,
+    orientation: 'HORIZONTAL' | 'VERTICAL',
+  ): Promise<Buffer> {
+    const size = CARD_SIZES[orientation];
+    await page.setViewport({
+      width: size.width + 80,
+      height: size.height + 80,
+      deviceScaleFactor: 1,
+    });
+    const url = `${this.frontendUrl}/render/${templateId}/${studentId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    await page.goto(url, { waitUntil: GOTO_WAIT_UNTIL, timeout: 90000 });
+    await this.waitForRenderReady(page);
+    return this.captureCanvasPng(page);
+  }
+
+  async renderCardsBatch(
+    templateId: string,
+    studentIds: string[],
+    token: string,
+    orientation: 'HORIZONTAL' | 'VERTICAL' = 'HORIZONTAL',
+  ): Promise<Array<{ studentId: string; buffer?: Buffer; error?: string }>> {
+    if (!studentIds.length) return [];
+
+    const release = await this.renderSemaphore.acquire();
+    try {
+      return await this.withRenderRetries(`PNG batch ${templateId}`, async () => {
+        const page = await this.newPage();
+        try {
+          page.setDefaultNavigationTimeout(90000);
+          page.setDefaultTimeout(90000);
+          const results: Array<{ studentId: string; buffer?: Buffer; error?: string }> = [];
+          for (const studentId of studentIds) {
+            try {
+              const buffer = await this.renderCardOnPage(page, templateId, studentId, token, orientation);
+              results.push({ studentId, buffer });
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              results.push({ studentId, error: message });
+            }
+          }
+          return results;
+        } finally {
+          await this.safeClosePage(page);
+        }
+      });
+    } finally {
+      release();
+    }
   }
 
   private async capturePdf(url: string, options: Record<string, unknown>): Promise<Buffer> {
@@ -249,33 +324,12 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   ): Promise<Buffer> {
     const release = await this.renderSemaphore.acquire();
     try {
-      const size = CARD_SIZES[orientation];
-      const url = `${this.frontendUrl}/render/${templateId}/${studentId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-
       return await this.withRenderRetries(`PNG ${studentId}`, async () => {
         const page = await this.newPage();
         try {
           page.setDefaultNavigationTimeout(90000);
           page.setDefaultTimeout(90000);
-          await page.setViewport({
-            width: size.width + 80,
-            height: size.height + 80,
-            deviceScaleFactor: 1,
-          });
-          await page.goto(url, { waitUntil: GOTO_WAIT_UNTIL, timeout: 90000 });
-          await this.waitForRenderReady(page);
-
-          const dataUrl = await page.evaluate(() => {
-            const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
-            if (!canvas?.width || !canvas?.height) {
-              throw new Error('Konva canvas not found');
-            }
-            return canvas.toDataURL('image/png');
-          });
-
-          const base64 = dataUrl.split(',')[1];
-          if (!base64) throw new Error('Failed to export card PNG');
-          return Buffer.from(base64, 'base64');
+          return await this.renderCardOnPage(page, templateId, studentId, token, orientation);
         } finally {
           await this.safeClosePage(page);
         }
