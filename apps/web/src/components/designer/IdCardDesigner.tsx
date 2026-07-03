@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import {
   type DesignerElement,
   DESIGN_PPI,
+  EXPORT_PPI,
   scaleElementsForPpi,
   resolveStudentField,
   getDefaultPlacement,
@@ -188,10 +189,10 @@ export function IdCardDesigner({
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userZoomedRef = useRef(false);
 
-  const PPI = isRenderMode ? 300 : DESIGN_PPI;
+  const PPI = isRenderMode || restrictedPreview ? EXPORT_PPI : DESIGN_PPI;
   const ppiRatio = PPI / DESIGN_PPI;
-  const renderUnitScale = isRenderMode ? 1 : ppiRatio;
-  const renderStagePixelRatio = 3;
+  const unitScale = isRenderMode || restrictedPreview ? 1 : ppiRatio;
+  const stagePixelRatio = isRenderMode || restrictedPreview ? 3 : 1;
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;
@@ -801,7 +802,7 @@ export function IdCardDesigner({
         className="bg-white overflow-hidden"
         style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
       >
-        <Stage width={CARD_WIDTH} height={CARD_HEIGHT} pixelRatio={renderStagePixelRatio} ref={stageRef}>
+        <Stage width={CARD_WIDTH} height={CARD_HEIGHT} pixelRatio={stagePixelRatio} ref={stageRef}>
           <Layer clipX={0} clipY={0} clipWidth={CARD_WIDTH} clipHeight={CARD_HEIGHT}>
             <Rect width={CARD_WIDTH} height={CARD_HEIGHT} fill="#ffffff" />
             {parsedBg.mode === 'solid' && (
@@ -830,7 +831,7 @@ export function IdCardDesigner({
                     text={displayText}
                     selected={false}
                     ppiRatio={ppiRatio}
-                    unitScale={renderUnitScale}
+                    unitScale={unitScale}
                     cardWidth={CARD_WIDTH}
                     cardHeight={CARD_HEIGHT}
                     orientation={orientation}
@@ -854,7 +855,7 @@ export function IdCardDesigner({
                     }
                     selected={false}
                     ppiRatio={ppiRatio}
-                    unitScale={renderUnitScale}
+                    unitScale={unitScale}
                     cardWidth={CARD_WIDTH}
                     cardHeight={CARD_HEIGHT}
                     orientation={orientation}
@@ -876,7 +877,7 @@ export function IdCardDesigner({
                     }
                     selected={false}
                     ppiRatio={ppiRatio}
-                    unitScale={renderUnitScale}
+                    unitScale={unitScale}
                     cardWidth={CARD_WIDTH}
                     cardHeight={CARD_HEIGHT}
                     orientation={orientation}
@@ -1003,6 +1004,8 @@ export function IdCardDesigner({
         mediaOptions={mediaOptions}
         selectedId={selectedId}
         ppiRatio={ppiRatio}
+        unitScale={unitScale}
+        stagePixelRatio={stagePixelRatio}
         updatePosition={updatePosition}
         handleTransformEnd={handleTransformEnd}
         transformerRef={transformerRef}
@@ -1071,6 +1074,8 @@ type DesignerEditorShellProps = {
   mediaOptions: { usePlaceholder?: boolean };
   selectedId: string | null;
   ppiRatio: number;
+  unitScale: number;
+  stagePixelRatio: number;
   updatePosition: (id: string, x: number, y: number) => void;
   handleTransformEnd: (id: string, node: Konva.Node) => void;
   transformerRef: React.RefObject<Konva.Transformer | null>;
@@ -1177,6 +1182,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
               height={p.cardHeight * p.scale}
               scaleX={p.scale}
               scaleY={p.scale}
+              pixelRatio={p.stagePixelRatio}
               ref={p.stageRef}
               listening={!p.restrictedPreview}
               onMouseDown={(e) => {
@@ -1220,6 +1226,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                         text={displayText}
                         selected={p.selectedId === sourceId}
                         ppiRatio={p.ppiRatio}
+                        unitScale={p.unitScale}
                         cardWidth={p.cardWidth}
                         cardHeight={p.cardHeight}
                         orientation={p.orientation}
@@ -1239,6 +1246,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                         imageUrl={getElementImageUrl(el, p.previewStudent, p.mediaOptions)}
                         selected={p.selectedId === sourceId}
                         ppiRatio={p.ppiRatio}
+                        unitScale={p.unitScale}
                         cardWidth={p.cardWidth}
                         cardHeight={p.cardHeight}
                         orientation={p.orientation}
@@ -1258,6 +1266,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                         imageUrl={getElementImageUrl(el, p.previewStudent, p.mediaOptions)}
                         selected={p.selectedId === sourceId}
                         ppiRatio={p.ppiRatio}
+                        unitScale={p.unitScale}
                         cardWidth={p.cardWidth}
                         cardHeight={p.cardHeight}
                         orientation={p.orientation}

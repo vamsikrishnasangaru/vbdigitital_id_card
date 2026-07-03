@@ -28,12 +28,39 @@ interface DesignerTextLayerProps {
 const PREVIEW_FONT_SIZE = 12;
 const PREVIEW_FILL = '#111827';
 
+/** Long names only — never shrink inline row values (father name, address, etc.). */
 const SHRINK_FIELD_TYPES = new Set([
   'fullName',
   'studentName',
   'firstName',
   'lastName',
 ]);
+
+const INLINE_ROW_FIELD_TYPES = new Set([
+  'fatherName',
+  'motherName',
+  'parentName',
+  'address',
+  'parentPhone',
+  'cell',
+  'phone',
+  'rollNumber',
+  'rollNo',
+  'childId',
+  'aadharCard',
+  'penId',
+  'apaarId',
+  'bloodGroup',
+  'dob',
+  'className',
+  'sectionName',
+  'classSection',
+]);
+
+function isColonLabelText(fieldType: string | undefined, value: string): boolean {
+  if (fieldType && fieldType !== 'custom') return false;
+  return /:\s*$/.test(value.trim());
+}
 
 export function DesignerTextLayer({
   el,
@@ -57,8 +84,15 @@ export function DesignerTextLayer({
   const fontStyle = getKonvaFontStyle(el);
   const textDecoration = el.textDecoration || '';
 
+  const isInlineValueField = !!el.fieldType && INLINE_ROW_FIELD_TYPES.has(el.fieldType);
+  const isColonLabel = isColonLabelText(el.fieldType, text);
+  const useRowAlign = isInlineValueField || isColonLabel;
+
   const fitWidth = useMemo(() => {
-    if (hasBoxWidth) return el.width!;
+    if (hasBoxWidth) {
+      if (el.fieldType && SHRINK_FIELD_TYPES.has(el.fieldType)) return el.width!;
+      return null;
+    }
     if (el.fieldType && SHRINK_FIELD_TYPES.has(el.fieldType)) {
       return Math.max(48, cardWidth - el.x - 6);
     }
@@ -71,14 +105,16 @@ export function DesignerTextLayer({
   }, [fitWidth, text, baseFontSize, fontFamily, fontStyle, textDecoration]);
 
   const lineHeight = singleLineTextHeight(displayFontSize);
-  const boxHeight = hasBoxWidth ? (el.height ?? lineHeight) : lineHeight;
-  const textY = hasBoxWidth && el.height != null && el.height > lineHeight
-    ? (el.height - lineHeight) / 2
-    : 0;
+  const rowBoxHeight = hasBoxWidth
+    ? Math.max(lineHeight, el.height ?? lineHeight)
+    : useRowAlign
+      ? Math.max(lineHeight, baseFontSize * 1.2)
+      : lineHeight;
+  const textY = rowBoxHeight > lineHeight ? (rowBoxHeight - lineHeight) / 2 : 0;
 
   const [frameSize, setFrameSize] = useState({
     width: hasBoxWidth ? el.width! : 40,
-    height: boxHeight,
+    height: rowBoxHeight,
   });
   const borderW = getEffectiveBorderWidth(el) * unitScale;
 
@@ -96,7 +132,7 @@ export function DesignerTextLayer({
     if (!node) return;
     const next = {
       width: hasBoxWidth ? el.width! : Math.max(node.width(), 8),
-      height: hasBoxWidth ? boxHeight : Math.max(node.height(), lineHeight),
+      height: hasBoxWidth || useRowAlign ? rowBoxHeight : Math.max(node.height(), lineHeight),
     };
     setFrameSize((prev) =>
       prev.width === next.width && prev.height === next.height ? prev : next,
@@ -106,9 +142,10 @@ export function DesignerTextLayer({
     el.width,
     el.height,
     hasBoxWidth,
+    useRowAlign,
     displayFontSize,
     lineHeight,
-    boxHeight,
+    rowBoxHeight,
     fontFamily,
     fontStyle,
     textDecoration,
@@ -124,6 +161,8 @@ export function DesignerTextLayer({
     y: textY,
     text,
     width: hasBoxWidth ? el.width : undefined,
+    height: hasBoxWidth || useRowAlign ? rowBoxHeight : undefined,
+    verticalAlign: hasBoxWidth || useRowAlign ? ('middle' as const) : undefined,
     wrap: 'none' as const,
     fontSize: displayFontSize,
     fontFamily,
@@ -148,7 +187,7 @@ export function DesignerTextLayer({
       onTap={onSelect}
       clip={
         hasBoxWidth
-          ? { x: 0, y: 0, width: el.width!, height: boxHeight }
+          ? { x: 0, y: 0, width: el.width!, height: rowBoxHeight }
           : undefined
       }
     >

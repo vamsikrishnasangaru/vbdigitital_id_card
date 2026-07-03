@@ -8,6 +8,9 @@ import {
 
 export const DESIGN_PPI = 96;
 
+/** Print / server export resolution — preview uses this so WYSIWYG matches download. */
+export const EXPORT_PPI = 300;
+
 /** Placeholder used in template designer when no student photo is available. */
 export const DESIGNER_PHOTO_PLACEHOLDER =
   'data:image/svg+xml,' +
@@ -396,7 +399,7 @@ export function resolveStudentField(
     case 'childId':
       return s.childId || 'N/A';
     case 'fatherName':
-      return s.fatherName || 'N/A';
+      return s.fatherName || s.parentName || 'N/A';
     case 'motherName':
       return s.motherName || 'N/A';
     case 'parentName':
