@@ -1,7 +1,6 @@
 import type Konva from 'konva';
+import { EXPORT_PIXEL_RATIO } from '@/lib/designer-utils';
 import { getCr80Dimensions } from '@/lib/card-sizes';
-
-const EXPORT_PIXEL_RATIO = 4;
 
 export class DesignerExportError extends Error {
   constructor(message: string) {

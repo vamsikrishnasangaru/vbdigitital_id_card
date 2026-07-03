@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import {
   type DesignerElement,
   DESIGN_PPI,
-  EXPORT_PPI,
+  EXPORT_PIXEL_RATIO,
   scaleElementsForPpi,
   resolveStudentField,
   getDefaultPlacement,
@@ -189,10 +189,11 @@ export function IdCardDesigner({
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userZoomedRef = useRef(false);
 
-  const PPI = isRenderMode || restrictedPreview ? EXPORT_PPI : DESIGN_PPI;
-  const ppiRatio = PPI / DESIGN_PPI;
-  const unitScale = isRenderMode || restrictedPreview ? 1 : ppiRatio;
-  const stagePixelRatio = isRenderMode || restrictedPreview ? 3 : 1;
+  // Keep layout at design PPI so preview, designer, and server export stay identical.
+  const PPI = DESIGN_PPI;
+  const ppiRatio = 1;
+  const unitScale = 1;
+  const stagePixelRatio = isRenderMode || restrictedPreview ? EXPORT_PIXEL_RATIO : 1;
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;

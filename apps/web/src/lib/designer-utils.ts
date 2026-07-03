@@ -8,8 +8,8 @@ import {
 
 export const DESIGN_PPI = 96;
 
-/** Print / server export resolution — preview uses this so WYSIWYG matches download. */
-export const EXPORT_PPI = 300;
+/** Supersample factor for preview/export PNG — layout stays at DESIGN_PPI. */
+export const EXPORT_PIXEL_RATIO = 4;
 
 /** Placeholder used in template designer when no student photo is available. */
 export const DESIGNER_PHOTO_PLACEHOLDER =

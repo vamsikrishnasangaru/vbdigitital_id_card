@@ -4,8 +4,8 @@ import * as puppeteer from 'puppeteer';
 import type { Browser, Page } from 'puppeteer';
 import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-launch';
 
-/** CR80 card size at 300 DPI (matches IdCardDesigner render mode). */
-const CARD_PPI = 300;
+/** CR80 card layout at design PPI (96) — export sharpness comes from Stage pixelRatio. */
+const CARD_PPI = 96;
 const CARD_SIZES = {
   HORIZONTAL: { width: Math.round(3.375 * CARD_PPI), height: Math.round(2.125 * CARD_PPI) },
   VERTICAL: { width: Math.round(2.125 * CARD_PPI), height: Math.round(3.375 * CARD_PPI) },

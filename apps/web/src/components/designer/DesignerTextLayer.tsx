@@ -28,39 +28,13 @@ interface DesignerTextLayerProps {
 const PREVIEW_FONT_SIZE = 12;
 const PREVIEW_FILL = '#111827';
 
-/** Long names only — never shrink inline row values (father name, address, etc.). */
+/** Only student name fields shrink to fit — never inline row values (father name, address, phone). */
 const SHRINK_FIELD_TYPES = new Set([
   'fullName',
   'studentName',
   'firstName',
   'lastName',
 ]);
-
-const INLINE_ROW_FIELD_TYPES = new Set([
-  'fatherName',
-  'motherName',
-  'parentName',
-  'address',
-  'parentPhone',
-  'cell',
-  'phone',
-  'rollNumber',
-  'rollNo',
-  'childId',
-  'aadharCard',
-  'penId',
-  'apaarId',
-  'bloodGroup',
-  'dob',
-  'className',
-  'sectionName',
-  'classSection',
-]);
-
-function isColonLabelText(fieldType: string | undefined, value: string): boolean {
-  if (fieldType && fieldType !== 'custom') return false;
-  return /:\s*$/.test(value.trim());
-}
 
 export function DesignerTextLayer({
   el,
@@ -84,10 +58,6 @@ export function DesignerTextLayer({
   const fontStyle = getKonvaFontStyle(el);
   const textDecoration = el.textDecoration || '';
 
-  const isInlineValueField = !!el.fieldType && INLINE_ROW_FIELD_TYPES.has(el.fieldType);
-  const isColonLabel = isColonLabelText(el.fieldType, text);
-  const useRowAlign = isInlineValueField || isColonLabel;
-
   const fitWidth = useMemo(() => {
     if (hasBoxWidth) {
       if (el.fieldType && SHRINK_FIELD_TYPES.has(el.fieldType)) return el.width!;
@@ -105,16 +75,13 @@ export function DesignerTextLayer({
   }, [fitWidth, text, baseFontSize, fontFamily, fontStyle, textDecoration]);
 
   const lineHeight = singleLineTextHeight(displayFontSize);
-  const rowBoxHeight = hasBoxWidth
-    ? Math.max(lineHeight, el.height ?? lineHeight)
-    : useRowAlign
-      ? Math.max(lineHeight, baseFontSize * 1.2)
-      : lineHeight;
-  const textY = rowBoxHeight > lineHeight ? (rowBoxHeight - lineHeight) / 2 : 0;
+  const boxHeight = hasBoxWidth ? (el.height ?? lineHeight) : lineHeight;
+  const textY =
+    hasBoxWidth && el.height != null && el.height > lineHeight ? (el.height - lineHeight) / 2 : 0;
 
   const [frameSize, setFrameSize] = useState({
     width: hasBoxWidth ? el.width! : 40,
-    height: rowBoxHeight,
+    height: boxHeight,
   });
   const borderW = getEffectiveBorderWidth(el) * unitScale;
 
@@ -132,7 +99,7 @@ export function DesignerTextLayer({
     if (!node) return;
     const next = {
       width: hasBoxWidth ? el.width! : Math.max(node.width(), 8),
-      height: hasBoxWidth || useRowAlign ? rowBoxHeight : Math.max(node.height(), lineHeight),
+      height: hasBoxWidth ? boxHeight : Math.max(node.height(), lineHeight),
     };
     setFrameSize((prev) =>
       prev.width === next.width && prev.height === next.height ? prev : next,
@@ -142,10 +109,9 @@ export function DesignerTextLayer({
     el.width,
     el.height,
     hasBoxWidth,
-    useRowAlign,
     displayFontSize,
     lineHeight,
-    rowBoxHeight,
+    boxHeight,
     fontFamily,
     fontStyle,
     textDecoration,
@@ -161,15 +127,12 @@ export function DesignerTextLayer({
     y: textY,
     text,
     width: hasBoxWidth ? el.width : undefined,
-    height: hasBoxWidth || useRowAlign ? rowBoxHeight : undefined,
-    verticalAlign: hasBoxWidth || useRowAlign ? ('middle' as const) : undefined,
     wrap: 'none' as const,
     fontSize: displayFontSize,
     fontFamily,
     fontStyle,
     textDecoration,
     listening: false,
-    perfectDrawEnabled: true,
   };
 
   return (
@@ -186,9 +149,7 @@ export function DesignerTextLayer({
       onClick={onSelect}
       onTap={onSelect}
       clip={
-        hasBoxWidth
-          ? { x: 0, y: 0, width: el.width!, height: rowBoxHeight }
-          : undefined
+        hasBoxWidth ? { x: 0, y: 0, width: el.width!, height: boxHeight } : undefined
       }
     >
       {showFrame && selected && (
@@ -212,11 +173,7 @@ export function DesignerTextLayer({
           listening={false}
         />
       )}
-      <Text
-        ref={textRef}
-        {...sharedTextProps}
-        fill={fillColor}
-      />
+      <Text ref={textRef} {...sharedTextProps} fill={fillColor} />
       {borderW > 0 && (
         <Rect
           x={0}
