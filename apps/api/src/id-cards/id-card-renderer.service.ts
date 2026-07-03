@@ -85,7 +85,14 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    await this.ensureBrowser();
+    try {
+      await this.ensureBrowser();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Puppeteer not ready at startup (${message}). API will still run; card renders launch Chrome on demand.`,
+      );
+    }
   }
 
   private async ensureBrowser(): Promise<void> {
