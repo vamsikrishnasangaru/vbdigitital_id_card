@@ -10,6 +10,7 @@ import {
   type DesignerElement,
   DESIGN_PPI,
   EXPORT_PIXEL_RATIO,
+  PREVIEW_PIXEL_RATIO,
   isStudentNameFieldType,
   scaleElementsForPpi,
   resolveStudentField,
@@ -207,7 +208,11 @@ export function IdCardDesigner({
   const unitScale = 1;
   const liveStudentCardPreview = !isRenderMode && !!student && !onSave;
   const exportQualityPreview = isRenderMode || restrictedPreview || liveStudentCardPreview;
-  const stagePixelRatio = exportQualityPreview ? EXPORT_PIXEL_RATIO : 1;
+  const stagePixelRatio = isRenderMode
+    ? EXPORT_PIXEL_RATIO
+    : exportQualityPreview
+      ? PREVIEW_PIXEL_RATIO
+      : 1;
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;
@@ -1230,7 +1235,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
           <div
             style={{ width: p.cardWidth * p.scale, height: p.cardHeight * p.scale }}
             id="id-card-canvas"
-            data-export-pixel-ratio={EXPORT_PIXEL_RATIO}
+            data-export-pixel-ratio={PREVIEW_PIXEL_RATIO}
             className={cn(
               'bg-white relative shadow-2xl shadow-black/50 ring-1 ring-white/10 rounded-sm overflow-hidden',
               p.restrictedPreview && 'restricted-id-card-canvas',

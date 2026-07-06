@@ -7,7 +7,7 @@ import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-
 /** CR80 card layout at design PPI (96) — export sharpness comes from Stage pixelRatio. */
 const CARD_PPI = 96;
 /** Must match apps/web EXPORT_PIXEL_RATIO (designer-utils.ts). */
-const EXPORT_PIXEL_RATIO = 6;
+const EXPORT_PIXEL_RATIO = 12;
 const CARD_SIZES = {
   HORIZONTAL: { width: Math.round(3.375 * CARD_PPI), height: Math.round(2.125 * CARD_PPI) },
   VERTICAL: { width: Math.round(2.125 * CARD_PPI), height: Math.round(3.375 * CARD_PPI) },
@@ -221,7 +221,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       await document.fonts?.ready;
     });
 
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 400));
   }
 
   private async captureCanvasPng(page: Page): Promise<Buffer> {
@@ -229,6 +229,11 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       const root = document.querySelector('#id-card-canvas');
       const exportPixelRatio =
         Number(root?.getAttribute('data-export-pixel-ratio')) || targetPixelRatio;
+
+      const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
+      if (canvas?.width && canvas?.height) {
+        return canvas.toDataURL('image/png');
+      }
 
       const KonvaGlobal = (window as unknown as {
         Konva?: {
@@ -253,7 +258,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         const stageRatio =
           (typeof stage.pixelRatio === 'function' ? stage.pixelRatio() : undefined) ??
           (Number(stage.getAttr?.('pixelRatio')) || 1);
-        const dataPixelRatio = stageRatio >= exportPixelRatio ? 1 : exportPixelRatio;
+        const dataPixelRatio = Math.max(1, exportPixelRatio / stageRatio);
         return stage.toDataURL({
           pixelRatio: dataPixelRatio,
           mimeType: 'image/png',
@@ -263,11 +268,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           height: stage.height(),
         });
       }
-      const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
-      if (!canvas?.width || !canvas?.height) {
-        throw new Error('Konva canvas not found');
-      }
-      return canvas.toDataURL('image/png');
+      throw new Error('Konva canvas not found');
     }, EXPORT_PIXEL_RATIO);
 
     const base64 = dataUrl.split(',')[1];

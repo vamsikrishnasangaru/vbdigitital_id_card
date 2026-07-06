@@ -8,13 +8,23 @@ import {
 
 export const DESIGN_PPI = 96;
 
-/** Supersample factor for preview/export PNG — layout stays at DESIGN_PPI (96×6 ≈ 576 DPI). */
-export const EXPORT_PIXEL_RATIO = 6;
+/** Supersample factor for on-screen preview (~576 DPI). */
+export const PREVIEW_PIXEL_RATIO = 6;
 
-/** pixelRatio for stage.toDataURL when the Stage already uses EXPORT_PIXEL_RATIO. */
-export function resolveExportPixelRatio(stagePixelRatio: number): number {
+/** PVC / print export supersampling (96 × 12 ≈ 1152 DPI). */
+export const EXPORT_PIXEL_RATIO = 12;
+
+/** Effective DPI for downloaded PNGs. */
+export const EXPORT_TARGET_DPI = DESIGN_PPI * EXPORT_PIXEL_RATIO;
+
+/** pixelRatio for stage.toDataURL — accounts for stage already using a pixelRatio. */
+export function resolveExportPixelRatio(
+  stagePixelRatio: number,
+  targetRatio: number = EXPORT_PIXEL_RATIO,
+): number {
   const ratio = Number(stagePixelRatio) || 1;
-  return ratio >= EXPORT_PIXEL_RATIO ? 1 : EXPORT_PIXEL_RATIO;
+  if (ratio >= targetRatio) return 1;
+  return targetRatio / ratio;
 }
 
 /** Placeholder used in template designer when no student photo is available. */
