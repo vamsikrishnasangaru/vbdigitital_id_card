@@ -10,6 +10,7 @@ import {
   type DesignerElement,
   DESIGN_PPI,
   EXPORT_PIXEL_RATIO,
+  isStudentNameFieldType,
   scaleElementsForPpi,
   resolveStudentField,
   getDefaultPlacement,
@@ -193,7 +194,9 @@ export function IdCardDesigner({
   const PPI = DESIGN_PPI;
   const ppiRatio = 1;
   const unitScale = 1;
-  const stagePixelRatio = isRenderMode || restrictedPreview ? EXPORT_PIXEL_RATIO : 1;
+  const liveStudentCardPreview = !isRenderMode && !!student && !onSave;
+  const exportQualityPreview = isRenderMode || restrictedPreview || liveStudentCardPreview;
+  const stagePixelRatio = exportQualityPreview ? EXPORT_PIXEL_RATIO : 1;
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;
@@ -334,6 +337,10 @@ export function IdCardDesigner({
         ...(placement.fontSize != null && partial.fontSize == null ? { fontSize: placement.fontSize } : {}),
         ...(placement.fontFamily && !partial.fontFamily ? { fontFamily: placement.fontFamily } : {}),
         ...(placement.fill && !partial.fill ? { fill: placement.fill } : {}),
+        ...(placement.textAlign && !partial.textAlign ? { textAlign: placement.textAlign } : {}),
+        ...(isStudentNameFieldType(placementFieldType ?? partial.fieldType) && !partial.textAlign
+          ? { textAlign: 'center' as const }
+          : {}),
         ...partial,
       },
       orientation,
@@ -800,6 +807,7 @@ export function IdCardDesigner({
       <div
         id="id-card-canvas"
         data-render-images-ready="true"
+        data-export-pixel-ratio={EXPORT_PIXEL_RATIO}
         className="bg-white overflow-hidden"
         style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
       >
@@ -1174,16 +1182,23 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
           <div
             style={{ width: p.cardWidth * p.scale, height: p.cardHeight * p.scale }}
             id="id-card-canvas"
+            data-export-pixel-ratio={EXPORT_PIXEL_RATIO}
             className={cn(
-              'bg-white relative shadow-2xl shadow-black/50 ring-1 ring-white/10 rounded-sm',
+              'bg-white relative shadow-2xl shadow-black/50 ring-1 ring-white/10 rounded-sm overflow-hidden',
               p.restrictedPreview && 'restricted-id-card-canvas',
             )}
           >
+            <div
+              className="origin-top-left"
+              style={{
+                width: p.cardWidth,
+                height: p.cardHeight,
+                transform: `scale(${p.scale})`,
+              }}
+            >
             <Stage
-              width={p.cardWidth * p.scale}
-              height={p.cardHeight * p.scale}
-              scaleX={p.scale}
-              scaleY={p.scale}
+              width={p.cardWidth}
+              height={p.cardHeight}
               pixelRatio={p.stagePixelRatio}
               ref={p.stageRef}
               listening={!p.restrictedPreview}
@@ -1322,6 +1337,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                 )}
               </Layer>
             </Stage>
+            </div>
             {p.restrictedPreview && <DesignerRestrictedWatermark />}
           </div>
         </div>

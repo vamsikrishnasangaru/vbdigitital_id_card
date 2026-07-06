@@ -773,7 +773,7 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
             templateName={`${previewTemplate.name} - ${viewStudent.firstName} (PREVIEW)`}
             orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
             student={viewStudent}
-            restrictedPreview={!isSuperAdmin}
+            restrictedPreview
             onClose={() => {
               setCardPreviewOpen(false);
               setPreviewTemplate(null);

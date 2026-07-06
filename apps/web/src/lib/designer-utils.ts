@@ -11,6 +11,12 @@ export const DESIGN_PPI = 96;
 /** Supersample factor for preview/export PNG — layout stays at DESIGN_PPI (96×6 ≈ 576 DPI). */
 export const EXPORT_PIXEL_RATIO = 6;
 
+/** pixelRatio for stage.toDataURL when the Stage already uses EXPORT_PIXEL_RATIO. */
+export function resolveExportPixelRatio(stagePixelRatio: number): number {
+  const ratio = Number(stagePixelRatio) || 1;
+  return ratio >= EXPORT_PIXEL_RATIO ? 1 : EXPORT_PIXEL_RATIO;
+}
+
 /** Placeholder used in template designer when no student photo is available. */
 export const DESIGNER_PHOTO_PLACEHOLDER =
   'data:image/svg+xml,' +
@@ -74,6 +80,7 @@ export interface DesignerElement {
   stroke?: string;
   strokeWidth?: number;
   fieldType?: string;
+  textAlign?: 'left' | 'center' | 'right';
   imageUrl?: string;
   photoShape?: PhotoShape;
   cornerRadius?: number;
@@ -90,6 +97,20 @@ export interface DesignerElement {
   frameGradient?: GradientBackground;
   frameShadow?: FrameShadow;
   photoFit?: PhotoFit;
+}
+
+export const STUDENT_NAME_FIELD_TYPES = [
+  'fullName',
+  'studentName',
+  'firstName',
+  'lastName',
+] as const;
+
+export function isStudentNameFieldType(fieldType?: string): boolean {
+  return (
+    !!fieldType &&
+    (STUDENT_NAME_FIELD_TYPES as readonly string[]).includes(fieldType)
+  );
 }
 
 export function scaleElementsForPpi(
@@ -610,7 +631,7 @@ export function getDefaultPlacement(
     studentPhoto: { x: 52, y: 70, width: 100, height: 115 },
     schoolLogo: getLogoDefaults('VERTICAL') as Partial<DesignerElement>,
     schoolSignature: getSignatureDefaults('VERTICAL'),
-    fullName: { x: 14, y: 192, width: 196, height: 28, fontSize: 14 },
+    fullName: { x: 14, y: 192, width: 196, height: 28, fontSize: 14, textAlign: 'center' },
     classSection: { x: 14, y: 210, width: 196, height: 22, fontSize: 11 },
     admissionNo: { x: 14, y: 224, width: 196, height: 22, fontSize: 11 },
     parentName: { x: 14, y: 238, width: 196, height: 24, fontSize: 12 },
@@ -623,7 +644,7 @@ export function getDefaultPlacement(
     studentPhoto: { x: 24, y: 48, width: 72, height: 96 },
     schoolLogo: getLogoDefaults('HORIZONTAL') as Partial<DesignerElement>,
     schoolSignature: getSignatureDefaults('HORIZONTAL'),
-    fullName: { x: 108, y: 48, width: 200, height: 28, fontSize: 14 },
+    fullName: { x: 108, y: 48, width: 200, height: 28, fontSize: 14, textAlign: 'center' },
     classSection: { x: 108, y: 68, width: 200, height: 22, fontSize: 11 },
     admissionNo: { x: 108, y: 84, width: 200, height: 22, fontSize: 11 },
     parentName: { x: 108, y: 100, width: 200, height: 24, fontSize: 12 },

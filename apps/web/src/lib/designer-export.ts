@@ -1,5 +1,5 @@
 import type Konva from 'konva';
-import { EXPORT_PIXEL_RATIO } from '@/lib/designer-utils';
+import { EXPORT_PIXEL_RATIO, resolveExportPixelRatio } from '@/lib/designer-utils';
 import { getCr80Dimensions } from '@/lib/card-sizes';
 
 export class DesignerExportError extends Error {
@@ -10,8 +10,7 @@ export class DesignerExportError extends Error {
 }
 
 function exportPixelRatioForStage(stage: Konva.Stage): number {
-  const stageRatio = Number(stage.getAttr('pixelRatio')) || 1;
-  return stageRatio >= EXPORT_PIXEL_RATIO ? 1 : EXPORT_PIXEL_RATIO;
+  return resolveExportPixelRatio(Number(stage.getAttr('pixelRatio')) || 1);
 }
 
 function dataUrlFromStage(stage: Konva.Stage): string {

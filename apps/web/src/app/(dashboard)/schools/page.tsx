@@ -5,8 +5,9 @@ import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
-import { Plus, Search, Edit, Trash2, School as SchoolIcon, Loader2, Filter, Download } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, School as SchoolIcon, Loader2, Filter, Download, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MODAL_BACKDROP, modalPanelClass } from '@/lib/modal-motion';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
 import { queryKeys } from '@/lib/query-keys';
@@ -31,9 +32,31 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
   const deferredSearch = useDeferredValue(search.trim());
   const [showCreate, setShowCreate] = useState(false);
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
-  const [form, setForm] = useState({ 
-    name: '', code: '', email: '', phone: '', address: '', city: '', state: '', pincode: '', adminPassword: '' 
+  const [form, setForm] = useState({
+    name: '',
+    code: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    adminPassword: '',
+    confirmAdminPassword: '',
   });
+
+  const emptyForm = {
+    name: '',
+    code: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    adminPassword: '',
+    confirmAdminPassword: '',
+  };
 
   // Queries
   const { data: schoolsData, isLoading } = useQuery({
@@ -47,8 +70,21 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
   });
 
   // Mutations
+  type SchoolFormPayload = {
+    name?: string;
+    code?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    adminPassword?: string;
+    isActive?: boolean;
+  };
+
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) => api.post('/schools', data),
+    mutationFn: (data: SchoolFormPayload & { name: string; code: string }) => api.post('/schools', data),
     onSuccess: (res) => {
       if (res.data?._offline) {
         toast.success('School saved locally — will sync when online');
@@ -65,8 +101,7 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<typeof form> & { isActive?: boolean } }) => 
-      api.put(`/schools/${id}`, data),
+    mutationFn: ({ id, data }: { id: string; data: SchoolFormPayload }) => api.put(`/schools/${id}`, data),
     onSuccess: (res) => {
       if (res.data?._offline) {
         toast.success('Changes saved locally — will sync when online');
@@ -101,16 +136,47 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
   const closeModal = () => {
     setShowCreate(false);
     setEditingSchool(null);
-    setForm({ name: '', code: '', email: '', phone: '', address: '', city: '', state: '', pincode: '', adminPassword: '' });
+    setForm(emptyForm);
+  };
+
+  const validatePasswordFields = () => {
+    const password = form.adminPassword.trim();
+    const confirm = form.confirmAdminPassword.trim();
+    if (!password && !confirm) return true;
+    if (!password) {
+      toast.error('Enter the new password');
+      return false;
+    }
+    if (password !== confirm) {
+      toast.error('Passwords do not match');
+      return false;
+    }
+    if (password.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return false;
+    }
+    return true;
+  };
+
+  const buildSchoolPayload = (forUpdate: boolean): SchoolFormPayload => {
+    const { confirmAdminPassword, adminPassword, ...rest } = form;
+    const password = adminPassword.trim();
+    const { code, ...updateRest } = rest;
+    const base = forUpdate ? updateRest : rest;
+    return password ? { ...base, adminPassword: password } : base;
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validatePasswordFields()) return;
     if (editingSchool) {
-      const { code, adminPassword, ...updateData } = form;
-      updateMutation.mutate({ id: editingSchool.id, data: updateData });
+      updateMutation.mutate({ id: editingSchool.id, data: buildSchoolPayload(true) });
     } else {
-      createMutation.mutate(form);
+      createMutation.mutate({
+        ...buildSchoolPayload(false),
+        name: form.name,
+        code: form.code,
+      });
     }
   };
 
@@ -124,7 +190,8 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
       city: school.city || '',
       state: school.state || '',
       pincode: (school as any).pincode || '',
-      adminPassword: ''
+      adminPassword: '',
+      confirmAdminPassword: '',
     });
     setEditingSchool(school);
     setShowCreate(true);
@@ -357,72 +424,187 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
         }
       />
 
-      {/* Improved Modal */}
+      {/* School form modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-border bg-muted/20">
-              <h3 className="font-bold text-xl tracking-tight">{editingSchool ? 'Edit School' : 'Add New School'}</h3>
-              <p className="text-sm text-muted-foreground mt-1">Enter the details for the school profile.</p>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
+          <div className={MODAL_BACKDROP} onClick={closeModal} aria-hidden />
+          <div
+            className={cn(
+              'relative bg-card border border-border shadow-2xl w-full max-w-xl max-h-[92vh] sm:max-h-[90vh] flex flex-col min-h-0 min-w-0',
+              'rounded-t-[1.5rem] sm:rounded-2xl border-b-0 sm:border-b',
+              modalPanelClass(),
+            )}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="school-form-title"
+          >
+            <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
+              <span className="h-1 w-10 rounded-full bg-border" aria-hidden />
             </div>
-            <form onSubmit={handleSave} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div className="col-span-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">School Name <span className="text-red-500">*</span></label>
-                  <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} required
-                    className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all" />
+            <div className="px-4 py-4 sm:p-6 border-b border-border bg-muted/20 shrink-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h3 id="school-form-title" className="font-bold text-lg sm:text-xl tracking-tight">
+                    {editingSchool ? 'Edit School' : 'Add New School'}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Enter the details for the school profile.
+                  </p>
                 </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">School Code <span className="text-red-500">*</span></label>
-                  <input value={form.code} onChange={e => setForm({...form, code: e.target.value.toUpperCase()})} required disabled={!!editingSchool}
-                    className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all font-mono disabled:opacity-50" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Admin Email</label>
-                  <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} placeholder="admin@school.com"
-                    className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all" />
-                </div>
-                {!editingSchool && (
-                  <div className="col-span-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Temporary Password</label>
-                    <input type="password" value={form.adminPassword} onChange={e => setForm({...form, adminPassword: e.target.value})} placeholder="Set a password for the admin account"
-                      className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all" />
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="p-2 rounded-xl hover:bg-muted text-muted-foreground shrink-0"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <form onSubmit={handleSave} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-6 space-y-4 sm:space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 min-w-0">
+                  <div className="sm:col-span-2 min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      School Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      required
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all"
+                    />
                   </div>
-                )}
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Contact Phone</label>
-                  <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">City</label>
-                  <input value={form.city} onChange={e => setForm({...form, city: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">State</label>
-                  <input value={form.state} onChange={e => setForm({...form, state: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Pincode</label>
-                  <input value={form.pincode} onChange={e => setForm({...form, pincode: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Full Address</label>
-                  <textarea value={form.address} onChange={e => setForm({...form, address: e.target.value})} rows={2}
-                    className="w-full px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all resize-none" />
+                  <div className="min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      School Code <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      value={form.code}
+                      onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+                      required
+                      disabled={!!editingSchool}
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all font-mono disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      Admin Email
+                    </label>
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      placeholder="admin@school.com"
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 min-w-0 pt-1 border-t border-border/60">
+                    <p className="text-xs text-muted-foreground mt-3 mb-4">
+                      {editingSchool
+                        ? 'Optional — leave blank to keep the current school admin password.'
+                        : 'Set the login password for the school admin account.'}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      {editingSchool ? 'Update Password' : 'Admin Password'}
+                    </label>
+                    <input
+                      type="password"
+                      value={form.adminPassword}
+                      onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+                      placeholder={editingSchool ? 'Enter new password' : 'Required if admin email is set'}
+                      autoComplete="new-password"
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      Confirm Password
+                    </label>
+                    <input
+                      type="password"
+                      value={form.confirmAdminPassword}
+                      onChange={(e) => setForm({ ...form, confirmAdminPassword: e.target.value })}
+                      placeholder="Re-enter password"
+                      autoComplete="new-password"
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      Contact Phone
+                    </label>
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      value={form.phone}
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      City
+                    </label>
+                    <input
+                      value={form.city}
+                      onChange={(e) => setForm({ ...form, city: e.target.value })}
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      State
+                    </label>
+                    <input
+                      value={form.state}
+                      onChange={(e) => setForm({ ...form, state: e.target.value })}
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      Pincode
+                    </label>
+                    <input
+                      inputMode="numeric"
+                      value={form.pincode}
+                      onChange={(e) => setForm({ ...form, pincode: e.target.value })}
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 min-w-0">
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
+                      Full Address
+                    </label>
+                    <textarea
+                      value={form.address}
+                      onChange={(e) => setForm({ ...form, address: e.target.value })}
+                      rows={3}
+                      className="w-full min-w-0 px-4 py-2.5 bg-muted/30 border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:outline-none focus:border-primary/40 transition-all resize-none"
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-border">
-                <button type="button" onClick={closeModal} className="px-5 py-2.5 text-sm font-bold rounded-xl border border-border hover:bg-muted transition-all">Cancel</button>
-                <button 
-                  type="submit" 
-                  disabled={createMutation.isPending || updateMutation.isPending} 
-                  className="px-6 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 px-4 py-4 sm:px-6 sm:py-5 border-t border-border bg-muted/10 shrink-0">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="w-full sm:w-auto px-5 py-2.5 text-sm font-bold rounded-xl border border-border hover:bg-muted transition-all"
                 >
-                  {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                  className="w-full sm:w-auto px-6 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {(createMutation.isPending || updateMutation.isPending) && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
                   {editingSchool ? 'Save Changes' : 'Add School'}
                 </button>
               </div>

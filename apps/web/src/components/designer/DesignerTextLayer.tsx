@@ -4,7 +4,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Group, Text, Rect } from 'react-konva';
 import Konva from 'konva';
 import type { DesignerElement } from '@/lib/designer-utils';
-import { getDashPattern, getEffectiveBorderWidth, getKonvaFontStyle } from '@/lib/designer-utils';
+import { getDashPattern, getEffectiveBorderWidth, getKonvaFontStyle, isStudentNameFieldType } from '@/lib/designer-utils';
 import { useLayerSnapDrag } from './useLayerSnapDrag';
 import { fitSingleLineFontSize, singleLineTextHeight } from './designer-text-fit';
 
@@ -55,7 +55,7 @@ export function DesignerTextLayer({
   highQuality = false,
 }: DesignerTextLayerProps) {
   const unitScale = unitScaleProp ?? ppiRatio;
-  const isNameField = Boolean(el.fieldType && SHRINK_FIELD_TYPES.has(el.fieldType));
+  const isNameField = isStudentNameFieldType(el.fieldType);
   const hasBoxWidth = el.width != null && el.width > 0;
   const baseFontSize = el.fontSize ?? PREVIEW_FONT_SIZE;
   const fontFamily = el.fontFamily || 'Arial';
@@ -76,13 +76,9 @@ export function DesignerTextLayer({
   const lineHeight = singleLineTextHeight(displayFontSize);
   const textBoxWidth = hasBoxWidth ? el.width! : isNameField && fitWidth ? fitWidth : undefined;
   const textBoxHeight = hasBoxWidth ? Math.max(lineHeight, el.height ?? lineHeight) : lineHeight;
+  const textAlign = isNameField ? (el.textAlign ?? 'center') : (el.textAlign ?? 'left');
   const centerInBox = isNameField && textBoxWidth != null;
-  const textY =
-    centerInBox && hasBoxWidth
-      ? 0
-      : hasBoxWidth && el.height != null && el.height > lineHeight
-        ? (el.height - lineHeight) / 2
-        : 0;
+  const textY = centerInBox ? 0 : hasBoxWidth && el.height != null && el.height > lineHeight ? (el.height - lineHeight) / 2 : 0;
 
   const [frameSize, setFrameSize] = useState({
     width: textBoxWidth ?? (hasBoxWidth ? el.width! : 40),
@@ -133,9 +129,9 @@ export function DesignerTextLayer({
     y: textY,
     text,
     width: textBoxWidth,
-    height: centerInBox && hasBoxWidth ? textBoxHeight : undefined,
-    align: centerInBox ? ('center' as const) : undefined,
-    verticalAlign: centerInBox && hasBoxWidth ? ('middle' as const) : undefined,
+    height: centerInBox ? textBoxHeight : undefined,
+    align: centerInBox ? textAlign : el.textAlign,
+    verticalAlign: centerInBox ? ('middle' as const) : undefined,
     wrap: 'none' as const,
     fontSize: displayFontSize,
     fontFamily,

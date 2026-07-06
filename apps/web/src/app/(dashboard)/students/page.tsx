@@ -1691,7 +1691,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
             orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
             student={viewStudent}
             schoolId={effectiveSchoolId || undefined}
-            restrictedPreview={!isSuperAdmin}
+            restrictedPreview
             onClose={() => {
               setCardPreviewOpen(false);
               setPreviewTemplate(null);

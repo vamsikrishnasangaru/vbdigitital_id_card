@@ -89,7 +89,28 @@ export class SchoolsService {
 
   async update(id: string, dto: UpdateSchoolDto) {
     await this.findOne(id);
-    return this.prisma.school.update({ where: { id }, data: dto });
+    const { adminPassword, ...schoolData } = dto;
+
+    if (!adminPassword?.trim()) {
+      return this.prisma.school.update({ where: { id }, data: schoolData });
+    }
+
+    const passwordHash = await bcrypt.hash(adminPassword, 12);
+    const adminUser = await this.prisma.user.findFirst({
+      where: { schoolId: id, role: 'SCHOOL_ADMIN', deletedAt: null },
+    });
+    if (!adminUser) {
+      throw new NotFoundException('School admin account not found');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const school = await tx.school.update({ where: { id }, data: schoolData });
+      await tx.user.update({
+        where: { id: adminUser.id },
+        data: { passwordHash },
+      });
+      return school;
+    });
   }
 
   async remove(id: string) {

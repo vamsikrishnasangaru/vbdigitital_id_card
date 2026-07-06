@@ -6,6 +6,8 @@ import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-
 
 /** CR80 card layout at design PPI (96) — export sharpness comes from Stage pixelRatio. */
 const CARD_PPI = 96;
+/** Must match apps/web EXPORT_PIXEL_RATIO (designer-utils.ts). */
+const EXPORT_PIXEL_RATIO = 6;
 const CARD_SIZES = {
   HORIZONTAL: { width: Math.round(3.375 * CARD_PPI), height: Math.round(2.125 * CARD_PPI) },
   VERTICAL: { width: Math.round(2.125 * CARD_PPI), height: Math.round(3.375 * CARD_PPI) },
@@ -223,12 +225,18 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async captureCanvasPng(page: Page): Promise<Buffer> {
-    const dataUrl = await page.evaluate(() => {
+    const dataUrl = await page.evaluate((targetPixelRatio) => {
+      const root = document.querySelector('#id-card-canvas');
+      const exportPixelRatio =
+        Number(root?.getAttribute('data-export-pixel-ratio')) || targetPixelRatio;
+
       const KonvaGlobal = (window as unknown as {
         Konva?: {
           stages?: Array<{
             width: () => number;
             height: () => number;
+            pixelRatio?: () => number;
+            getAttr?: (name: string) => unknown;
             toDataURL: (config?: {
               pixelRatio?: number;
               mimeType?: string;
@@ -242,8 +250,12 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       }).Konva;
       const stage = KonvaGlobal?.stages?.[0];
       if (stage) {
+        const stageRatio =
+          (typeof stage.pixelRatio === 'function' ? stage.pixelRatio() : undefined) ??
+          (Number(stage.getAttr?.('pixelRatio')) || 1);
+        const dataPixelRatio = stageRatio >= exportPixelRatio ? 1 : exportPixelRatio;
         return stage.toDataURL({
-          pixelRatio: 1,
+          pixelRatio: dataPixelRatio,
           mimeType: 'image/png',
           x: 0,
           y: 0,
@@ -256,7 +268,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         throw new Error('Konva canvas not found');
       }
       return canvas.toDataURL('image/png');
-    });
+    }, EXPORT_PIXEL_RATIO);
 
     const base64 = dataUrl.split(',')[1];
     if (!base64) throw new Error('Failed to export card PNG');

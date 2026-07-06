@@ -86,4 +86,9 @@ export class UpdateSchoolDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ example: 'Admin@123', description: 'Reset school admin password when provided' })
+  @IsString()
+  @IsOptional()
+  adminPassword?: string;
 }
