@@ -1218,8 +1218,8 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       </div>
 
       {/* Intelligence/Filters Bar */}
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="relative flex-1 group">
+      <div className="space-y-4">
+        <div className="relative w-full min-w-0 group">
           <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-muted-foreground group-focus-within:text-primary transition-colors">
             <Search className="h-5 w-5" />
           </div>
@@ -1227,38 +1227,40 @@ export default function StudentsPage({ params }: NextClientPageProps) {
             value={search} 
             onChange={(e) => setSearch(e.target.value)} 
             placeholder="Search by name, roll no, admission ID, or phone..."
-            className="w-full pl-12 pr-4 py-4 panel-toolbar rounded-2xl text-sm font-medium focus:ring-4 focus:ring-primary/10 focus:border-primary/50 outline-none transition-all shadow-sm group-hover:bg-card group-hover:border-border" 
+            className="w-full min-w-0 pl-12 pr-4 py-4 panel-toolbar rounded-2xl text-sm font-medium focus:ring-4 focus:ring-primary/10 focus:border-primary/50 outline-none transition-all shadow-sm group-hover:bg-card group-hover:border-border" 
           />
         </div>
-        
-        <div className="flex p-1.5 panel-toolbar rounded-2xl shadow-sm overflow-x-auto no-scrollbar">
-          {statuses.map((s) => (
-            <button 
-              key={s.value} 
-              onClick={() => setStatusFilter(s.value)}
-              className={cn(
-                "px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap",
-                statusFilter === s.value 
-                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105" 
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              )}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-muted-foreground shrink-0">
-          {(loading || isFilterPending) && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-          {!loading && (
-            <span>
-              {studentsTotal} student{studentsTotal === 1 ? '' : 's'}
-              {viewAllSchools
-                ? ' · All schools'
-                : selectedSchool && isSuperAdmin
-                  ? ` · ${selectedSchool.name}`
-                  : ''}
-            </span>
-          )}
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <div className="flex min-w-0 flex-1 p-1.5 panel-toolbar rounded-2xl shadow-sm overflow-x-auto no-scrollbar">
+            {statuses.map((s) => (
+              <button 
+                key={s.value} 
+                onClick={() => setStatusFilter(s.value)}
+                className={cn(
+                  "px-4 sm:px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap shrink-0",
+                  statusFilter === s.value 
+                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 px-1 sm:px-4 py-2 text-xs font-bold text-muted-foreground shrink-0">
+            {(loading || isFilterPending) && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+            {!loading && (
+              <span className="whitespace-nowrap">
+                {studentsTotal} student{studentsTotal === 1 ? '' : 's'}
+                {viewAllSchools
+                  ? ' · All schools'
+                  : selectedSchool && isSuperAdmin
+                    ? ` · ${selectedSchool.name}`
+                    : ''}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
