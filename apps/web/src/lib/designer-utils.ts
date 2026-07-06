@@ -11,16 +11,37 @@ export const DESIGN_PPI = 96;
 /** Supersample factor for on-screen preview (~576 DPI). */
 export const PREVIEW_PIXEL_RATIO = 6;
 
-/** PVC / print export supersampling (96 × 12 ≈ 1152 DPI). */
-export const EXPORT_PIXEL_RATIO = 12;
+/** Final PVC print DPI (CR80 landscape → 1013 × 638 px). */
+export const PRINT_OUTPUT_DPI = 300;
 
-/** Effective DPI for downloaded PNGs. */
-export const EXPORT_TARGET_DPI = DESIGN_PPI * EXPORT_PIXEL_RATIO;
+/** Internal render DPI before downscale to print size (300–600 DPI range). */
+export const PRINT_RENDER_DPI = 600;
+
+/** CR80 output pixels at 300 DPI. */
+export const PRINT_EXPORT_PIXEL_SIZE = {
+  HORIZONTAL: { width: 1013, height: 638 },
+  VERTICAL: { width: 638, height: 1013 },
+} as const;
+
+export function getPrintExportPixelSize(orientation: 'HORIZONTAL' | 'VERTICAL') {
+  return PRINT_EXPORT_PIXEL_SIZE[orientation];
+}
+
+/** Konva stage pixelRatio for print capture (~600 DPI internal). */
+export function getPrintRenderPixelRatio(): number {
+  return PRINT_RENDER_DPI / DESIGN_PPI;
+}
+
+/** @deprecated Use getPrintRenderPixelRatio() */
+export const EXPORT_PIXEL_RATIO = getPrintRenderPixelRatio();
+
+/** Effective DPI of delivered PNG files. */
+export const EXPORT_TARGET_DPI = PRINT_OUTPUT_DPI;
 
 /** pixelRatio for stage.toDataURL — accounts for stage already using a pixelRatio. */
 export function resolveExportPixelRatio(
   stagePixelRatio: number,
-  targetRatio: number = EXPORT_PIXEL_RATIO,
+  targetRatio: number = getPrintRenderPixelRatio(),
 ): number {
   const ratio = Number(stagePixelRatio) || 1;
   if (ratio >= targetRatio) return 1;

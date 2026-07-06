@@ -2,12 +2,14 @@ import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import * as puppeteer from 'puppeteer';
 import type { Browser, Page } from 'puppeteer';
+import {
+  PRINT_EXPORT_PIXEL_SIZE,
+  PRINT_RENDER_PIXEL_RATIO,
+} from './id-card-export.constants';
 import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-launch';
 
 /** CR80 card layout at design PPI (96) — export sharpness comes from Stage pixelRatio. */
 const CARD_PPI = 96;
-/** Must match apps/web EXPORT_PIXEL_RATIO (designer-utils.ts). */
-const EXPORT_PIXEL_RATIO = 12;
 const CARD_SIZES = {
   HORIZONTAL: { width: Math.round(3.375 * CARD_PPI), height: Math.round(2.125 * CARD_PPI) },
   VERTICAL: { width: Math.round(2.125 * CARD_PPI), height: Math.round(3.375 * CARD_PPI) },
@@ -224,52 +226,86 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     await new Promise((r) => setTimeout(r, 400));
   }
 
-  private async captureCanvasPng(page: Page): Promise<Buffer> {
-    const dataUrl = await page.evaluate((targetPixelRatio) => {
-      const root = document.querySelector('#id-card-canvas');
-      const exportPixelRatio =
-        Number(root?.getAttribute('data-export-pixel-ratio')) || targetPixelRatio;
+  private async captureCanvasPng(page: Page, orientation: 'HORIZONTAL' | 'VERTICAL'): Promise<Buffer> {
+    const fallbackSize = PRINT_EXPORT_PIXEL_SIZE[orientation];
+    const dataUrl = await page.evaluate(
+      async (args) => {
+        const { fallbackWidth, fallbackHeight, fallbackPixelRatio } = args;
 
-      const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
-      if (canvas?.width && canvas?.height) {
-        return canvas.toDataURL('image/png');
-      }
+        const root = document.querySelector('#id-card-canvas');
+        const targetWidth = Number(root?.getAttribute('data-export-width')) || fallbackWidth;
+        const targetHeight = Number(root?.getAttribute('data-export-height')) || fallbackHeight;
+        const exportPixelRatio =
+          Number(root?.getAttribute('data-export-pixel-ratio')) || fallbackPixelRatio;
 
-      const KonvaGlobal = (window as unknown as {
-        Konva?: {
-          stages?: Array<{
-            width: () => number;
-            height: () => number;
-            pixelRatio?: () => number;
-            getAttr?: (name: string) => unknown;
-            toDataURL: (config?: {
-              pixelRatio?: number;
-              mimeType?: string;
-              x?: number;
-              y?: number;
-              width?: number;
-              height?: number;
-            }) => string;
-          }>;
-        };
-      }).Konva;
-      const stage = KonvaGlobal?.stages?.[0];
-      if (stage) {
-        const stageRatio =
-          (typeof stage.pixelRatio === 'function' ? stage.pixelRatio() : undefined) ??
-          (Number(stage.getAttr?.('pixelRatio')) || 1);
-        const dataPixelRatio = Math.max(1, exportPixelRatio / stageRatio);
-        return stage.toDataURL({
-          pixelRatio: dataPixelRatio,
-          mimeType: 'image/png',
-          x: 0,
-          y: 0,
-          width: stage.width(),
-          height: stage.height(),
-        });
-      }
-      throw new Error('Konva canvas not found');
-    }, EXPORT_PIXEL_RATIO);
+        const resizePng = (source: string, width: number, height: number) =>
+          new Promise<string>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) {
+                reject(new Error('Canvas 2d unavailable'));
+                return;
+              }
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = () => reject(new Error('Failed to resize card PNG'));
+            img.src = source;
+          });
+
+        let rawDataUrl: string;
+        const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
+        if (canvas?.width && canvas?.height) {
+          rawDataUrl = canvas.toDataURL('image/png');
+        } else {
+          const KonvaGlobal = (window as unknown as {
+            Konva?: {
+              stages?: Array<{
+                width: () => number;
+                height: () => number;
+                pixelRatio?: () => number;
+                getAttr?: (name: string) => unknown;
+                toDataURL: (config?: {
+                  pixelRatio?: number;
+                  mimeType?: string;
+                  x?: number;
+                  y?: number;
+                  width?: number;
+                  height?: number;
+                }) => string;
+              }>;
+            };
+          }).Konva;
+          const stage = KonvaGlobal?.stages?.[0];
+          if (!stage) throw new Error('Konva canvas not found');
+          const stageRatio =
+            (typeof stage.pixelRatio === 'function' ? stage.pixelRatio() : undefined) ??
+            (Number(stage.getAttr?.('pixelRatio')) || 1);
+          const dataPixelRatio = Math.max(1, exportPixelRatio / stageRatio);
+          rawDataUrl = stage.toDataURL({
+            pixelRatio: dataPixelRatio,
+            mimeType: 'image/png',
+            x: 0,
+            y: 0,
+            width: stage.width(),
+            height: stage.height(),
+          });
+        }
+
+        return resizePng(rawDataUrl, targetWidth, targetHeight);
+      },
+      {
+        fallbackWidth: fallbackSize.width,
+        fallbackHeight: fallbackSize.height,
+        fallbackPixelRatio: PRINT_RENDER_PIXEL_RATIO,
+      },
+    );
 
     const base64 = dataUrl.split(',')[1];
     if (!base64) throw new Error('Failed to export card PNG');
@@ -292,7 +328,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     const url = `${this.frontendUrl}/render/${templateId}/${studentId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     await page.goto(url, { waitUntil: GOTO_WAIT_UNTIL, timeout: 90000 });
     await this.waitForRenderReady(page);
-    return this.captureCanvasPng(page);
+    return this.captureCanvasPng(page, orientation);
   }
 
   async renderCardsBatch(

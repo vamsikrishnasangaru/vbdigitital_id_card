@@ -9,7 +9,8 @@ import { toast } from 'sonner';
 import {
   type DesignerElement,
   DESIGN_PPI,
-  EXPORT_PIXEL_RATIO,
+  getPrintExportPixelSize,
+  getPrintRenderPixelRatio,
   PREVIEW_PIXEL_RATIO,
   isStudentNameFieldType,
   scaleElementsForPpi,
@@ -209,10 +210,11 @@ export function IdCardDesigner({
   const liveStudentCardPreview = !isRenderMode && !!student && !onSave;
   const exportQualityPreview = isRenderMode || restrictedPreview || liveStudentCardPreview;
   const stagePixelRatio = isRenderMode
-    ? EXPORT_PIXEL_RATIO
+    ? getPrintRenderPixelRatio()
     : exportQualityPreview
       ? PREVIEW_PIXEL_RATIO
       : 1;
+  const printExportSize = getPrintExportPixelSize(orientation);
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;
@@ -692,7 +694,7 @@ export function IdCardDesigner({
     const stage = stageRef.current;
     if (!stage) return;
     try {
-      exportStageToPng(stage, `${templateName.replace(/\s+/g, '_')}_${activeSide}.png`);
+      exportStageToPng(stage, `${templateName.replace(/\s+/g, '_')}_${activeSide}.png`, orientation);
       toast.success('PNG exported');
     } catch (err) {
       toast.error(err instanceof DesignerExportError ? err.message : 'PNG export failed');
@@ -841,7 +843,9 @@ export function IdCardDesigner({
       <div
         id="id-card-canvas"
         data-render-images-ready="true"
-        data-export-pixel-ratio={EXPORT_PIXEL_RATIO}
+        data-export-pixel-ratio={getPrintRenderPixelRatio()}
+        data-export-width={printExportSize.width}
+        data-export-height={printExportSize.height}
         className="bg-white overflow-hidden"
         style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
       >
