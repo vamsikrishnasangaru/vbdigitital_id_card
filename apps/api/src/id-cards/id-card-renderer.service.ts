@@ -280,10 +280,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       const scaleY = stage.scaleY() || 1;
       const logicalWidth = stage.width() / scaleX;
       const logicalHeight = stage.height() / scaleY;
-      const stageRatio =
-        (typeof stage.pixelRatio === 'function' ? stage.pixelRatio() : undefined) ??
-        (Number(stage.getAttr?.('pixelRatio')) || 1);
-      const exportPixelRatio = stageRatio >= ratio ? 1 : ratio / stageRatio;
+      const exportPixelRatio = ratio;
 
       const oldW = stage.width();
       const oldH = stage.height();

@@ -12,10 +12,11 @@ export const DESIGN_PPI = 96;
 export const PREVIEW_PIXEL_RATIO = 6;
 
 /**
- * Download/export pixelRatio for Konva stage.toCanvas() — matches preview supersampling.
- * Portrait CR80 → 1224 × 1944 px; landscape → 1944 × 1224 px at ratio 6.
+ * Absolute pixelRatio for stage.toCanvas() / lossless PNG export (~1152 DPI).
+ * Higher than on-screen preview (6×) for print-ready PVC downloads.
+ * Portrait CR80 → 2448 × 3888 px; landscape → 3888 × 2448 px.
  */
-export const DOWNLOAD_PIXEL_RATIO = PREVIEW_PIXEL_RATIO;
+export const DOWNLOAD_PIXEL_RATIO = 12;
 
 export function getExportPixelSize(
   orientation: 'HORIZONTAL' | 'VERTICAL',
@@ -49,14 +50,16 @@ export const EXPORT_PIXEL_RATIO = DOWNLOAD_PIXEL_RATIO;
 /** Effective DPI of delivered PNG files (matches preview). */
 export const EXPORT_TARGET_DPI = DESIGN_PPI * DOWNLOAD_PIXEL_RATIO;
 
-/** pixelRatio for stage.toDataURL — accounts for stage already using a pixelRatio. */
+/**
+ * Absolute multiplier for stage.toCanvas() from logical card size.
+ * Konva applies this on top of logical width/height — not reduced when the
+ * on-screen stage already uses PREVIEW_PIXEL_RATIO.
+ */
 export function resolveExportPixelRatio(
-  stagePixelRatio: number,
+  _stagePixelRatio: number,
   targetRatio: number = DOWNLOAD_PIXEL_RATIO,
 ): number {
-  const ratio = Number(stagePixelRatio) || 1;
-  if (ratio >= targetRatio) return 1;
-  return targetRatio / ratio;
+  return Math.max(4, targetRatio);
 }
 
 /** Placeholder used in template designer when no student photo is available. */

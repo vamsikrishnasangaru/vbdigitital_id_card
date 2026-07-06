@@ -1,20 +1,12 @@
 import type Konva from 'konva';
-import { DOWNLOAD_PIXEL_RATIO, resolveExportPixelRatio } from '@/lib/designer-utils';
+import { DOWNLOAD_PIXEL_RATIO } from '@/lib/designer-utils';
 
 export const KONVA_EXPORT_MIME = 'image/png' as const;
 
 export type KonvaHighResExportOptions = {
-  /** Minimum 4, default 6 — matches on-screen preview supersampling. */
+  /** Minimum 4, default 12 — print-quality PVC export. */
   targetPixelRatio?: number;
 };
-
-function readStagePixelRatio(stage: Konva.Stage): number {
-  const fromMethod =
-    typeof (stage as Konva.Stage & { pixelRatio?: () => number }).pixelRatio === 'function'
-      ? (stage as Konva.Stage & { pixelRatio: () => number }).pixelRatio()
-      : undefined;
-  return fromMethod ?? (Number(stage.getAttr('pixelRatio')) || 1);
-}
 
 /** Wait for web fonts and Konva image nodes before lossless export. */
 export async function waitForKonvaExportReady(stage: Konva.Stage): Promise<void> {
@@ -56,7 +48,7 @@ export function exportKonvaStageToDataUrl(
   const scaleY = stage.scaleY() || 1;
   const logicalWidth = stage.width() / scaleX;
   const logicalHeight = stage.height() / scaleY;
-  const exportPixelRatio = resolveExportPixelRatio(readStagePixelRatio(stage), targetPixelRatio);
+  const exportPixelRatio = targetPixelRatio;
 
   const oldSize = { width: stage.width(), height: stage.height() };
   const needReset = scaleX !== 1 || scaleY !== 1;
