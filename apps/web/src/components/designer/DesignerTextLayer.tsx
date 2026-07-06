@@ -158,6 +158,16 @@ export function DesignerTextLayer({
         hasBoxWidth ? { x: 0, y: 0, width: el.width!, height: textBoxHeight } : undefined
       }
     >
+      {(showFrame || draggable) && (
+        <Rect
+          x={0}
+          y={0}
+          width={Math.max(frameSize.width, 8)}
+          height={Math.max(frameSize.height, lineHeight)}
+          fill="transparent"
+          listening
+        />
+      )}
       {showFrame && selected && (
         <Rect
           x={0}

@@ -1188,17 +1188,11 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
               p.restrictedPreview && 'restricted-id-card-canvas',
             )}
           >
-            <div
-              className="origin-top-left"
-              style={{
-                width: p.cardWidth,
-                height: p.cardHeight,
-                transform: `scale(${p.scale})`,
-              }}
-            >
             <Stage
               width={p.cardWidth}
               height={p.cardHeight}
+              scaleX={p.scale}
+              scaleY={p.scale}
               pixelRatio={p.stagePixelRatio}
               ref={p.stageRef}
               listening={!p.restrictedPreview}
@@ -1337,7 +1331,6 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
                 )}
               </Layer>
             </Stage>
-            </div>
             {p.restrictedPreview && <DesignerRestrictedWatermark />}
           </div>
         </div>
