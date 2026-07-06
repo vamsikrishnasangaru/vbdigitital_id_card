@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, UseGuards, Query, Res } from '@nestjs/comm
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { IdCardsService } from './id-cards.service';
+import { contentDispositionAttachment } from '../common/http-filename.util';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -37,7 +38,7 @@ export class IdCardsController {
       if ('kind' in pack && pack.kind === 'single') {
         res.set({
           'Content-Type': 'image/png',
-          'Content-Disposition': `attachment; filename="${pack.filename}"`,
+          'Content-Disposition': contentDispositionAttachment(pack.filename),
           'X-Cards-Success': String(pack.successCount),
           'X-Cards-Failed': String(pack.failCount),
         });
@@ -47,7 +48,7 @@ export class IdCardsController {
       if ('kind' in pack && pack.kind === 'zip') {
         res.set({
           'Content-Type': 'application/zip',
-          'Content-Disposition': `attachment; filename="${pack.filename}"`,
+          'Content-Disposition': contentDispositionAttachment(pack.filename),
           'X-Cards-Success': String(pack.successCount),
           'X-Cards-Failed': String(pack.failCount),
         });

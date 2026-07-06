@@ -16,6 +16,9 @@ type StudentFolderSource = {
 export function sanitizeDownloadSegment(value: string): string {
   const cleaned = value
     .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '-')
     .replace(/[/\\?%*:|"<>]/g, '-')
     .replace(/\s+/g, ' ')
     .replace(/\.+$/g, '');
