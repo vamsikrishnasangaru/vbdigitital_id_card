@@ -1694,6 +1694,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
             openEditStudent(viewStudent);
           }}
           canEdit={!(viewStudent.status === 'APPROVED' && !isSuperAdmin)}
+          allowExport={isSuperAdmin}
         />
       )}
 

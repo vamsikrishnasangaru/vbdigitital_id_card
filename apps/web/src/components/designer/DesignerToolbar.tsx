@@ -178,11 +178,18 @@ export function DesignerToolbar({
 
       {!restrictExport && (
         <>
-          <ToolButton onClick={onExportPng} title="Export PNG">
+          {readOnlyPreview && <Divider />}
+          <ToolButton onClick={onExportPng} title="Download PNG">
             <ImageIcon className="h-4 w-4" />
+            {readOnlyPreview && (
+              <span className="hidden sm:inline text-[10px] font-bold ml-1">PNG</span>
+            )}
           </ToolButton>
-          <ToolButton onClick={onExportPdf} title="Export PDF">
+          <ToolButton onClick={onExportPdf} title="Download PDF">
             <FileDown className="h-4 w-4" />
+            {readOnlyPreview && (
+              <span className="hidden sm:inline text-[10px] font-bold ml-1">PDF</span>
+            )}
           </ToolButton>
         </>
       )}

@@ -31,6 +31,8 @@ interface StudentIdCardPreviewProps {
   onClose: () => void;
   onEdit?: () => void;
   canEdit?: boolean;
+  /** Super admin: show PNG/PDF download in preview toolbar */
+  allowExport?: boolean;
 }
 
 export function StudentIdCardPreview({
@@ -42,6 +44,7 @@ export function StudentIdCardPreview({
   onClose,
   onEdit,
   canEdit = true,
+  allowExport = false,
 }: StudentIdCardPreviewProps) {
   const currentIndex = Math.max(
     0,
@@ -70,6 +73,7 @@ export function StudentIdCardPreview({
         student={student}
         schoolId={schoolId}
         restrictedPreview
+        allowPreviewExport={allowExport}
         onClose={onClose}
         previewNavigation={
           hasMultiple || onEdit

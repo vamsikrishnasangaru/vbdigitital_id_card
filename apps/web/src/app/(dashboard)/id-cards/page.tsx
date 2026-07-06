@@ -774,6 +774,7 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
             openEditStudent(viewStudent);
           }}
           canEdit={!(viewStudent.status === 'APPROVED' && !isSuperAdmin)}
+          allowExport={isSuperAdmin}
         />
       )}
 

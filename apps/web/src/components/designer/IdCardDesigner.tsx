@@ -93,6 +93,8 @@ interface IdCardDesignerProps {
   onRenderReady?: () => void;
   /** Force protected preview (no export). Auto-enabled for school admin / teacher student preview. */
   restrictedPreview?: boolean;
+  /** Allow PNG/PDF download inside protected preview (super admin). */
+  allowPreviewExport?: boolean;
   /** Swipe / toolbar navigation between students in preview mode. */
   previewNavigation?: {
     currentIndex: number;
@@ -133,6 +135,7 @@ export function IdCardDesigner({
   onSaveAs,
   onRenderReady,
   restrictedPreview: restrictedPreviewProp,
+  allowPreviewExport = false,
   previewNavigation,
 }: IdCardDesignerProps) {
   const { user } = useAuthStore();
@@ -142,6 +145,7 @@ export function IdCardDesigner({
       !!student &&
       !onSave &&
       isRestrictedIdCardPreviewRole(user?.role));
+  const restrictExport = restrictedPreview && !allowPreviewExport;
   const sanitizeList = useCallback(
     (list: DesignerElement[]) => list.map((el) => sanitizeElement(el, orientation)),
     [orientation],
@@ -683,7 +687,7 @@ export function IdCardDesigner({
   };
 
   const handleExportPng = () => {
-    if (restrictedPreview) {
+    if (restrictExport) {
       toast.error('Download is not allowed in preview mode.');
       return;
     }
@@ -698,7 +702,7 @@ export function IdCardDesigner({
   };
 
   const handleExportPdf = () => {
-    if (restrictedPreview) {
+    if (restrictExport) {
       toast.error('Download is not allowed in preview mode.');
       return;
     }
@@ -1065,6 +1069,7 @@ export function IdCardDesigner({
         setCropElementId={setCropElementId}
         handleCanvasDrop={handleCanvasDrop}
         restrictedPreview={restrictedPreview}
+        restrictExport={restrictExport}
         previewNavigation={previewNavigation}
       />
     </DesignerSnapProvider>
@@ -1136,13 +1141,14 @@ type DesignerEditorShellProps = {
   setCropElementId: (id: string | null) => void;
   handleCanvasDrop: (e: React.DragEvent) => void;
   restrictedPreview: boolean;
+  restrictExport: boolean;
   previewNavigation?: IdCardDesignerProps['previewNavigation'];
 };
 
 function DesignerEditorShell(props: DesignerEditorShellProps) {
   const { showGrid, setShowGrid, snapEnabled, setSnapEnabled } = useDesignerSnap();
   const p = props;
-  useRestrictedPreviewGuards(p.restrictedPreview);
+  useRestrictedPreviewGuards(p.restrictedPreview && p.restrictExport);
 
   const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
   const canvasScrollRef = useCallback((node: HTMLDivElement | null) => {
@@ -1192,7 +1198,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
         snapEnabled={snapEnabled}
         onToggleSnap={() => setSnapEnabled((s) => !s)}
         readOnlyPreview={p.restrictedPreview}
-        restrictExport={p.restrictedPreview}
+        restrictExport={p.restrictExport}
         orientation={p.orientation}
         previewNavigation={p.previewNavigation}
       />
