@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useMemo, useDeferredValue, useRef, useLayoutEffect } from 'react';
-import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -36,8 +35,7 @@ import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compres
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
 import { StudentPhotoPicker } from '@/components/ui/student-photo-picker';
-import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOverlay';
-import { normalizeFrontConfig } from '@/lib/template-utils';
+import { StudentIdCardPreview } from '@/components/students/StudentIdCardPreview';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
 import { isStudentIncomplete, type StudentCompletionFields } from '@/lib/student-completion';
@@ -67,11 +65,6 @@ import {
   fetchDriveStatus,
   type GenerateDestination,
 } from '@/lib/generate-id-cards';
-
-const IdCardDesigner = dynamic(
-  () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
-  { ssr: false, loading: () => <DesignerLoadingOverlay /> },
-);
 
 const SELECT_OPTION_CLASS = 'bg-popover text-popover-foreground';
 
@@ -1683,21 +1676,23 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       )}
 
       {cardPreviewOpen && previewTemplate && viewStudent && (
-        <div className="fixed inset-0 z-[110] bg-background">
-          <IdCardDesigner
-            bgUrl={previewTemplate.frontBgUrl || ''}
-            elements={normalizeFrontConfig(previewTemplate.frontConfig)}
-            templateName={`${previewTemplate.name} - ${viewStudent.firstName} (PREVIEW)`}
-            orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
-            student={viewStudent}
-            schoolId={effectiveSchoolId || undefined}
-            restrictedPreview
-            onClose={() => {
-              setCardPreviewOpen(false);
-              setPreviewTemplate(null);
-            }}
-          />
-        </div>
+        <StudentIdCardPreview
+          template={previewTemplate}
+          students={visibleStudents}
+          student={viewStudent}
+          onStudentChange={setViewStudent}
+          schoolId={effectiveSchoolId || undefined}
+          onClose={() => {
+            setCardPreviewOpen(false);
+            setPreviewTemplate(null);
+          }}
+          onEdit={() => {
+            setCardPreviewOpen(false);
+            setPreviewTemplate(null);
+            openEditStudent(viewStudent);
+          }}
+          canEdit={!(viewStudent.status === 'APPROVED' && !isSuperAdmin)}
+        />
       )}
 
       {/* Enrollment Modal (Full Screen Glassmorphism) */}

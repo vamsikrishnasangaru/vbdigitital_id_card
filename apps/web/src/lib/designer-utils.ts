@@ -81,6 +81,8 @@ export interface DesignerElement {
   strokeWidth?: number;
   fieldType?: string;
   textAlign?: 'left' | 'center' | 'right';
+  /** Transform displayed text casing (student name fields). */
+  textCase?: TextCase;
   imageUrl?: string;
   photoShape?: PhotoShape;
   cornerRadius?: number;
@@ -105,6 +107,25 @@ export const STUDENT_NAME_FIELD_TYPES = [
   'firstName',
   'lastName',
 ] as const;
+
+export type TextCase = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+
+export function applyTextCase(text: string, textCase?: TextCase): string {
+  if (!text || !textCase || textCase === 'none') return text;
+  switch (textCase) {
+    case 'uppercase':
+      return text.toLocaleUpperCase('en-IN');
+    case 'lowercase':
+      return text.toLocaleLowerCase('en-IN');
+    case 'capitalize':
+      return text.replace(/\S+/g, (word) => {
+        const lower = word.toLocaleLowerCase('en-IN');
+        return lower.charAt(0).toLocaleUpperCase('en-IN') + lower.slice(1);
+      });
+    default:
+      return text;
+  }
+}
 
 export function isStudentNameFieldType(fieldType?: string): boolean {
   return (

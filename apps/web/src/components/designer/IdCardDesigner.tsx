@@ -54,6 +54,7 @@ import { DESIGN_GRID_STEP } from '@/lib/designer-snap';
 import { DesignerSnapProvider, useDesignerSnap } from './DesignerSnapContext';
 import { DesignerGridOverlay } from './DesignerGridOverlay';
 import { DesignerRestrictedWatermark, useRestrictedPreviewGuards } from './DesignerRestrictedOverlay';
+import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { isRestrictedIdCardPreviewRole } from '@/lib/role-preview-access';
 
@@ -90,6 +91,15 @@ interface IdCardDesignerProps {
   onRenderReady?: () => void;
   /** Force protected preview (no export). Auto-enabled for school admin / teacher student preview. */
   restrictedPreview?: boolean;
+  /** Swipe / toolbar navigation between students in preview mode. */
+  previewNavigation?: {
+    currentIndex: number;
+    total: number;
+    studentLabel?: string;
+    onPrevious: () => void;
+    onNext: () => void;
+    onEdit?: () => void;
+  };
 }
 
 function parseElements(input: DesignerElement[] | string): DesignerElement[] {
@@ -121,6 +131,7 @@ export function IdCardDesigner({
   onSaveAs,
   onRenderReady,
   restrictedPreview: restrictedPreviewProp,
+  previewNavigation,
 }: IdCardDesignerProps) {
   const { user } = useAuthStore();
   const restrictedPreview =
@@ -698,6 +709,24 @@ export function IdCardDesigner({
   };
 
   useEffect(() => {
+    if (!previewNavigation || isRenderMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'ArrowLeft' && previewNavigation.currentIndex > 0) {
+        e.preventDefault();
+        previewNavigation.onPrevious();
+      }
+      if (e.key === 'ArrowRight' && previewNavigation.currentIndex < previewNavigation.total - 1) {
+        e.preventDefault();
+        previewNavigation.onNext();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewNavigation, isRenderMode]);
+
+  useEffect(() => {
     if (isRenderMode || !onSave) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -1031,6 +1060,7 @@ export function IdCardDesigner({
         setCropElementId={setCropElementId}
         handleCanvasDrop={handleCanvasDrop}
         restrictedPreview={restrictedPreview}
+        previewNavigation={previewNavigation}
       />
     </DesignerSnapProvider>
   );
@@ -1101,12 +1131,29 @@ type DesignerEditorShellProps = {
   setCropElementId: (id: string | null) => void;
   handleCanvasDrop: (e: React.DragEvent) => void;
   restrictedPreview: boolean;
+  previewNavigation?: IdCardDesignerProps['previewNavigation'];
 };
 
 function DesignerEditorShell(props: DesignerEditorShellProps) {
   const { showGrid, setShowGrid, snapEnabled, setSnapEnabled } = useDesignerSnap();
   const p = props;
   useRestrictedPreviewGuards(p.restrictedPreview);
+
+  const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
+  const canvasScrollRef = useCallback((node: HTMLDivElement | null) => {
+    p.canvasScrollRef.current = node;
+    setCanvasEl(node);
+  }, [p.canvasScrollRef]);
+
+  const nav = p.previewNavigation;
+  useSwipeNavigation(
+    canvasEl,
+    {
+      onSwipeLeft: nav && nav.currentIndex < nav.total - 1 ? nav.onNext : undefined,
+      onSwipeRight: nav && nav.currentIndex > 0 ? nav.onPrevious : undefined,
+    },
+    Boolean(nav && p.restrictedPreview),
+  );
 
   return (
     <div
@@ -1142,6 +1189,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
         readOnlyPreview={p.restrictedPreview}
         restrictExport={p.restrictedPreview}
         orientation={p.orientation}
+        previewNavigation={p.previewNavigation}
       />
 
       <input ref={p.assetInputRef} type="file" accept="image/*" className="hidden" onChange={p.onAssetFile} />
@@ -1161,7 +1209,7 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
         )}
 
         <div
-          ref={p.canvasScrollRef}
+          ref={canvasScrollRef}
           tabIndex={0}
           className="flex-1 relative overflow-auto designer-scroll flex items-center justify-center p-3 sm:p-8 bg-[#121218] outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
           onDragOver={(e) => e.preventDefault()}

@@ -12,10 +12,8 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import dynamic from 'next/dynamic';
-import { DesignerLoadingOverlay } from '@/components/designer/DesignerLoadingOverlay';
+import { StudentIdCardPreview } from '@/components/students/StudentIdCardPreview';
 import { cn, resolveMediaUrl, formatSectionName, formatStudentFullName, formatStudentLastName } from '@/lib/utils';
-import { normalizeFrontConfig } from '@/lib/template-utils';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
 import {
@@ -37,11 +35,6 @@ import {
 } from '@/lib/generate-id-cards';
 import { saveEditStudentIntent } from '@/lib/students-navigation';
 import { MODAL_BACKDROP, modalPanelClass } from '@/lib/modal-motion';
-
-const IdCardDesigner = dynamic(
-  () => import('@/components/designer/IdCardDesigner').then((m) => m.IdCardDesigner),
-  { ssr: false, loading: () => <DesignerLoadingOverlay /> },
-);
 
 const ALL_CLASSES = '__all__';
 const ALL_SECTIONS = '__all__';
@@ -766,20 +759,22 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
 
       {/* Designer Preview Overlay */}
       {cardPreviewOpen && previewTemplate && viewStudent && (
-        <div className="fixed inset-0 z-[110] bg-background">
-          <IdCardDesigner
-            bgUrl={previewTemplate.frontBgUrl || ''}
-            elements={normalizeFrontConfig(previewTemplate.frontConfig)}
-            templateName={`${previewTemplate.name} - ${viewStudent.firstName} (PREVIEW)`}
-            orientation={previewTemplate.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'}
-            student={viewStudent}
-            restrictedPreview
-            onClose={() => {
-              setCardPreviewOpen(false);
-              setPreviewTemplate(null);
-            }}
-          />
-        </div>
+        <StudentIdCardPreview
+          template={previewTemplate}
+          students={students}
+          student={viewStudent}
+          onStudentChange={setViewStudent}
+          onClose={() => {
+            setCardPreviewOpen(false);
+            setPreviewTemplate(null);
+          }}
+          onEdit={() => {
+            setCardPreviewOpen(false);
+            setPreviewTemplate(null);
+            openEditStudent(viewStudent);
+          }}
+          canEdit={!(viewStudent.status === 'APPROVED' && !isSuperAdmin)}
+        />
       )}
 
       </>

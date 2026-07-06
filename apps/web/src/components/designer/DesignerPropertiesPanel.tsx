@@ -8,6 +8,7 @@ import {
   getDragClampSize,
   getElementSize,
   getSquarePhotoSize,
+  isStudentNameFieldType,
 } from '@/lib/designer-utils';
 import { FONT_FAMILIES, PHOTO_SHAPES, BORDER_STYLES, DEFAULT_COLOR_ADJUST } from './designer-constants';
 
@@ -460,6 +461,7 @@ export function DesignerPropertiesPanel({
     (selected.type === 'photo' || selected.type === 'image' || isSignature || isLogo);
   const isBox = selected.type === 'qr' || selected.type === 'barcode';
   const isShape = selected.type === 'shape';
+  const isNameField = isStudentNameFieldType(selected.fieldType);
   const adjust = { ...DEFAULT_COLOR_ADJUST, ...selected.colorAdjust };
   const photoFit: PhotoFit = selected.photoFit ?? { zoom: 1, offsetX: 0, offsetY: 0 };
   const frameShadow = selected.frameShadow ?? {};
@@ -529,6 +531,22 @@ export function DesignerPropertiesPanel({
               <option value="line-through" className="bg-zinc-900">Strikethrough</option>
             </Select>
           </div>
+          {isNameField && (
+            <div className="space-y-1.5">
+              <Label>Letter case</Label>
+              <Select
+                value={selected.textCase ?? 'none'}
+                onChange={(e) =>
+                  onUpdate({ textCase: e.target.value as DesignerElement['textCase'] })
+                }
+              >
+                <option value="none" className="bg-zinc-900">As entered</option>
+                <option value="uppercase" className="bg-zinc-900">UPPERCASE</option>
+                <option value="lowercase" className="bg-zinc-900">lowercase</option>
+                <option value="capitalize" className="bg-zinc-900">Capitalize Each Word</option>
+              </Select>
+            </div>
+          )}
           <ColorRow label="Text color" value={selected.fill ?? ''} onChange={(v) => onUpdate({ fill: v })} />
           <ColorRow
             label="Text outline"

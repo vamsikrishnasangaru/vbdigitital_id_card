@@ -3,6 +3,7 @@
 import {
   Save, Copy, FileDown, Image as ImageIcon, Eye, EyeOff, Undo2, Redo2,
   ZoomIn, ZoomOut, Trash2, CopyPlus, FlipHorizontal, Grid3X3, Magnet, X, Loader2,
+  ChevronLeft, ChevronRight, Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatCr80Short, type CardOrientation } from '@/lib/card-sizes';
@@ -37,6 +38,14 @@ interface DesignerToolbarProps {
   orientation?: 'HORIZONTAL' | 'VERTICAL';
   readOnlyPreview?: boolean;
   restrictExport?: boolean;
+  previewNavigation?: {
+    currentIndex: number;
+    total: number;
+    studentLabel?: string;
+    onPrevious: () => void;
+    onNext: () => void;
+    onEdit?: () => void;
+  };
 }
 
 function ToolButton({
@@ -104,7 +113,13 @@ export function DesignerToolbar({
   readOnlyPreview = false,
   restrictExport = false,
   orientation = 'HORIZONTAL',
+  previewNavigation,
 }: DesignerToolbarProps) {
+  const canGoPrev = previewNavigation ? previewNavigation.currentIndex > 0 : false;
+  const canGoNext = previewNavigation
+    ? previewNavigation.currentIndex < previewNavigation.total - 1
+    : false;
+
   return (
     <header className="h-12 shrink-0 sticky top-0 z-20 flex items-center gap-1 px-3 border-b border-white/[0.08] bg-[#0a0a0f]/95 backdrop-blur-md">
       <ToolButton onClick={onClose} title="Close editor">
@@ -117,6 +132,35 @@ export function DesignerToolbar({
         </p>
       </div>
       <Divider />
+
+      {readOnlyPreview && previewNavigation && (
+        <>
+          <ToolButton
+            onClick={previewNavigation.onPrevious}
+            disabled={!canGoPrev}
+            title="Previous student (swipe right)"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </ToolButton>
+          <span className="text-[10px] font-bold text-white/60 tabular-nums min-w-[3.5rem] text-center">
+            {previewNavigation.currentIndex + 1}/{previewNavigation.total}
+          </span>
+          <ToolButton
+            onClick={previewNavigation.onNext}
+            disabled={!canGoNext}
+            title="Next student (swipe left)"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </ToolButton>
+          {previewNavigation.onEdit && (
+            <ToolButton onClick={previewNavigation.onEdit} title="Edit student" className="text-primary">
+              <Pencil className="h-4 w-4" />
+              <span className="hidden sm:inline text-[10px] font-bold ml-1">Edit</span>
+            </ToolButton>
+          )}
+          <Divider />
+        </>
+      )}
 
       {!readOnlyPreview && (
         <>
@@ -195,7 +239,9 @@ export function DesignerToolbar({
 
       <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-white/40 hidden md:inline text-right leading-tight">
         {readOnlyPreview ? (
-          'View only'
+          previewNavigation?.studentLabel
+            ? `${previewNavigation.studentLabel} · ${previewNavigation.currentIndex + 1} of ${previewNavigation.total}`
+            : 'View only'
         ) : (
           <>
             {activeSide === 'front' ? 'Front' : 'Back'} · CR80 · {formatCr80Short(orientation as CardOrientation)}

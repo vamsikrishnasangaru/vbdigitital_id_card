@@ -4,7 +4,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Group, Text, Rect } from 'react-konva';
 import Konva from 'konva';
 import type { DesignerElement } from '@/lib/designer-utils';
-import { getDashPattern, getEffectiveBorderWidth, getKonvaFontStyle, isStudentNameFieldType } from '@/lib/designer-utils';
+import { getDashPattern, getEffectiveBorderWidth, getKonvaFontStyle, isStudentNameFieldType, applyTextCase } from '@/lib/designer-utils';
 import { useLayerSnapDrag } from './useLayerSnapDrag';
 import { fitSingleLineFontSize, singleLineTextHeight } from './designer-text-fit';
 
@@ -56,6 +56,7 @@ export function DesignerTextLayer({
 }: DesignerTextLayerProps) {
   const unitScale = unitScaleProp ?? ppiRatio;
   const isNameField = isStudentNameFieldType(el.fieldType);
+  const displayText = useMemo(() => applyTextCase(text, el.textCase), [text, el.textCase]);
   const hasBoxWidth = el.width != null && el.width > 0;
   const baseFontSize = el.fontSize ?? PREVIEW_FONT_SIZE;
   const fontFamily = el.fontFamily || 'Arial';
@@ -69,9 +70,9 @@ export function DesignerTextLayer({
   }, [isNameField, hasBoxWidth, el.width, el.x, cardWidth]);
 
   const displayFontSize = useMemo(() => {
-    if (!fitWidth || !text.trim()) return baseFontSize;
-    return fitSingleLineFontSize(text, fitWidth, baseFontSize, fontFamily, fontStyle, textDecoration);
-  }, [fitWidth, text, baseFontSize, fontFamily, fontStyle, textDecoration]);
+    if (!fitWidth || !displayText.trim()) return baseFontSize;
+    return fitSingleLineFontSize(displayText, fitWidth, baseFontSize, fontFamily, fontStyle, textDecoration);
+  }, [fitWidth, displayText, baseFontSize, fontFamily, fontStyle, textDecoration]);
 
   const lineHeight = singleLineTextHeight(displayFontSize);
   const textBoxWidth = hasBoxWidth ? el.width! : isNameField && fitWidth ? fitWidth : undefined;
@@ -107,6 +108,7 @@ export function DesignerTextLayer({
     );
   }, [
     text,
+    displayText,
     el.width,
     el.height,
     hasBoxWidth,
@@ -127,7 +129,7 @@ export function DesignerTextLayer({
 
   const sharedTextProps = {
     y: textY,
-    text,
+    text: displayText,
     width: textBoxWidth,
     height: centerInBox ? textBoxHeight : undefined,
     align: centerInBox ? textAlign : el.textAlign,
