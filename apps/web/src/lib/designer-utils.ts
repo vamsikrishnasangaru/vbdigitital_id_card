@@ -11,37 +11,48 @@ export const DESIGN_PPI = 96;
 /** Supersample factor for on-screen preview (~576 DPI). */
 export const PREVIEW_PIXEL_RATIO = 6;
 
-/** Final PVC print DPI (CR80 landscape → 1013 × 638 px). */
-export const PRINT_OUTPUT_DPI = 300;
+/**
+ * Download/export uses the same resolution as preview — no downscale.
+ * Portrait CR80 → 1224 × 1944 px; landscape → 1944 × 1224 px.
+ */
+export const DOWNLOAD_PIXEL_RATIO = PREVIEW_PIXEL_RATIO;
 
-/** Internal render DPI before downscale to print size (300–600 DPI range). */
-export const PRINT_RENDER_DPI = 600;
-
-/** CR80 output pixels at 300 DPI. */
-export const PRINT_EXPORT_PIXEL_SIZE = {
-  HORIZONTAL: { width: 1013, height: 638 },
-  VERTICAL: { width: 638, height: 1013 },
-} as const;
-
-export function getPrintExportPixelSize(orientation: 'HORIZONTAL' | 'VERTICAL') {
-  return PRINT_EXPORT_PIXEL_SIZE[orientation];
+export function getExportPixelSize(
+  orientation: 'HORIZONTAL' | 'VERTICAL',
+  pixelRatio: number = DOWNLOAD_PIXEL_RATIO,
+) {
+  const { width, height } = getCardSize(orientation, DESIGN_PPI);
+  return {
+    width: Math.round(width * pixelRatio),
+    height: Math.round(height * pixelRatio),
+  };
 }
 
-/** Konva stage pixelRatio for print capture (~600 DPI internal). */
+/** Konva stage pixelRatio for server/browser download capture. */
+export function getDownloadPixelRatio(): number {
+  return DOWNLOAD_PIXEL_RATIO;
+}
+
+/** @deprecated Use getDownloadPixelRatio() */
 export function getPrintRenderPixelRatio(): number {
-  return PRINT_RENDER_DPI / DESIGN_PPI;
+  return DOWNLOAD_PIXEL_RATIO;
 }
 
-/** @deprecated Use getPrintRenderPixelRatio() */
-export const EXPORT_PIXEL_RATIO = getPrintRenderPixelRatio();
+/** @deprecated Use getExportPixelSize() */
+export function getPrintExportPixelSize(orientation: 'HORIZONTAL' | 'VERTICAL') {
+  return getExportPixelSize(orientation);
+}
 
-/** Effective DPI of delivered PNG files. */
-export const EXPORT_TARGET_DPI = PRINT_OUTPUT_DPI;
+/** @deprecated Use getDownloadPixelRatio() */
+export const EXPORT_PIXEL_RATIO = DOWNLOAD_PIXEL_RATIO;
+
+/** Effective DPI of delivered PNG files (matches preview). */
+export const EXPORT_TARGET_DPI = DESIGN_PPI * DOWNLOAD_PIXEL_RATIO;
 
 /** pixelRatio for stage.toDataURL — accounts for stage already using a pixelRatio. */
 export function resolveExportPixelRatio(
   stagePixelRatio: number,
-  targetRatio: number = getPrintRenderPixelRatio(),
+  targetRatio: number = DOWNLOAD_PIXEL_RATIO,
 ): number {
   const ratio = Number(stagePixelRatio) || 1;
   if (ratio >= targetRatio) return 1;

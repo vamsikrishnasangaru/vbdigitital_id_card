@@ -1,9 +1,5 @@
 import type Konva from 'konva';
-import {
-  getPrintExportPixelSize,
-  getPrintRenderPixelRatio,
-  resolveExportPixelRatio,
-} from '@/lib/designer-utils';
+import { DOWNLOAD_PIXEL_RATIO, resolveExportPixelRatio } from '@/lib/designer-utils';
 import { getCr80Dimensions } from '@/lib/card-sizes';
 
 export class DesignerExportError extends Error {
@@ -16,40 +12,11 @@ export class DesignerExportError extends Error {
 function exportPixelRatioForStage(stage: Konva.Stage): number {
   return resolveExportPixelRatio(
     Number(stage.getAttr('pixelRatio')) || 1,
-    getPrintRenderPixelRatio(),
+    DOWNLOAD_PIXEL_RATIO,
   );
 }
 
-function resizeDataUrlToPrintSize(
-  dataUrl: string,
-  orientation: 'HORIZONTAL' | 'VERTICAL',
-): Promise<string> {
-  const { width, height } = getPrintExportPixelSize(orientation);
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new DesignerExportError('Could not prepare print export canvas.'));
-        return;
-      }
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    img.onerror = () => reject(new DesignerExportError('Could not resize card for print export.'));
-    img.src = dataUrl;
-  });
-}
-
-async function dataUrlFromStage(
-  stage: Konva.Stage,
-  orientation: 'HORIZONTAL' | 'VERTICAL',
-): Promise<string> {
+function dataUrlFromStage(stage: Konva.Stage): string {
   const scaleX = stage.scaleX() || 1;
   const scaleY = stage.scaleY() || 1;
   const logicalWidth = stage.width() / scaleX;
@@ -64,7 +31,7 @@ async function dataUrlFromStage(
   }
   stage.batchDraw();
   try {
-    const raw = stage.toDataURL({
+    return stage.toDataURL({
       pixelRatio: exportPixelRatioForStage(stage),
       mimeType: 'image/png',
       x: 0,
@@ -72,7 +39,6 @@ async function dataUrlFromStage(
       width: logicalWidth,
       height: logicalHeight,
     });
-    return resizeDataUrlToPrintSize(raw, orientation);
   } catch (err) {
     const message =
       err instanceof Error && err.message.includes('Tainted')
@@ -94,14 +60,13 @@ async function dataUrlFromStage(
 export function exportStageToPng(
   stage: Konva.Stage,
   filename: string,
-  orientation: 'HORIZONTAL' | 'VERTICAL',
+  _orientation: 'HORIZONTAL' | 'VERTICAL',
 ) {
-  void dataUrlFromStage(stage, orientation).then((uri) => {
-    const link = document.createElement('a');
-    link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
-    link.href = uri;
-    link.click();
-  });
+  const uri = dataUrlFromStage(stage);
+  const link = document.createElement('a');
+  link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
+  link.href = uri;
+  link.click();
 }
 
 /** CR80 card size in inches (ISO/IEC 7810 ID-1). */
@@ -117,7 +82,7 @@ export async function exportStageToPdf(
 ) {
   const { jsPDF } = await import('jspdf');
   const { widthIn, heightIn } = getCardDimensionsInches(orientation);
-  const uri = await dataUrlFromStage(stage, orientation);
+  const uri = dataUrlFromStage(stage);
   const pdf = new jsPDF({
     orientation: widthIn > heightIn ? 'landscape' : 'portrait',
     unit: 'in',

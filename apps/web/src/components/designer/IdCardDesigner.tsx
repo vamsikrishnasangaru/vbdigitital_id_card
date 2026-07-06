@@ -10,7 +10,7 @@ import {
   type DesignerElement,
   DESIGN_PPI,
   getPrintExportPixelSize,
-  getPrintRenderPixelRatio,
+  getDownloadPixelRatio,
   PREVIEW_PIXEL_RATIO,
   isStudentNameFieldType,
   scaleElementsForPpi,
@@ -209,12 +209,8 @@ export function IdCardDesigner({
   const unitScale = 1;
   const liveStudentCardPreview = !isRenderMode && !!student && !onSave;
   const exportQualityPreview = isRenderMode || restrictedPreview || liveStudentCardPreview;
-  const stagePixelRatio = isRenderMode
-    ? getPrintRenderPixelRatio()
-    : exportQualityPreview
-      ? PREVIEW_PIXEL_RATIO
-      : 1;
-  const printExportSize = getPrintExportPixelSize(orientation);
+  const stagePixelRatio = exportQualityPreview ? PREVIEW_PIXEL_RATIO : 1;
+  const exportPixelSize = getPrintExportPixelSize(orientation);
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;
@@ -843,9 +839,9 @@ export function IdCardDesigner({
       <div
         id="id-card-canvas"
         data-render-images-ready="true"
-        data-export-pixel-ratio={getPrintRenderPixelRatio()}
-        data-export-width={printExportSize.width}
-        data-export-height={printExportSize.height}
+        data-export-pixel-ratio={getDownloadPixelRatio()}
+        data-export-width={exportPixelSize.width}
+        data-export-height={exportPixelSize.height}
         className="bg-white overflow-hidden"
         style={{ width: CARD_WIDTH, height: CARD_HEIGHT, margin: 0, padding: 0 }}
       >

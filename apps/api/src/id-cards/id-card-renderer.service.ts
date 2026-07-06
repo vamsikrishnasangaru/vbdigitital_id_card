@@ -3,8 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import * as puppeteer from 'puppeteer';
 import type { Browser, Page } from 'puppeteer';
 import {
-  PRINT_EXPORT_PIXEL_SIZE,
-  PRINT_RENDER_PIXEL_RATIO,
+  DOWNLOAD_RENDER_PIXEL_RATIO,
+  getExportPixelSize,
 } from './id-card-export.constants';
 import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-launch';
 
@@ -227,37 +227,14 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async captureCanvasPng(page: Page, orientation: 'HORIZONTAL' | 'VERTICAL'): Promise<Buffer> {
-    const fallbackSize = PRINT_EXPORT_PIXEL_SIZE[orientation];
+    const expectedSize = getExportPixelSize(orientation);
     const dataUrl = await page.evaluate(
       async (args) => {
-        const { fallbackWidth, fallbackHeight, fallbackPixelRatio } = args;
+        const { expectedWidth, expectedHeight, fallbackPixelRatio } = args;
 
         const root = document.querySelector('#id-card-canvas');
-        const targetWidth = Number(root?.getAttribute('data-export-width')) || fallbackWidth;
-        const targetHeight = Number(root?.getAttribute('data-export-height')) || fallbackHeight;
         const exportPixelRatio =
           Number(root?.getAttribute('data-export-pixel-ratio')) || fallbackPixelRatio;
-
-        const resizePng = (source: string, width: number, height: number) =>
-          new Promise<string>((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-              const canvas = document.createElement('canvas');
-              canvas.width = width;
-              canvas.height = height;
-              const ctx = canvas.getContext('2d');
-              if (!ctx) {
-                reject(new Error('Canvas 2d unavailable'));
-                return;
-              }
-              ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = 'high';
-              ctx.drawImage(img, 0, 0, width, height);
-              resolve(canvas.toDataURL('image/png'));
-            };
-            img.onerror = () => reject(new Error('Failed to resize card PNG'));
-            img.src = source;
-          });
 
         let rawDataUrl: string;
         const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
@@ -298,12 +275,35 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           });
         }
 
-        return resizePng(rawDataUrl, targetWidth, targetHeight);
+        // Only resize when capture is smaller than preview resolution (never downscale).
+        return new Promise<string>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            if (img.width >= expectedWidth && img.height >= expectedHeight) {
+              resolve(rawDataUrl);
+              return;
+            }
+            const upscale = document.createElement('canvas');
+            upscale.width = expectedWidth;
+            upscale.height = expectedHeight;
+            const ctx = upscale.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Canvas 2d unavailable'));
+              return;
+            }
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, expectedWidth, expectedHeight);
+            resolve(upscale.toDataURL('image/png'));
+          };
+          img.onerror = () => reject(new Error('Failed to read card PNG'));
+          img.src = rawDataUrl;
+        });
       },
       {
-        fallbackWidth: fallbackSize.width,
-        fallbackHeight: fallbackSize.height,
-        fallbackPixelRatio: PRINT_RENDER_PIXEL_RATIO,
+        expectedWidth: expectedSize.width,
+        expectedHeight: expectedSize.height,
+        fallbackPixelRatio: DOWNLOAD_RENDER_PIXEL_RATIO,
       },
     );
 
