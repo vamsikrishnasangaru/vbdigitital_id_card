@@ -1189,8 +1189,8 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
             )}
           >
             <Stage
-              width={p.cardWidth}
-              height={p.cardHeight}
+              width={p.cardWidth * p.scale}
+              height={p.cardHeight * p.scale}
               scaleX={p.scale}
               scaleY={p.scale}
               pixelRatio={p.stagePixelRatio}
@@ -1418,6 +1418,11 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
           .restricted-id-card-canvas {
             display: none !important;
           }
+        }
+        #id-card-canvas .konvajs-content {
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
         }
       `}</style>
     </div>

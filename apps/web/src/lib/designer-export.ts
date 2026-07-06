@@ -14,9 +14,18 @@ function exportPixelRatioForStage(stage: Konva.Stage): number {
 }
 
 function dataUrlFromStage(stage: Konva.Stage): string {
-  const oldScale = { x: stage.scaleX(), y: stage.scaleY() };
-  const needReset = oldScale.x !== 1 || oldScale.y !== 1;
-  if (needReset) stage.scale({ x: 1, y: 1 });
+  const scaleX = stage.scaleX() || 1;
+  const scaleY = stage.scaleY() || 1;
+  const logicalWidth = stage.width() / scaleX;
+  const logicalHeight = stage.height() / scaleY;
+  const oldSize = { width: stage.width(), height: stage.height() };
+  const needReset = scaleX !== 1 || scaleY !== 1;
+
+  if (needReset) {
+    stage.width(logicalWidth);
+    stage.height(logicalHeight);
+    stage.scale({ x: 1, y: 1 });
+  }
   stage.batchDraw();
   try {
     return stage.toDataURL({
@@ -24,8 +33,8 @@ function dataUrlFromStage(stage: Konva.Stage): string {
       mimeType: 'image/png',
       x: 0,
       y: 0,
-      width: stage.width(),
-      height: stage.height(),
+      width: logicalWidth,
+      height: logicalHeight,
     });
   } catch (err) {
     const message =
@@ -36,7 +45,11 @@ function dataUrlFromStage(stage: Konva.Stage): string {
           : 'Could not export the card image.';
     throw new DesignerExportError(message);
   } finally {
-    if (needReset) stage.scale(oldScale);
+    if (needReset) {
+      stage.width(oldSize.width);
+      stage.height(oldSize.height);
+      stage.scale({ x: scaleX, y: scaleY });
+    }
     stage.batchDraw();
   }
 }
