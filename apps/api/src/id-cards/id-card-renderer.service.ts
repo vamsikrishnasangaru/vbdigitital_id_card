@@ -4,7 +4,6 @@ import * as puppeteer from 'puppeteer';
 import type { Browser, Page } from 'puppeteer';
 import {
   DOWNLOAD_RENDER_PIXEL_RATIO,
-  getExportPixelSize,
 } from './id-card-export.constants';
 import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-launch';
 
@@ -226,86 +225,102 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     await new Promise((r) => setTimeout(r, 400));
   }
 
-  private async captureCanvasPng(page: Page, orientation: 'HORIZONTAL' | 'VERTICAL'): Promise<Buffer> {
-    const expectedSize = getExportPixelSize(orientation);
-    const dataUrl = await page.evaluate(
-      async (args) => {
-        const { expectedWidth, expectedHeight, fallbackPixelRatio } = args;
+  private async captureCanvasPng(page: Page, _orientation: 'HORIZONTAL' | 'VERTICAL'): Promise<Buffer> {
+    const dataUrl = await page.evaluate(async (targetPixelRatio) => {
+      const ratio = Math.max(4, targetPixelRatio);
 
-        const root = document.querySelector('#id-card-canvas');
-        const exportPixelRatio =
-          Number(root?.getAttribute('data-export-pixel-ratio')) || fallbackPixelRatio;
+      await document.fonts?.ready;
 
-        let rawDataUrl: string;
-        const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
-        if (canvas?.width && canvas?.height) {
-          rawDataUrl = canvas.toDataURL('image/png');
-        } else {
-          const KonvaGlobal = (window as unknown as {
-            Konva?: {
-              stages?: Array<{
-                width: () => number;
-                height: () => number;
-                pixelRatio?: () => number;
-                getAttr?: (name: string) => unknown;
-                toDataURL: (config?: {
-                  pixelRatio?: number;
-                  mimeType?: string;
-                  x?: number;
-                  y?: number;
-                  width?: number;
-                  height?: number;
-                }) => string;
-              }>;
-            };
-          }).Konva;
-          const stage = KonvaGlobal?.stages?.[0];
-          if (!stage) throw new Error('Konva canvas not found');
-          const stageRatio =
-            (typeof stage.pixelRatio === 'function' ? stage.pixelRatio() : undefined) ??
-            (Number(stage.getAttr?.('pixelRatio')) || 1);
-          const dataPixelRatio = Math.max(1, exportPixelRatio / stageRatio);
-          rawDataUrl = stage.toDataURL({
-            pixelRatio: dataPixelRatio,
-            mimeType: 'image/png',
-            x: 0,
-            y: 0,
-            width: stage.width(),
-            height: stage.height(),
-          });
-        }
+      const KonvaGlobal = (window as unknown as {
+        Konva?: {
+          stages?: Array<{
+            scaleX: () => number;
+            scaleY: () => number;
+            width: (w?: number) => number;
+            height: (h?: number) => number;
+            scale: (s: { x: number; y: number }) => void;
+            batchDraw: () => void;
+            pixelRatio?: () => number;
+            getAttr?: (name: string) => unknown;
+            find: (selector: string) => Array<{ image: () => unknown }>;
+            toCanvas: (config: {
+              pixelRatio?: number;
+              x?: number;
+              y?: number;
+              width?: number;
+              height?: number;
+            }) => HTMLCanvasElement;
+          }>;
+        };
+      }).Konva;
+      const stage = KonvaGlobal?.stages?.[0];
+      if (!stage) throw new Error('Konva stage not found');
 
-        // Only resize when capture is smaller than preview resolution (never downscale).
-        return new Promise<string>((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => {
-            if (img.width >= expectedWidth && img.height >= expectedHeight) {
-              resolve(rawDataUrl);
-              return;
-            }
-            const upscale = document.createElement('canvas');
-            upscale.width = expectedWidth;
-            upscale.height = expectedHeight;
-            const ctx = upscale.getContext('2d');
-            if (!ctx) {
-              reject(new Error('Canvas 2d unavailable'));
-              return;
-            }
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, expectedWidth, expectedHeight);
-            resolve(upscale.toDataURL('image/png'));
-          };
-          img.onerror = () => reject(new Error('Failed to read card PNG'));
-          img.src = rawDataUrl;
+      const imageNodes = stage.find('Image');
+      await Promise.all(
+        imageNodes.map(
+          (node) =>
+            new Promise<void>((resolve) => {
+              const img = node.image();
+              if (!(img instanceof HTMLImageElement) || img.complete) {
+                resolve();
+                return;
+              }
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+            }),
+        ),
+      );
+
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+
+      const scaleX = stage.scaleX() || 1;
+      const scaleY = stage.scaleY() || 1;
+      const logicalWidth = stage.width() / scaleX;
+      const logicalHeight = stage.height() / scaleY;
+      const stageRatio =
+        (typeof stage.pixelRatio === 'function' ? stage.pixelRatio() : undefined) ??
+        (Number(stage.getAttr?.('pixelRatio')) || 1);
+      const exportPixelRatio = stageRatio >= ratio ? 1 : ratio / stageRatio;
+
+      const oldW = stage.width();
+      const oldH = stage.height();
+      const needReset = scaleX !== 1 || scaleY !== 1;
+      if (needReset) {
+        stage.width(logicalWidth);
+        stage.height(logicalHeight);
+        stage.scale({ x: 1, y: 1 });
+      }
+      stage.batchDraw();
+
+      try {
+        const canvas = stage.toCanvas({
+          pixelRatio: exportPixelRatio,
+          x: 0,
+          y: 0,
+          width: logicalWidth,
+          height: logicalHeight,
         });
-      },
-      {
-        expectedWidth: expectedSize.width,
-        expectedHeight: expectedSize.height,
-        fallbackPixelRatio: DOWNLOAD_RENDER_PIXEL_RATIO,
-      },
-    );
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+        }
+        const png = canvas.toDataURL('image/png');
+        canvas.width = 0;
+        canvas.height = 0;
+        return png;
+      } finally {
+        if (needReset) {
+          stage.width(oldW);
+          stage.height(oldH);
+          stage.scale({ x: scaleX, y: scaleY });
+          stage.batchDraw();
+        }
+      }
+    }, DOWNLOAD_RENDER_PIXEL_RATIO);
 
     const base64 = dataUrl.split(',')[1];
     if (!base64) throw new Error('Failed to export card PNG');

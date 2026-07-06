@@ -1,5 +1,5 @@
 import type Konva from 'konva';
-import { DOWNLOAD_PIXEL_RATIO, resolveExportPixelRatio } from '@/lib/designer-utils';
+import { exportKonvaStageToPngDataUrl } from '@/lib/konva-export';
 import { getCr80Dimensions } from '@/lib/card-sizes';
 
 export class DesignerExportError extends Error {
@@ -9,36 +9,9 @@ export class DesignerExportError extends Error {
   }
 }
 
-function exportPixelRatioForStage(stage: Konva.Stage): number {
-  return resolveExportPixelRatio(
-    Number(stage.getAttr('pixelRatio')) || 1,
-    DOWNLOAD_PIXEL_RATIO,
-  );
-}
-
-function dataUrlFromStage(stage: Konva.Stage): string {
-  const scaleX = stage.scaleX() || 1;
-  const scaleY = stage.scaleY() || 1;
-  const logicalWidth = stage.width() / scaleX;
-  const logicalHeight = stage.height() / scaleY;
-  const oldSize = { width: stage.width(), height: stage.height() };
-  const needReset = scaleX !== 1 || scaleY !== 1;
-
-  if (needReset) {
-    stage.width(logicalWidth);
-    stage.height(logicalHeight);
-    stage.scale({ x: 1, y: 1 });
-  }
-  stage.batchDraw();
+async function dataUrlFromStage(stage: Konva.Stage): Promise<string> {
   try {
-    return stage.toDataURL({
-      pixelRatio: exportPixelRatioForStage(stage),
-      mimeType: 'image/png',
-      x: 0,
-      y: 0,
-      width: logicalWidth,
-      height: logicalHeight,
-    });
+    return await exportKonvaStageToPngDataUrl(stage);
   } catch (err) {
     const message =
       err instanceof Error && err.message.includes('Tainted')
@@ -47,13 +20,6 @@ function dataUrlFromStage(stage: Konva.Stage): string {
           ? err.message
           : 'Could not export the card image.';
     throw new DesignerExportError(message);
-  } finally {
-    if (needReset) {
-      stage.width(oldSize.width);
-      stage.height(oldSize.height);
-      stage.scale({ x: scaleX, y: scaleY });
-    }
-    stage.batchDraw();
   }
 }
 
@@ -62,11 +28,16 @@ export function exportStageToPng(
   filename: string,
   _orientation: 'HORIZONTAL' | 'VERTICAL',
 ) {
-  const uri = dataUrlFromStage(stage);
-  const link = document.createElement('a');
-  link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
-  link.href = uri;
-  link.click();
+  void dataUrlFromStage(stage)
+    .then((uri) => {
+      const link = document.createElement('a');
+      link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
+      link.href = uri;
+      link.click();
+    })
+    .catch((err) => {
+      throw err instanceof DesignerExportError ? err : new DesignerExportError('Export failed.');
+    });
 }
 
 /** CR80 card size in inches (ISO/IEC 7810 ID-1). */
@@ -82,7 +53,7 @@ export async function exportStageToPdf(
 ) {
   const { jsPDF } = await import('jspdf');
   const { widthIn, heightIn } = getCardDimensionsInches(orientation);
-  const uri = dataUrlFromStage(stage);
+  const uri = await dataUrlFromStage(stage);
   const pdf = new jsPDF({
     orientation: widthIn > heightIn ? 'landscape' : 'portrait',
     unit: 'in',

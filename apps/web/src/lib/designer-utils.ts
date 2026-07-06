@@ -12,8 +12,8 @@ export const DESIGN_PPI = 96;
 export const PREVIEW_PIXEL_RATIO = 6;
 
 /**
- * Download/export uses the same resolution as preview — no downscale.
- * Portrait CR80 → 1224 × 1944 px; landscape → 1944 × 1224 px.
+ * Download/export pixelRatio for Konva stage.toCanvas() — matches preview supersampling.
+ * Portrait CR80 → 1224 × 1944 px; landscape → 1944 × 1224 px at ratio 6.
  */
 export const DOWNLOAD_PIXEL_RATIO = PREVIEW_PIXEL_RATIO;
 
