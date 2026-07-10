@@ -61,7 +61,7 @@ export class SchoolsController {
 
   @Delete(':id')
   @Roles('SUPER_ADMIN')
-  @ApiOperation({ summary: 'Soft delete school' })
+  @ApiOperation({ summary: 'Permanently delete school' })
   remove(@Param('id') id: string) {
     return this.schoolsService.remove(id);
   }

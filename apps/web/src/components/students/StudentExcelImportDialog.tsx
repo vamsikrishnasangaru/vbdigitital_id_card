@@ -134,10 +134,14 @@ export function StudentExcelImportDialog({
             return { ...row, status: 'error' as const, message: result.message || 'Import failed' };
           }),
         );
-        const reasons = data.results
-          .filter((r) => !r.success)
-          .map((r) => r.message)
-          .filter(Boolean)
+        const reasons = [
+          ...new Set(
+            data.results
+              .filter((r) => !r.success)
+              .map((r) => r.message)
+              .filter(Boolean),
+          ),
+        ]
           .slice(0, 3)
           .join(' · ');
         toast.error(

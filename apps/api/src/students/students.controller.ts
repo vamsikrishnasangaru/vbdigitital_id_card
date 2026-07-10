@@ -89,7 +89,7 @@ export class StudentsController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft delete student' })
+  @ApiOperation({ summary: 'Permanently delete student' })
   remove(@Param('id') id: string) {
     return this.studentsService.remove(id);
   }

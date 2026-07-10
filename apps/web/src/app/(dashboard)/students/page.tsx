@@ -651,7 +651,11 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'Failed to create student');
+      toast.error(
+        Array.isArray(err.response?.data?.message)
+          ? err.response.data.message.join(' · ')
+          : err.response?.data?.message || 'Failed to create student',
+      );
     }
   });
 

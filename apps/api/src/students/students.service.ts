@@ -63,6 +63,27 @@ export class StudentsService {
     return `ADM-${stamp}${rand}`;
   }
 
+  private async purgeSoftDeletedStudentConflicts(params: {
+    schoolId: string;
+    admissionNumber: string;
+    classId?: string;
+    sectionId?: string;
+    rollNumber?: string | null;
+  }) {
+    const { schoolId, admissionNumber, classId, sectionId, rollNumber } = params;
+    const or: Array<Record<string, unknown>> = [{ admissionNumber }];
+    if (classId && sectionId && rollNumber) {
+      or.push({ classId, sectionId, rollNumber });
+    }
+    await this.prisma.student.deleteMany({
+      where: {
+        schoolId,
+        deletedAt: { not: null },
+        OR: or,
+      },
+    });
+  }
+
   private async writeStudent<T>(fn: () => Promise<T>): Promise<T> {
     try {
       return await fn();
@@ -191,6 +212,14 @@ export class StudentsService {
       typeof admissionNumberRaw === 'string' ? admissionNumberRaw : null,
     );
     const normalizedAadhar = this.normalizeAadharCard(aadharCard);
+
+    await this.purgeSoftDeletedStudentConflicts({
+      schoolId: String(schoolId).trim(),
+      admissionNumber,
+      classId,
+      sectionId,
+      rollNumber: rollNumberValue,
+    });
 
     return this.writeStudent(() =>
       this.prisma.student.create({
@@ -464,7 +493,11 @@ export class StudentsService {
   }
 
   async remove(id: string) {
-    return this.prisma.student.update({ where: { id }, data: { deletedAt: new Date() } });
+    const student = await this.prisma.student.findUnique({ where: { id } });
+    if (!student) throw new NotFoundException('Student not found');
+    // Hard delete so class/section/roll and admission numbers can be reused immediately.
+    await this.prisma.student.delete({ where: { id } });
+    return { id, deleted: true };
   }
 
   async bulkUpdateStatus(ids: string[], status: string, approvedBy?: string) {
@@ -514,10 +547,8 @@ export class StudentsService {
       orderBy: { updatedAt: 'desc' },
     });
     if (active) return active;
-    return this.prisma.student.findFirst({
-      where: matchWhere,
-      orderBy: { updatedAt: 'desc' },
-    });
+    // Soft-deleted leftovers are purged before create — do not revive them.
+    return null;
   }
 
   async bulkImport(
@@ -720,6 +751,13 @@ export class StudentsService {
         if (existing) {
           await saveImportRow(existing.id);
         } else {
+          await this.purgeSoftDeletedStudentConflicts({
+            schoolId,
+            admissionNumber,
+            classId,
+            sectionId,
+            rollNumber: rollNumberValue,
+          });
           try {
             await saveImportRow();
           } catch (createErr: unknown) {
@@ -751,7 +789,7 @@ export class StudentsService {
         if (err && typeof err === 'object') {
           if ('code' in err && (err as { code: string }).code === 'P2002') {
             message =
-              'A deleted or conflicting student record exists for this class, section, and roll number. Remove the old record or use a different roll number.';
+              'A student with this class, section, and roll number already exists. Use a different roll number.';
           } else if ('message' in err) {
             message = String((err as { message: string }).message);
           }
