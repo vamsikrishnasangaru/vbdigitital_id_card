@@ -33,7 +33,7 @@ export function fitSingleLineFontSize(
 ): number {
   if (!text.trim() || maxWidth <= 0) return baseFontSize;
 
-  const minSize = Math.max(MIN_FONT_SIZE, Math.floor(baseFontSize * 0.35));
+  const minSize = Math.max(MIN_FONT_SIZE, Math.floor(baseFontSize * 0.3));
   if (measureSingleLineWidth(text, baseFontSize, fontFamily, fontStyle, textDecoration) <= maxWidth) {
     return baseFontSize;
   }
