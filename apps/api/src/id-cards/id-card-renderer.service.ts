@@ -182,8 +182,13 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   private async waitForRenderReady(page: Page): Promise<void> {
     await page.waitForFunction(
       () => {
-        const status = document.querySelector('[data-render-status]')?.getAttribute('data-render-status');
-        return status === 'ready' || status === 'error';
+        const nodes = Array.from(document.querySelectorAll('[data-render-status]'));
+        if (!nodes.length) return false;
+        // Prefer canvas/error nodes over a parent still stuck on "loading".
+        const statuses = nodes.map((n) => n.getAttribute('data-render-status'));
+        if (statuses.includes('error')) return true;
+        if (statuses.includes('ready')) return true;
+        return false;
       },
       { timeout: 90000 },
     );

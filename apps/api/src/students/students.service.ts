@@ -53,9 +53,15 @@ export class StudentsService {
     rollNumber: string | null,
     childId: string | null,
     override?: string | null,
+    classId?: string | null,
+    sectionId?: string | null,
   ): string {
     const custom = override?.trim();
     if (custom) return custom;
+    // Scope by class+section so the same roll can exist in different classes.
+    if (rollNumber && classId && sectionId) {
+      return this.buildImportAdmissionNumber(classId, sectionId, rollNumber);
+    }
     if (rollNumber) return `ADM-${rollNumber}`;
     if (childId) return `ADM-C${childId}`;
     const stamp = Date.now().toString(36).toUpperCase();
@@ -92,7 +98,7 @@ export class StudentsService {
         const code = (err as { code: string }).code;
         if (code === 'P2002') {
           throw new ConflictException(
-            'A student with this admission or roll number already exists in this school.',
+            'A student with this admission number already exists in this school. Use a different roll number or admission ID.',
           );
         }
         if (code === 'P2003') {
@@ -210,6 +216,8 @@ export class StudentsService {
       rollNumberValue,
       normalizedChildId || null,
       typeof admissionNumberRaw === 'string' ? admissionNumberRaw : null,
+      classId,
+      sectionId,
     );
     const normalizedAadhar = this.normalizeAadharCard(aadharCard);
 
@@ -470,6 +478,38 @@ export class StudentsService {
       payload.sectionId = placement.sectionId;
     }
 
+    const nextClassId = (payload.classId as string | undefined) ?? current.classId;
+    const nextSectionId = (payload.sectionId as string | undefined) ?? current.sectionId;
+    const nextRoll =
+      rollNumber !== undefined
+        ? (String(rollNumber).trim() || null)
+        : current.rollNumber;
+    const nextChildId =
+      childId !== undefined
+        ? (String(childId).trim() || null)
+        : current.childId;
+    const shouldRefreshAdmission =
+      rollNumber !== undefined || classTouched || sectionTouched || childId !== undefined;
+    if (shouldRefreshAdmission) {
+      const nextAdmission = this.buildAdmissionNumber(
+        nextRoll,
+        nextChildId,
+        null,
+        nextClassId,
+        nextSectionId,
+      );
+      if (nextAdmission !== current.admissionNumber) {
+        await this.purgeSoftDeletedStudentConflicts({
+          schoolId: current.schoolId,
+          admissionNumber: nextAdmission,
+          classId: nextClassId,
+          sectionId: nextSectionId,
+          rollNumber: nextRoll,
+        });
+        payload.admissionNumber = nextAdmission;
+      }
+    }
+
     return this.writeStudent(() =>
       this.prisma.student.update({
         where: { id },
@@ -533,22 +573,38 @@ export class StudentsService {
     rollNumber: string,
     admissionNumber: string,
   ) {
-    const legacyTruncated = this.buildLegacyTruncatedAdmissionNumber(classId, sectionId, rollNumber);
-    const matchWhere = {
-      schoolId,
-      OR: [
-        { admissionNumber },
-        { admissionNumber: legacyTruncated },
-        { classId, sectionId, rollNumber },
-      ],
-    };
-    const active = await this.prisma.student.findFirst({
-      where: { ...matchWhere, deletedAt: null },
+    // Prefer exact class/section/roll match so the same roll in another class is not overwritten.
+    const byPlacement = await this.prisma.student.findFirst({
+      where: {
+        schoolId,
+        classId,
+        sectionId,
+        rollNumber,
+        deletedAt: null,
+      },
       orderBy: { updatedAt: 'desc' },
     });
-    if (active) return active;
-    // Soft-deleted leftovers are purged before create — do not revive them.
-    return null;
+    if (byPlacement) return byPlacement;
+
+    const byAdmission = await this.prisma.student.findFirst({
+      where: {
+        schoolId,
+        admissionNumber,
+        deletedAt: null,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (byAdmission) return byAdmission;
+
+    const legacyTruncated = this.buildLegacyTruncatedAdmissionNumber(classId, sectionId, rollNumber);
+    return this.prisma.student.findFirst({
+      where: {
+        schoolId,
+        admissionNumber: legacyTruncated,
+        deletedAt: null,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
   }
 
   async bulkImport(
@@ -688,6 +744,9 @@ export class StudentsService {
         const admissionNumber = this.buildAdmissionNumber(
           rollNumberValue,
           normalizedChildId || null,
+          null,
+          classId,
+          sectionId,
         );
         const studentData = {
           classId,

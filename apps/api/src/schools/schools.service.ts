@@ -34,6 +34,12 @@ export class SchoolsService {
       });
       if (softDeletedUser) {
         await this.prisma.session.deleteMany({ where: { userId: softDeletedUser.id } });
+        await this.prisma.teacherAssignment.deleteMany({ where: { userId: softDeletedUser.id } });
+        await this.prisma.notification.deleteMany({ where: { userId: softDeletedUser.id } });
+        await this.prisma.auditLog.updateMany({
+          where: { userId: softDeletedUser.id },
+          data: { userId: null },
+        });
         await this.prisma.user.delete({ where: { id: softDeletedUser.id } });
       }
 
@@ -165,7 +171,19 @@ export class SchoolsService {
       await tx.driveFile.deleteMany({ where: { schoolId: id } });
       await tx.notification.deleteMany({ where: { schoolId: id } });
       await tx.auditLog.deleteMany({ where: { schoolId: id } });
-      await tx.template.deleteMany({ where: { schoolId: id } });
+
+      const templates = await tx.template.findMany({
+        where: { schoolId: id },
+        select: { id: true },
+      });
+      const templateIds = templates.map((t) => t.id);
+      if (templateIds.length) {
+        await tx.idCard.updateMany({
+          where: { templateId: { in: templateIds } },
+          data: { templateId: null },
+        });
+        await tx.template.deleteMany({ where: { schoolId: id } });
+      }
 
       const users = await tx.user.findMany({ where: { schoolId: id }, select: { id: true } });
       const userIds = users.map((u) => u.id);
