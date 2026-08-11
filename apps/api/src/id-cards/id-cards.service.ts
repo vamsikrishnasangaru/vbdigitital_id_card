@@ -4,6 +4,9 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { PrismaService } from '../prisma/prisma.service';
 import { DriveService } from '../drive/drive.service';
 import { IdCardRendererService } from './id-card-renderer.service';
@@ -11,7 +14,7 @@ import { AuthService } from '../auth/auth.service';
 import { IdCardsGenerateJobsService } from './id-cards-generate-jobs.service';
 import { Orientation } from '@prisma/client';
 import { IdCardGenerateDestination } from './dto/generate-id-cards.dto';
-import { buildIdCardsZip, buildIdCardsZipFilename, idCardFileBaseName, idCardZipEntryPath } from './id-cards-download.util';
+import { buildIdCardsZip, buildIdCardsZipFilename, buildIdCardsZipToFile, idCardFileBaseName, idCardZipEntryPath } from './id-cards-download.util';
 
 type StudentWithRelations = {
   id: string;
@@ -87,11 +90,12 @@ export class IdCardsService {
     try {
       const pack = await this.generateDownloadPack(templateId, studentIds, (completed, total) => {
         this.generateJobs.updateProgress(jobId, completed, total);
-      });
+      }, { zipToTempFile: true });
       this.generateJobs.complete(jobId, {
         kind: pack.kind,
         filename: pack.filename,
         buffer: pack.buffer,
+        filePath: pack.filePath,
         successCount: pack.successCount,
         failCount: pack.failCount,
       });
@@ -106,6 +110,7 @@ export class IdCardsService {
     templateId: string,
     studentIds: string[],
     onProgress?: (completed: number, total: number) => void,
+    options?: { zipToTempFile?: boolean },
   ) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
@@ -143,10 +148,6 @@ export class IdCardsService {
       successStudentIds.push(result.studentId);
     }
 
-    if (successStudentIds.length) {
-      await this.ensureIdCardRecordsBatch(successStudentIds, templateId);
-    }
-
     if (files.length === 0) {
       throw new BadRequestException(
         errors[0]?.error || 'Failed to generate any ID card images',
@@ -154,12 +155,7 @@ export class IdCardsService {
     }
 
     if (files.length === 1) {
-      if (successStudentIds.length) {
-        await this.prisma.idCard.updateMany({
-          where: { studentId: { in: successStudentIds }, templateId },
-          data: { status: 'PRINTED' },
-        });
-      }
+      this.persistGeneratedIdCards(successStudentIds, templateId);
       const singleName = files[0].name.split('/').pop() || files[0].name;
       return {
         kind: 'single' as const,
@@ -171,14 +167,22 @@ export class IdCardsService {
       };
     }
 
-    const zipBuffer = await buildIdCardsZip(files);
-
-    if (successStudentIds.length) {
-      await this.prisma.idCard.updateMany({
-        where: { studentId: { in: successStudentIds }, templateId },
-        data: { status: 'PRINTED' },
-      });
+    if (options?.zipToTempFile) {
+      const zipPath = join(tmpdir(), `id-cards-${randomUUID()}.zip`);
+      buildIdCardsZipToFile(files, zipPath);
+      this.persistGeneratedIdCards(successStudentIds, templateId);
+      return {
+        kind: 'zip' as const,
+        filename: buildIdCardsZipFilename(files),
+        filePath: zipPath,
+        successCount: files.length,
+        failCount: errors.length,
+        errors,
+      };
     }
+
+    const zipBuffer = buildIdCardsZip(files);
+    this.persistGeneratedIdCards(successStudentIds, templateId);
 
     return {
       kind: 'zip' as const,
@@ -318,6 +322,23 @@ export class IdCardsService {
     await this.prisma.idCard.create({
       data: { studentId, templateId, status: 'DESIGNING' },
     });
+  }
+
+  /** Runs after ZIP is ready so packaging is not blocked by DB writes. */
+  private persistGeneratedIdCards(studentIds: string[], templateId: string) {
+    if (!studentIds.length) return;
+    void (async () => {
+      try {
+        await this.ensureIdCardRecordsBatch(studentIds, templateId);
+        await this.prisma.idCard.updateMany({
+          where: { studentId: { in: studentIds }, templateId },
+          data: { status: 'PRINTED' },
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Background ID card status update failed: ${message}`);
+      }
+    })();
   }
 
   /** Two bulk queries instead of hundreds of per-student round trips on large batches. */

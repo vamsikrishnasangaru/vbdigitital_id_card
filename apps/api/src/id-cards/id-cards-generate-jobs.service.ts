@@ -1,12 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { unlinkSync } from 'fs';
 
 export type GenerateJobStatus = 'running' | 'done' | 'failed';
 
 export type GenerateJobDownloadResult = {
   kind: 'single' | 'zip';
   filename: string;
-  buffer: Buffer;
+  buffer?: Buffer;
+  /** Large ZIP jobs write to disk to avoid holding PNG + ZIP in RAM. */
+  filePath?: string;
   successCount: number;
   failCount: number;
 };
@@ -107,7 +110,16 @@ export class IdCardsGenerateJobsService {
   private pruneExpired() {
     const now = Date.now();
     for (const [jobId, job] of this.jobs.entries()) {
-      if (job.expiresAt <= now) this.jobs.delete(jobId);
+      if (job.expiresAt <= now) {
+        if (job.result?.filePath) {
+          try {
+            unlinkSync(job.result.filePath);
+          } catch {
+            // Temp file may already be gone.
+          }
+        }
+        this.jobs.delete(jobId);
+      }
     }
   }
 }

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, UseGuards, Query, Res, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { createReadStream, unlink } from 'fs';
 import { IdCardsService } from './id-cards.service';
 import { contentDispositionAttachment } from '../common/http-filename.util';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -90,6 +91,26 @@ export class IdCardsController {
       'X-Cards-Success': String(pack.successCount),
       'X-Cards-Failed': String(pack.failCount),
     });
+
+    if (pack.filePath) {
+      const stream = createReadStream(pack.filePath);
+      stream.on('error', () => {
+        unlink(pack.filePath!, () => {});
+        if (!res.headersSent) {
+          res.status(500).end('Failed to read generated ZIP');
+        }
+      });
+      res.on('close', () => {
+        unlink(pack.filePath!, () => {});
+      });
+      stream.pipe(res);
+      return;
+    }
+
+    if (!pack.buffer) {
+      res.status(500).end('Generated file is missing');
+      return;
+    }
     return res.send(pack.buffer);
   }
 

@@ -1,5 +1,5 @@
-import archiver from 'archiver';
-import { PassThrough } from 'stream';
+import { writeFileSync } from 'fs';
+import { zipSync } from 'fflate';
 
 export type IdCardDownloadFile = { name: string; buffer: Buffer };
 
@@ -91,22 +91,20 @@ export function buildIdCardsZipFilename(files: IdCardDownloadFile[]): string {
   return `id-cards_${stamp}.zip`;
 }
 
-export async function buildIdCardsZip(files: IdCardDownloadFile[]): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    // PNGs are already compressed — max zlib level only slows packaging (37+ cards).
-    const archive = archiver('zip', { zlib: { level: 1 } });
-    const stream = new PassThrough();
-    const chunks: Buffer[] = [];
+function zipEntriesFromFiles(files: IdCardDownloadFile[]): Record<string, Uint8Array> {
+  const entries: Record<string, Uint8Array> = {};
+  for (const file of files) {
+    entries[file.name] = new Uint8Array(file.buffer);
+  }
+  return entries;
+}
 
-    stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
-    archive.on('error', reject);
+/** Fast store-only ZIP — PNGs are already compressed; no quality change. */
+export function buildIdCardsZip(files: IdCardDownloadFile[]): Buffer {
+  return Buffer.from(zipSync(zipEntriesFromFiles(files), { level: 0 }));
+}
 
-    archive.pipe(stream);
-    for (const file of files) {
-      archive.append(file.buffer, { name: file.name, store: true });
-    }
-    void archive.finalize();
-  });
+/** Write ZIP to disk so async jobs avoid holding PNG + ZIP buffers in RAM. */
+export function buildIdCardsZipToFile(files: IdCardDownloadFile[], destPath: string): void {
+  writeFileSync(destPath, zipSync(zipEntriesFromFiles(files), { level: 0 }));
 }
