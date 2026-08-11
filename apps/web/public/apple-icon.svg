@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="VB Digital">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" rx="40" fill="url(#bg)"/>
+  <rect x="41" y="59" width="98" height="62" rx="10" fill="rgba(255,255,255,0.95)"/>
+  <rect x="49" y="67" width="16" height="16" rx="5" fill="url(#chip)"/>
+  <text x="129" y="78" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="800" fill="#111827">VB</text>
+  <text x="90" y="112" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7" font-weight="700" letter-spacing="1" fill="#6b7280">ID</text>
+</svg>

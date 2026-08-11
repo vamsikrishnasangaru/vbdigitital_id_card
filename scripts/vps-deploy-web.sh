@@ -64,21 +64,17 @@ if [[ ! -d "$STANDALONE/.next/server" ]]; then
   exit 1
 fi
 
-# Keep standalone server manifests in sync with this build (static/public are copied separately).
-mkdir -p "$STANDALONE/.next"
-if [[ -d .next/server ]]; then
-  rm -rf "$STANDALONE/.next/server"
-  cp -r .next/server "$STANDALONE/.next/server"
-fi
-for manifest in BUILD_ID app-build-manifest.json build-manifest.json prerender-manifest.json routes-manifest.json required-server-files.json; do
-  if [[ -f ".next/$manifest" ]]; then
-    cp ".next/$manifest" "$STANDALONE/.next/$manifest"
-  fi
-done
+# Do NOT copy .next/server from the repo root — standalone uses file-traced server output.
+# Only sync public assets and static chunks into the standalone runtime tree.
 rm -rf "$STANDALONE/public"
 cp -r public "$STANDALONE/public"
 rm -rf "$STANDALONE/.next/static"
 cp -r .next/static "$STANDALONE/.next/static"
+if [[ -f .next/BUILD_ID && -f "$STANDALONE/.next/BUILD_ID" ]]; then
+  if ! cmp -s .next/BUILD_ID "$STANDALONE/.next/BUILD_ID"; then
+    echo "WARN: BUILD_ID mismatch — copying static only; standalone server stays file-traced."
+  fi
+fi
 
 # One vb-web only — kill stale listeners and duplicate PM2 entries.
 pm2 delete vb-web 2>/dev/null || true
@@ -96,6 +92,7 @@ curl -sI "http://127.0.0.1:$PORT/" | head -n1
 curl -sI "http://127.0.0.1:$PORT/students" | head -n1
 curl -sI "http://127.0.0.1:$PORT/sw.js" | head -n1
 curl -sI "http://127.0.0.1:$PORT/teachers" | head -n1
+curl -sI "http://127.0.0.1:$PORT/icon.svg" | head -n1
 echo "Render host:"
 curl -sI "http://127.0.0.1:$PORT/render/batch-export/test-template-id" | head -n1 || true
 echo ""

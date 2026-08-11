@@ -26,8 +26,8 @@ export const metadata: Metadata = {
   keywords: "school ID cards, student management, ID card printing, digital ID, SaaS",
   manifest: "/manifest.json",
   icons: {
-    icon: [{ url: "/icon", sizes: "512x512", type: "image/png" }],
-    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
+    icon: [{ url: "/icon.svg", sizes: "512x512", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-icon.svg", sizes: "180x180", type: "image/svg+xml" }],
   },
   appleWebApp: {
     capable: true,

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="VB Digital ID Cards">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="116" y="166" width="280" height="180" rx="24" fill="rgba(255,255,255,0.95)"/>
+  <rect x="144" y="194" width="48" height="48" rx="14" fill="url(#chip)"/>
+  <text x="364" y="222" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="800" fill="#111827">VB</text>
+  <text x="256" y="318" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" letter-spacing="4" fill="#6b7280">ID CARD</text>
+</svg>
