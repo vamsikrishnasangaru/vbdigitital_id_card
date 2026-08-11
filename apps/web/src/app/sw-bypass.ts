@@ -4,14 +4,17 @@
  */
 
 export function shouldBypassServiceWorker(request: Request, url: URL): boolean {
-  if (request.method !== 'GET') return false;
   if (url.origin !== self.location.origin) return false;
 
-  /** Same-origin API reads — axios + offline cache handle failures; Serwist NetworkOnly throws `no-response`. */
+  /** All API traffic — including POST login — must not go through Serwist (avoids no-response when server is down). */
   if (url.pathname.startsWith('/api/')) {
-    if (/^\/api\/v\d+\/uploads\//i.test(url.pathname)) return false;
+    if (request.method === 'GET' && /^\/api\/v\d+\/uploads\//i.test(url.pathname)) return false;
     return true;
   }
+
+  if (request.method !== 'GET') return false;
+
+  if (url.pathname === '/manifest.json' || url.pathname === '/sw.js') return true;
 
   if (url.searchParams.has('_rsc')) return true;
   if (request.headers.get('RSC') === '1') return true;

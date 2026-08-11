@@ -107,6 +107,11 @@ async function finishDeployUpgrade(): Promise<'reload' | 'continue'> {
   return 'reload';
 }
 
+async function clearAllServiceWorkers(): Promise<void> {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+}
+
 export function SerwistRegistration({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (swDisabled || !('serviceWorker' in navigator)) return;
@@ -163,11 +168,13 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
         try {
           const probe = await fetch(swUrl, { cache: 'no-store', credentials: 'same-origin' });
           if (!probe.ok) {
-            console.warn(`[PWA] ${swUrl} returned ${probe.status} — skipping service worker registration.`);
+            console.warn(`[PWA] ${swUrl} returned ${probe.status} — clearing stale service worker.`);
+            await clearAllServiceWorkers();
             return;
           }
         } catch {
-          console.warn('[PWA] Service worker script probe failed — skipping registration.');
+          console.warn('[PWA] Service worker script probe failed — clearing stale service worker.');
+          await clearAllServiceWorkers();
           return;
         }
       }
