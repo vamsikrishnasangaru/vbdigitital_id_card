@@ -18,9 +18,6 @@ export const PREVIEW_PIXEL_RATIO = 6;
  */
 export const DOWNLOAD_PIXEL_RATIO = 12;
 
-/** Multi-card server batch export (~768 DPI) — faster zip downloads. */
-export const BATCH_DOWNLOAD_PIXEL_RATIO = 8;
-
 export function getExportPixelSize(
   orientation: 'HORIZONTAL' | 'VERTICAL',
   pixelRatio: number = DOWNLOAD_PIXEL_RATIO,

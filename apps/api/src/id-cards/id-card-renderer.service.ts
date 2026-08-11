@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import * as puppeteer from 'puppeteer';
 import type { Browser, Page } from 'puppeteer';
 import {
-  BATCH_DOWNLOAD_PIXEL_RATIO,
   DOWNLOAD_RENDER_PIXEL_RATIO,
 } from './id-card-export.constants';
 import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-launch';
@@ -437,8 +436,6 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   ): Promise<Array<{ studentId: string; buffer?: Buffer; error?: string }>> {
     if (!studentIds.length) return [];
 
-    const batchPixelRatio =
-      studentIds.length > 1 ? BATCH_DOWNLOAD_PIXEL_RATIO : DOWNLOAD_RENDER_PIXEL_RATIO;
     const concurrency = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
 
     const release = await this.renderSemaphore.acquire();
@@ -463,7 +460,6 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
                   studentId,
                   token,
                   orientation,
-                  { pixelRatio: batchPixelRatio },
                 );
                 results[index] = { studentId, buffer };
               } catch (err: unknown) {
