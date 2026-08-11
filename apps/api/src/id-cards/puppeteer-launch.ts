@@ -10,6 +10,10 @@ const PUPPETEER_ARGS = [
   '--no-zygote',
   '--disable-extensions',
   '--disable-background-networking',
+  '--disable-breakpad',
+  '--disable-crash-reporter',
+  '--disable-features=TranslateUI',
+  '--disable-ipc-flooding-protection',
 ];
 
 /** Resolve Chrome/Chromium for headless PDF rendering (VPS uses system Chromium). */

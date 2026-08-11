@@ -42,6 +42,9 @@ cleanup_env_local() {
 }
 trap cleanup_env_local EXIT
 
+echo "Cleaning previous Next.js build (fixes stale route manifests)..."
+rm -rf .next
+
 pnpm exec next build --webpack
 cleanup_env_local
 trap - EXIT
@@ -56,9 +59,22 @@ if [[ ! -f "$STANDALONE/server.js" ]]; then
   exit 1
 fi
 
-# Do NOT delete standalone/.next — it contains BUILD_ID + server manifests.
-# Only sync public + static into the standalone runtime tree.
+if [[ ! -d "$STANDALONE/.next/server" ]]; then
+  echo "ERROR: missing $STANDALONE/.next/server — standalone output is incomplete."
+  exit 1
+fi
+
+# Keep standalone server manifests in sync with this build (static/public are copied separately).
 mkdir -p "$STANDALONE/.next"
+if [[ -d .next/server ]]; then
+  rm -rf "$STANDALONE/.next/server"
+  cp -r .next/server "$STANDALONE/.next/server"
+fi
+for manifest in BUILD_ID app-build-manifest.json build-manifest.json prerender-manifest.json routes-manifest.json required-server-files.json; do
+  if [[ -f ".next/$manifest" ]]; then
+    cp ".next/$manifest" "$STANDALONE/.next/$manifest"
+  fi
+done
 rm -rf "$STANDALONE/public"
 cp -r public "$STANDALONE/public"
 rm -rf "$STANDALONE/.next/static"
@@ -79,6 +95,9 @@ echo "Health:"
 curl -sI "http://127.0.0.1:$PORT/" | head -n1
 curl -sI "http://127.0.0.1:$PORT/students" | head -n1
 curl -sI "http://127.0.0.1:$PORT/sw.js" | head -n1
+curl -sI "http://127.0.0.1:$PORT/teachers" | head -n1
+echo "Render host:"
+curl -sI "http://127.0.0.1:$PORT/render/batch-export/test-template-id" | head -n1 || true
 echo ""
 echo "Deployed web revision: ${RELEASE_REVISION} (client: ${NEXT_PUBLIC_APP_REVISION})"
 echo "Browsers auto-refresh once when revision changes; or hard-refresh (Ctrl+Shift+R)."

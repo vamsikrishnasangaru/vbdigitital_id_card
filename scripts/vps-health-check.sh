@@ -17,6 +17,12 @@ echo "=== Local HTTP ==="
 curl -sI --max-time 5 "http://127.0.0.1:${WEB_PORT}/" | head -n1 || echo "WEB: unreachable"
 curl -sI --max-time 5 "http://127.0.0.1:${WEB_PORT}/sw.js" | head -n1 || echo "SW: unreachable"
 curl -sI --max-time 5 "http://127.0.0.1:4000/api/docs" | head -n1 || echo "API: unreachable"
+curl -sI --max-time 5 "http://127.0.0.1:${WEB_PORT}/teachers" | head -n1 || echo "WEB /teachers: unreachable"
+
+echo ""
+echo "=== Notes ==="
+echo "- Drive invalid_grant: re-authorize Google Drive OAuth in apps/api/.env (Download still works)."
+echo "- Puppeteer Session closed: redeploy API after web fix; default batch concurrency is now 2."
 
 echo ""
 echo "=== PM2 logs (last 15 lines) ==="

@@ -47,7 +47,7 @@ if ! grep -q '^FRONTEND_URL=' "$API_DIR/.env" 2>/dev/null; then
 fi
 
 if ! grep -q '^ID_CARD_BATCH_CONCURRENCY=' "$API_DIR/.env" 2>/dev/null; then
-  echo "TIP: Add ID_CARD_BATCH_CONCURRENCY=4 (or 6 on a larger VPS) to $API_DIR/.env for faster batch downloads."
+  echo "TIP: ID_CARD_BATCH_CONCURRENCY defaults to 2. Set to 4 on a larger VPS if batch downloads are stable."
 fi
 
 pm2 restart vb-api

@@ -19,10 +19,10 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
-/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). */
+/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). Default 2 — safer on 8GB VPS. */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 4),
+  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 2),
 );
 
 class Semaphore {
@@ -70,7 +70,8 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       msg.includes('Navigation failed because browser has disconnected') ||
       msg.includes('Protocol error') ||
       msg.includes('Navigating frame was detached') ||
-      msg.includes('Execution context was destroyed')
+      msg.includes('Execution context was destroyed') ||
+      msg.includes('Waiting failed')
     );
   }
 
@@ -545,6 +546,36 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         };
 
         await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+        const failedIndices = results
+          .map((result, index) => (result.error ? index : -1))
+          .filter((index) => index >= 0);
+
+        for (const index of failedIndices) {
+          const studentId = studentIds[index];
+          try {
+            await this.restartBrowser(`retry ${studentId}`);
+            const page = await this.newPage();
+            try {
+              await this.prepareRenderPage(page);
+              await this.prepareBatchExportPage(page, templateId, token, studentIds, orientation);
+              await this.renderStudentOnBatchPage(page, studentId);
+              const buffer = await this.captureCanvasPng(
+                page,
+                orientation,
+                BATCH_RENDER_PIXEL_RATIO,
+              );
+              results[index] = { studentId, buffer };
+            } finally {
+              await this.safeClosePage(page);
+            }
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            this.logger.warn(`Batch retry failed for ${studentId}: ${message}`);
+            results[index] = { studentId, error: message };
+          }
+        }
+
         return results;
       });
     } finally {
