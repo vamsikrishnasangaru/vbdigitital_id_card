@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import withSerwistInit from "@serwist/next";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 const swDisabled = process.env.NEXT_PUBLIC_DISABLE_SW === "true";
+const monorepoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 const withSerwist = withSerwistInit({
   swSrc: "src/app/sw.ts",
@@ -47,6 +50,8 @@ const apiRewriteTarget = (
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  /** Trace deps from pnpm monorepo root so standalone includes complete server manifests. */
+  outputFileTracingRoot: monorepoRoot,
   experimental: {
     /**
      * Reduces bundle size by transforming imports for large libraries.

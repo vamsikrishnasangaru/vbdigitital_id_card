@@ -70,10 +70,18 @@ rm -rf "$STANDALONE/public"
 cp -r public "$STANDALONE/public"
 rm -rf "$STANDALONE/.next/static"
 cp -r .next/static "$STANDALONE/.next/static"
-if [[ -f .next/BUILD_ID && -f "$STANDALONE/.next/BUILD_ID" ]]; then
-  if ! cmp -s .next/BUILD_ID "$STANDALONE/.next/BUILD_ID"; then
-    echo "WARN: BUILD_ID mismatch — copying static only; standalone server stays file-traced."
-  fi
+
+NOT_FOUND_MANIFEST="$STANDALONE/.next/server/app/_not-found/page_client-reference-manifest.js"
+if [[ ! -f "$NOT_FOUND_MANIFEST" ]]; then
+  echo "ERROR: missing $NOT_FOUND_MANIFEST"
+  echo "Standalone server output is incomplete — rebuild failed for monorepo tracing."
+  exit 1
+fi
+
+RENDER_MANIFEST="$STANDALONE/.next/server/app/render/batch-export/[templateId]/page_client-reference-manifest.js"
+if [[ ! -f "$RENDER_MANIFEST" ]]; then
+  echo "WARN: missing batch render manifest — checking alternate build output..."
+  ls -la "$STANDALONE/.next/server/app/render/batch-export/" 2>/dev/null || true
 fi
 
 # One vb-web only — kill stale listeners and duplicate PM2 entries.
