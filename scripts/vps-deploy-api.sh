@@ -55,8 +55,12 @@ pm2 save
 
 if [[ -f "$APP_ROOT/scripts/vps-nginx-generate-timeout.sh" ]]; then
   echo "Applying nginx proxy timeouts for batch ID card generate (requires sudo)..."
-  sudo bash "$APP_ROOT/scripts/vps-nginx-generate-timeout.sh" || \
-    echo "WARN: Could not update nginx — run manually: sudo bash scripts/vps-nginx-generate-timeout.sh"
+  if sudo bash "$APP_ROOT/scripts/vps-nginx-generate-timeout.sh"; then
+    echo "nginx timeouts applied."
+  else
+    echo "ERROR: nginx timeout update failed — batch downloads may return HTTP 504."
+    echo "Run manually on the VPS: sudo bash scripts/vps-nginx-generate-timeout.sh"
+  fi
 fi
 
 sleep 2

@@ -10,11 +10,31 @@ TIMEOUTS=(
   'send_timeout 600s;'
 )
 
-SITES=(
-  /etc/nginx/sites-available/id.vbdigital.tech
-  /etc/nginx/sites-available/default
-  /etc/nginx/conf.d/id.vbdigital.tech.conf
-)
+declare -a SITES=()
+
+add_site() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  local i
+  for i in "${SITES[@]:-}"; do
+    [[ "$i" == "$f" ]] && return 0
+  done
+  SITES+=("$f")
+}
+
+for f in \
+  /etc/nginx/sites-available/id.vbdigital.tech \
+  /etc/nginx/sites-enabled/id.vbdigital.tech \
+  /etc/nginx/sites-available/default \
+  /etc/nginx/sites-enabled/default \
+  /etc/nginx/conf.d/id.vbdigital.tech.conf; do
+  add_site "$f"
+done
+
+while IFS= read -r f; do
+  add_site "$f"
+done < <(grep -rlE 'proxy_pass.*(127\.0\.0\.1:4000|localhost:4000)|id\.vbdigital' \
+  /etc/nginx/sites-enabled /etc/nginx/sites-available /etc/nginx/conf.d 2>/dev/null || true)
 
 upsert_timeout() {
   local file="$1"
@@ -27,6 +47,10 @@ upsert_timeout() {
       sed -i "/location \\/api\\//,/^[[:space:]]*}/ {
         /proxy_pass/i\\        ${line}
       }" "$file"
+    elif grep -q 'location /' "$file"; then
+      sed -i "/location \\/ {/,/^[[:space:]]*}/ {
+        /proxy_pass/i\\        ${line}
+      }" "$file"
     elif grep -q 'proxy_pass' "$file"; then
       sed -i "/proxy_pass/i\\    ${line}" "$file"
     else
@@ -36,7 +60,7 @@ upsert_timeout() {
 }
 
 found=0
-for f in "${SITES[@]}"; do
+for f in "${SITES[@]:-}"; do
   [[ -f "$f" ]] || continue
   found=1
   echo "Updating timeouts in $f"
@@ -46,8 +70,9 @@ for f in "${SITES[@]}"; do
 done
 
 if [[ "$found" -eq 0 ]]; then
-  echo "No known nginx site file found. Add the directives from scripts/nginx-generate-timeout.snippet"
-  echo "inside your /api/ location block, then: sudo nginx -t && sudo systemctl reload nginx"
+  echo "ERROR: No nginx site file found for the API proxy."
+  echo "Add the directives from scripts/nginx-generate-timeout.snippet inside your /api/ location block,"
+  echo "then run: sudo nginx -t && sudo systemctl reload nginx"
   exit 1
 fi
 

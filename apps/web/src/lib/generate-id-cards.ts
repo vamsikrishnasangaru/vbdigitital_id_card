@@ -111,6 +111,31 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Slightly under server job TTL (60m) so polling does not quit while the job is still running. */
+const GENERATE_JOB_POLL_DEADLINE_MS = 55 * 60 * 1000;
+
+const TRANSIENT_HTTP_STATUSES = new Set([502, 503, 504]);
+
+async function withTransientRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxAttempts = 5,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      lastError = err;
+      const status = (err as { response?: { status?: number } }).response?.status;
+      const transient = status === undefined || TRANSIENT_HTTP_STATUSES.has(status);
+      if (!transient || attempt >= maxAttempts - 1) break;
+      await sleep(1500 * (attempt + 1));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`${label} failed`);
+}
+
 async function generateIdCardsDownloadAsync(
   params: { templateId: string; studentIds: string[] },
   onProgress?: (completed: number, total: number) => void,
@@ -131,13 +156,17 @@ async function generateIdCardsDownloadAsync(
   );
 
   const jobHeaders = { 'X-Generate-Job-Token': start.pollToken };
-  const deadline = Date.now() + 600_000;
+  const deadline = Date.now() + GENERATE_JOB_POLL_DEADLINE_MS;
 
   while (Date.now() < deadline) {
     await sleep(750);
-    const { data: job } = await api.get<GenerateJobStatus>(
-      `/id-cards/generate/jobs/${start.jobId}`,
-      { headers: jobHeaders, _skipOfflineQueue: true } as unknown as VbAxiosConfig,
+    const { data: job } = await withTransientRetry(
+      () =>
+        api.get<GenerateJobStatus>(`/id-cards/generate/jobs/${start.jobId}`, {
+          headers: jobHeaders,
+          _skipOfflineQueue: true,
+        } as unknown as VbAxiosConfig),
+      'Progress check',
     );
     onProgress?.(job.completed, job.total);
 
@@ -147,12 +176,16 @@ async function generateIdCardsDownloadAsync(
 
     if (job.status === 'done') {
       onProgress?.(job.total, job.total);
-      const response = await api.get(`/id-cards/generate/jobs/${start.jobId}/download`, {
-        responseType: 'blob',
-        timeout: 120_000,
-        headers: jobHeaders,
-        _skipOfflineQueue: true,
-      } as unknown as VbAxiosConfig);
+      const response = await withTransientRetry(
+        () =>
+          api.get(`/id-cards/generate/jobs/${start.jobId}/download`, {
+            responseType: 'blob',
+            timeout: 300_000,
+            headers: jobHeaders,
+            _skipOfflineQueue: true,
+          } as unknown as VbAxiosConfig),
+        'Download',
+      );
 
       let blob = coerceDownloadBlob(response.data);
       blob = await ensureBinaryDownloadBlob(blob);
@@ -172,7 +205,7 @@ async function generateIdCardsDownloadAsync(
   }
 
   throw new Error(
-    'Generation timed out. Try fewer students at once, or ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server.',
+    'Generation is taking longer than expected. Wait a minute and try again with the same selection, or ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server and redeploy the API.',
   );
 }
 
