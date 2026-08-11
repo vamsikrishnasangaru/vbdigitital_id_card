@@ -236,8 +236,12 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
       await document.fonts?.ready;
 
-      const waitForImages = async (root: ParentNode) => {
-        const imgs = Array.from(root.querySelectorAll('img'));
+      const root = document.querySelector('#id-card-canvas');
+      const expectedWidth = Number(root?.getAttribute('data-export-width')) || 0;
+      const expectedHeight = Number(root?.getAttribute('data-export-height')) || 0;
+
+      const waitForImages = async (container: ParentNode) => {
+        const imgs = Array.from(container.querySelectorAll('img'));
         await Promise.all(
           imgs.map(
             (img) =>
@@ -252,115 +256,133 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         );
       };
 
-      const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
-      if (canvas?.width && canvas?.height) {
-        await waitForImages(document.querySelector('#id-card-canvas') ?? document.body);
+      const exportFromStage = async (
+        stage: {
+          scaleX: () => number;
+          scaleY: () => number;
+          width: (w?: number) => number;
+          height: (h?: number) => number;
+          scale: (s: { x: number; y: number }) => void;
+          batchDraw: () => void;
+          find: (selector: string) => { toArray?: () => Array<{ image: () => unknown }> } | Array<{ image: () => unknown }>;
+          toCanvas?: (config: {
+            pixelRatio?: number;
+            x?: number;
+            y?: number;
+            width?: number;
+            height?: number;
+          }) => HTMLCanvasElement;
+          toDataURL: (config?: {
+            pixelRatio?: number;
+            mimeType?: string;
+            x?: number;
+            y?: number;
+            width?: number;
+            height?: number;
+          }) => string;
+        },
+      ) => {
+        const found = stage.find('Image');
+        const imageNodes =
+          found && typeof (found as { toArray?: () => unknown[] }).toArray === 'function'
+            ? (found as { toArray: () => Array<{ image: () => unknown }> }).toArray()
+            : Array.from(found as Array<{ image: () => unknown }>);
+        await Promise.all(
+          imageNodes.map(
+            (node) =>
+              new Promise<void>((resolve) => {
+                const img = node.image();
+                if (!(img instanceof HTMLImageElement) || img.complete) {
+                  resolve();
+                  return;
+                }
+                img.onload = () => resolve();
+                img.onerror = () => resolve();
+              }),
+          ),
+        );
+
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         });
-        return canvas.toDataURL('image/png');
-      }
 
-      const KonvaGlobal = (window as unknown as {
-        Konva?: {
-          stages?: Array<{
-            scaleX: () => number;
-            scaleY: () => number;
-            width: (w?: number) => number;
-            height: (h?: number) => number;
-            scale: (s: { x: number; y: number }) => void;
-            batchDraw: () => void;
-            find: (selector: string) => { toArray?: () => Array<{ image: () => unknown }> } | Array<{ image: () => unknown }>;
-            toCanvas?: (config: {
-              pixelRatio?: number;
-              x?: number;
-              y?: number;
-              width?: number;
-              height?: number;
-            }) => HTMLCanvasElement;
-            toDataURL: (config?: {
-              pixelRatio?: number;
-              mimeType?: string;
-              x?: number;
-              y?: number;
-              width?: number;
-              height?: number;
-            }) => string;
-          }>;
-        };
-      }).Konva;
-      const stage = KonvaGlobal?.stages?.[0];
-      if (!stage) throw new Error('Konva canvas not found');
+        const scaleX = stage.scaleX() || 1;
+        const scaleY = stage.scaleY() || 1;
+        const logicalWidth = stage.width() / scaleX;
+        const logicalHeight = stage.height() / scaleY;
 
-      const found = stage.find('Image');
-      const imageNodes =
-        found && typeof (found as { toArray?: () => unknown[] }).toArray === 'function'
-          ? (found as { toArray: () => Array<{ image: () => unknown }> }).toArray()
-          : Array.from(found as Array<{ image: () => unknown }>);
-      await Promise.all(
-        imageNodes.map(
-          (node) =>
-            new Promise<void>((resolve) => {
-              const img = node.image();
-              if (!(img instanceof HTMLImageElement) || img.complete) {
-                resolve();
-                return;
-              }
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-            }),
-        ),
-      );
+        const oldW = stage.width();
+        const oldH = stage.height();
+        const needReset = scaleX !== 1 || scaleY !== 1;
+        if (needReset) {
+          stage.width(logicalWidth);
+          stage.height(logicalHeight);
+          stage.scale({ x: 1, y: 1 });
+        }
+        stage.batchDraw();
 
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      });
-
-      const scaleX = stage.scaleX() || 1;
-      const scaleY = stage.scaleY() || 1;
-      const logicalWidth = stage.width() / scaleX;
-      const logicalHeight = stage.height() / scaleY;
-
-      const oldW = stage.width();
-      const oldH = stage.height();
-      const needReset = scaleX !== 1 || scaleY !== 1;
-      if (needReset) {
-        stage.width(logicalWidth);
-        stage.height(logicalHeight);
-        stage.scale({ x: 1, y: 1 });
-      }
-      stage.batchDraw();
-
-      try {
-        if (typeof stage.toCanvas === 'function') {
-          const exportCanvas = stage.toCanvas({
+        try {
+          if (typeof stage.toCanvas === 'function') {
+            const exportCanvas = stage.toCanvas({
+              pixelRatio: ratio,
+              x: 0,
+              y: 0,
+              width: logicalWidth,
+              height: logicalHeight,
+            });
+            const png = exportCanvas.toDataURL('image/png');
+            exportCanvas.width = 0;
+            exportCanvas.height = 0;
+            return png;
+          }
+          return stage.toDataURL({
             pixelRatio: ratio,
+            mimeType: 'image/png',
             x: 0,
             y: 0,
             width: logicalWidth,
             height: logicalHeight,
           });
-          const png = exportCanvas.toDataURL('image/png');
-          exportCanvas.width = 0;
-          exportCanvas.height = 0;
-          return png;
+        } finally {
+          if (needReset) {
+            stage.width(oldW);
+            stage.height(oldH);
+            stage.scale({ x: scaleX, y: scaleY });
+            stage.batchDraw();
+          }
         }
-        return stage.toDataURL({
-          pixelRatio: ratio,
-          mimeType: 'image/png',
-          x: 0,
-          y: 0,
-          width: logicalWidth,
-          height: logicalHeight,
+      };
+
+      type KonvaStage = Parameters<typeof exportFromStage>[0];
+      const KonvaGlobal = (window as unknown as { Konva?: { stages?: KonvaStage[] } }).Konva;
+      const stage = KonvaGlobal?.stages?.[0];
+
+      const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
+      const canvasIsPrintResolution =
+        canvas &&
+        canvas.width > 0 &&
+        canvas.height > 0 &&
+        (!expectedWidth || canvas.width >= expectedWidth * 0.95) &&
+        (!expectedHeight || canvas.height >= expectedHeight * 0.95);
+
+      if (canvasIsPrintResolution) {
+        if (root) await waitForImages(root);
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         });
-      } finally {
-        if (needReset) {
-          stage.width(oldW);
-          stage.height(oldH);
-          stage.scale({ x: scaleX, y: scaleY });
-          stage.batchDraw();
-        }
+        return canvas!.toDataURL('image/png');
       }
+
+      if (stage) {
+        return exportFromStage(stage);
+      }
+
+      if (canvas?.width && canvas?.height) {
+        if (root) await waitForImages(root);
+        return canvas.toDataURL('image/png');
+      }
+
+      throw new Error('Konva canvas not found');
     }, DOWNLOAD_RENDER_PIXEL_RATIO);
 
     const base64 = dataUrl.split(',')[1];

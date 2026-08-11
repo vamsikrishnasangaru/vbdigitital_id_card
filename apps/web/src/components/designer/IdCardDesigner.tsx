@@ -11,6 +11,7 @@ import {
   DESIGN_PPI,
   getPrintExportPixelSize,
   getDownloadPixelRatio,
+  DOWNLOAD_PIXEL_RATIO,
   PREVIEW_PIXEL_RATIO,
   isStudentNameFieldType,
   scaleElementsForPpi,
@@ -212,8 +213,12 @@ export function IdCardDesigner({
   const ppiRatio = 1;
   const unitScale = 1;
   const liveStudentCardPreview = !isRenderMode && !!student && !onSave;
-  const exportQualityPreview = isRenderMode || restrictedPreview || liveStudentCardPreview;
-  const stagePixelRatio = exportQualityPreview ? PREVIEW_PIXEL_RATIO : 1;
+  const exportQualityPreview = !isRenderMode && (restrictedPreview || liveStudentCardPreview);
+  const stagePixelRatio = isRenderMode
+    ? DOWNLOAD_PIXEL_RATIO
+    : exportQualityPreview
+      ? PREVIEW_PIXEL_RATIO
+      : 1;
   const exportPixelSize = getPrintExportPixelSize(orientation);
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
@@ -792,6 +797,11 @@ export function IdCardDesigner({
   }, [isRenderMode, imageSrc, parsedBg.mode, bgStatus]);
 
   useEffect(() => {
+    if (!isRenderMode || typeof window === 'undefined') return;
+    (window as Window & { Konva?: typeof Konva }).Konva = Konva;
+  }, [isRenderMode]);
+
+  useEffect(() => {
     if (!isRenderMode || !onRenderReady) return;
     if (preloadStatus === 'loading') return;
     if (parsedBg.mode === 'image' && imageSrc) {
@@ -799,7 +809,7 @@ export function IdCardDesigner({
       if (bgStatus === 'failed') return;
       if (bgStatus === 'loaded' && !backgroundImage) return;
     }
-    const timer = setTimeout(() => onRenderReady(), 500);
+    const timer = setTimeout(() => onRenderReady(), 700);
     return () => clearTimeout(timer);
   }, [
     isRenderMode,
