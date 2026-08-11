@@ -91,15 +91,23 @@ export async function fetchDriveStatus(): Promise<DriveStatus> {
   return data;
 }
 
-export function formatGenerateProgressMessage(completed: number, total: number): string {
+export function formatGenerateProgressMessage(
+  completed: number,
+  total: number,
+  options?: { phase?: 'rendering' | 'packaging'; status?: 'running' | 'done' | 'failed' },
+): string {
   if (total <= 1) return 'Generating ID card…';
   if (completed <= 0) return `Starting generation of ${total} ID cards…`;
-  if (completed >= total) return `Packaging ${total} ID cards for download…`;
+  if (options?.status === 'done') return `Downloading ${total} ID cards…`;
+  if (options?.phase === 'packaging' || completed >= total) {
+    return `Packaging ${total} ID cards for download…`;
+  }
   return `Generated ${completed} of ${total} ID cards…`;
 }
 
 type GenerateJobStatus = {
   status: 'running' | 'done' | 'failed';
+  phase?: 'rendering' | 'packaging';
   completed: number;
   total: number;
   successCount: number;
@@ -107,19 +115,35 @@ type GenerateJobStatus = {
   error?: string;
 };
 
+export type GenerateProgressMeta = {
+  phase?: 'rendering' | 'packaging';
+  status?: 'running' | 'done' | 'failed';
+};
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Slightly under server job TTL (60m) so polling does not quit while the job is still running. */
-const GENERATE_JOB_POLL_DEADLINE_MS = 55 * 60 * 1000;
+/** Slightly under server job TTL (2h) so polling does not quit while the job is still running. */
+const GENERATE_JOB_POLL_DEADLINE_MS = 115 * 60 * 1000;
+const GENERATE_JOB_POLL_TIMEOUT_MS = 120_000;
 
 const TRANSIENT_HTTP_STATUSES = new Set([502, 503, 504]);
+
+function isTransientPollError(err: unknown): boolean {
+  const status = (err as { response?: { status?: number } }).response?.status;
+  if (status !== undefined && !TRANSIENT_HTTP_STATUSES.has(status)) return false;
+  if (status !== undefined) return true;
+  const code = (err as { code?: string }).code;
+  if (code === 'ECONNABORTED' || code === 'ERR_NETWORK' || code === 'ETIMEDOUT') return true;
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return /network error|timeout|socket hang up|ECONNRESET/i.test(message);
+}
 
 async function withTransientRetry<T>(
   fn: () => Promise<T>,
   label: string,
-  maxAttempts = 5,
+  maxAttempts = 8,
 ): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -127,9 +151,7 @@ async function withTransientRetry<T>(
       return await fn();
     } catch (err: unknown) {
       lastError = err;
-      const status = (err as { response?: { status?: number } }).response?.status;
-      const transient = status === undefined || TRANSIENT_HTTP_STATUSES.has(status);
-      if (!transient || attempt >= maxAttempts - 1) break;
+      if (!isTransientPollError(err) || attempt >= maxAttempts - 1) break;
       await sleep(1500 * (attempt + 1));
     }
   }
@@ -138,7 +160,7 @@ async function withTransientRetry<T>(
 
 async function generateIdCardsDownloadAsync(
   params: { templateId: string; studentIds: string[] },
-  onProgress?: (completed: number, total: number) => void,
+  onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void,
 ): Promise<{ kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }> {
   const total = params.studentIds.length;
   onProgress?.(0, total);
@@ -164,23 +186,24 @@ async function generateIdCardsDownloadAsync(
       () =>
         api.get<GenerateJobStatus>(`/id-cards/generate/jobs/${start.jobId}`, {
           headers: jobHeaders,
+          timeout: GENERATE_JOB_POLL_TIMEOUT_MS,
           _skipOfflineQueue: true,
         } as unknown as VbAxiosConfig),
       'Progress check',
     );
-    onProgress?.(job.completed, job.total);
+    onProgress?.(job.completed, job.total, { phase: job.phase, status: job.status });
 
     if (job.status === 'failed') {
       throw new Error(job.error || 'Failed to generate ID cards');
     }
 
     if (job.status === 'done') {
-      onProgress?.(job.total, job.total);
+      onProgress?.(job.total, job.total, { phase: 'packaging', status: 'done' });
       const response = await withTransientRetry(
         () =>
           api.get(`/id-cards/generate/jobs/${start.jobId}/download`, {
             responseType: 'blob',
-            timeout: 300_000,
+            timeout: 600_000,
             headers: jobHeaders,
             _skipOfflineQueue: true,
           } as unknown as VbAxiosConfig),
@@ -213,7 +236,7 @@ export async function generateIdCards(params: {
   templateId: string;
   studentIds: string[];
   destination: GenerateDestination;
-  onProgress?: (completed: number, total: number) => void;
+  onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void;
 }): Promise<{ kind: 'json'; data: unknown } | { kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }> {
   if (params.destination === 'drive') {
     const { data } = await api.post('/id-cards/generate', {

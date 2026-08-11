@@ -1,5 +1,7 @@
-import { writeFileSync } from 'fs';
-import { zipSync } from 'fflate';
+import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { randomUUID } from 'crypto';
 
 export type IdCardDownloadFile = { name: string; buffer: Buffer };
 
@@ -91,20 +93,134 @@ export function buildIdCardsZipFilename(files: IdCardDownloadFile[]): string {
   return `id-cards_${stamp}.zip`;
 }
 
-function zipEntriesFromFiles(files: IdCardDownloadFile[]): Record<string, Uint8Array> {
-  const entries: Record<string, Uint8Array> = {};
-  for (const file of files) {
-    entries[file.name] = new Uint8Array(file.buffer);
+type ZipCentralEntry = {
+  name: Buffer;
+  crc: number;
+  size: number;
+  offset: number;
+};
+
+function crc32Buffer(data: Buffer): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i += 1) {
+    crc ^= data[i];
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
   }
-  return entries;
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
-/** Fast store-only ZIP — PNGs are already compressed; no quality change. */
-export function buildIdCardsZip(files: IdCardDownloadFile[]): Buffer {
-  return Buffer.from(zipSync(zipEntriesFromFiles(files), { level: 0 }));
+function writeLocalFileHeader(
+  fd: number,
+  name: Buffer,
+  data: Buffer,
+): { crc: number; size: number; written: number } {
+  const crc = crc32Buffer(data);
+  const size = data.length;
+  const header = Buffer.alloc(30);
+  header.writeUInt32LE(0x04034b50, 0);
+  header.writeUInt16LE(20, 4);
+  header.writeUInt16LE(0, 6);
+  header.writeUInt16LE(0, 8);
+  header.writeUInt16LE(0, 10);
+  header.writeUInt16LE(0, 12);
+  header.writeUInt32LE(crc, 14);
+  header.writeUInt32LE(size, 18);
+  header.writeUInt32LE(size, 22);
+  header.writeUInt16LE(name.length, 26);
+  header.writeUInt16LE(0, 28);
+  writeSync(fd, header);
+  writeSync(fd, name);
+  writeSync(fd, data);
+  return { crc, size, written: 30 + name.length + size };
 }
 
-/** Write ZIP to disk so async jobs avoid holding PNG + ZIP buffers in RAM. */
-export function buildIdCardsZipToFile(files: IdCardDownloadFile[], destPath: string): void {
-  writeFileSync(destPath, zipSync(zipEntriesFromFiles(files), { level: 0 }));
+function writeCentralDirectory(fd: number, entries: ZipCentralEntry[], cdOffset: number) {
+  for (const entry of entries) {
+    const header = Buffer.alloc(46);
+    header.writeUInt32LE(0x02014b50, 0);
+    header.writeUInt16LE(20, 4);
+    header.writeUInt16LE(20, 6);
+    header.writeUInt16LE(0, 8);
+    header.writeUInt16LE(0, 10);
+    header.writeUInt16LE(0, 12);
+    header.writeUInt16LE(0, 14);
+    header.writeUInt32LE(entry.crc, 16);
+    header.writeUInt32LE(entry.size, 20);
+    header.writeUInt32LE(entry.size, 24);
+    header.writeUInt16LE(entry.name.length, 28);
+    header.writeUInt16LE(0, 30);
+    header.writeUInt16LE(0, 32);
+    header.writeUInt16LE(0, 34);
+    header.writeUInt16LE(0, 36);
+    header.writeUInt16LE(0, 38);
+    header.writeUInt32LE(0, 40);
+    header.writeUInt32LE(entry.offset, 42);
+    writeSync(fd, header);
+    writeSync(fd, entry.name);
+  }
+
+  const cdSize = entries.reduce((sum, e) => sum + 46 + e.name.length, 0);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cdSize, 12);
+  eocd.writeUInt32LE(cdOffset, 16);
+  eocd.writeUInt16LE(0, 20);
+  writeSync(fd, eocd);
+}
+
+function yieldEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+/**
+ * Stream a store-only ZIP to disk — no re-compression, yields between files so
+ * progress polls stay responsive during packaging.
+ */
+export async function buildIdCardsZipToFile(
+  files: IdCardDownloadFile[],
+  destPath: string,
+): Promise<void> {
+  const fd = openSync(destPath, 'w');
+  const central: ZipCentralEntry[] = [];
+  let offset = 0;
+
+  try {
+    for (let i = 0; i < files.length; i += 1) {
+      if (i > 0) await yieldEventLoop();
+
+      const file = files[i];
+      const name = Buffer.from(file.name, 'utf8');
+      const data = file.buffer;
+      const localOffset = offset;
+      const { crc, size, written } = writeLocalFileHeader(fd, name, data);
+      central.push({ name, crc, size, offset: localOffset });
+      offset += written;
+    }
+
+    const cdOffset = offset;
+    writeCentralDirectory(fd, central, cdOffset);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Small in-memory ZIP for direct (non-async) download responses. */
+export async function buildIdCardsZip(files: IdCardDownloadFile[]): Promise<Buffer> {
+  const tempPath = join(tmpdir(), `id-cards-mem-${randomUUID()}.zip`);
+  try {
+    await buildIdCardsZipToFile(files, tempPath);
+    return readFileSync(tempPath);
+  } finally {
+    try {
+      unlinkSync(tempPath);
+    } catch {
+      // Temp file may already be gone.
+    }
+  }
 }

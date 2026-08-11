@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
 export type GenerateJobStatus = 'running' | 'done' | 'failed';
+export type GenerateJobPhase = 'rendering' | 'packaging';
 
 export type GenerateJobDownloadResult = {
   kind: 'single' | 'zip';
@@ -18,6 +19,7 @@ export type GenerateJobDownloadResult = {
 
 type GenerateJobRecord = {
   status: GenerateJobStatus;
+  phase: GenerateJobPhase;
   completed: number;
   total: number;
   successCount: number;
@@ -31,10 +33,14 @@ type GenerateJobRecord = {
 /** Keep jobs alive through long batches, packaging, and slow downloads. */
 const JOB_TTL_MS = 2 * 60 * 60 * 1000;
 const JOB_DIR = join(tmpdir(), 'id-card-generate-jobs');
+/** Avoid syncing job JSON to disk on every 300ms poll — that blocked the API. */
+const JOB_PERSIST_INTERVAL_MS = 10_000;
 
 @Injectable()
 export class IdCardsGenerateJobsService {
+  private readonly logger = new Logger(IdCardsGenerateJobsService.name);
   private readonly jobs = new Map<string, GenerateJobRecord>();
+  private readonly lastPersistMs = new Map<string, number>();
 
   createJob(total: number): { jobId: string; pollToken: string } {
     this.pruneExpired();
@@ -42,6 +48,7 @@ export class IdCardsGenerateJobsService {
     const pollToken = randomUUID();
     const job: GenerateJobRecord = {
       status: 'running',
+      phase: 'rendering',
       completed: 0,
       total,
       successCount: 0,
@@ -50,57 +57,74 @@ export class IdCardsGenerateJobsService {
       expiresAt: Date.now() + JOB_TTL_MS,
     };
     this.jobs.set(jobId, job);
-    this.persistJob(jobId, job);
+    this.persistJob(jobId, job, true);
     return { jobId, pollToken };
   }
 
   validatePollToken(jobId: string, pollToken: string): boolean {
-    const job = this.resolveJob(jobId);
+    const job = this.getOrLoadJob(jobId);
     if (!job) return false;
     return job.pollToken === pollToken;
   }
 
   updateProgress(jobId: string, completed: number, total?: number) {
-    const job = this.resolveJob(jobId);
+    const job = this.getOrLoadJob(jobId);
     if (!job || job.status !== 'running') return;
+    job.phase = 'rendering';
     job.completed = completed;
     if (total !== undefined) job.total = total;
     this.touchJobRecord(jobId, job);
   }
 
+  setPackaging(jobId: string) {
+    const job = this.getOrLoadJob(jobId);
+    if (!job || job.status !== 'running') return;
+    job.phase = 'packaging';
+    job.completed = job.total;
+    this.touchJobRecord(jobId, job, true);
+  }
+
   /** Extend TTL during packaging or while the client is polling. */
   touchJob(jobId: string) {
-    const job = this.resolveJob(jobId);
+    const job = this.getOrLoadJob(jobId);
     if (!job) return;
     this.touchJobRecord(jobId, job);
   }
 
   complete(jobId: string, result: GenerateJobDownloadResult) {
-    const job = this.resolveJob(jobId);
-    if (!job) return;
+    const job = this.getOrLoadJob(jobId);
+    if (!job) {
+      this.logger.warn(`Generate job ${jobId} missing at complete — result was ready`);
+      return;
+    }
     job.status = 'done';
+    job.phase = 'packaging';
     job.completed = job.total;
     job.successCount = result.successCount;
     job.failCount = result.failCount;
     job.result = result;
-    this.touchJobRecord(jobId, job);
+    this.touchJobRecord(jobId, job, true);
   }
 
   fail(jobId: string, error: string) {
-    const job = this.resolveJob(jobId);
-    if (!job) return;
+    const job = this.getOrLoadJob(jobId);
+    if (!job) {
+      this.logger.warn(`Generate job ${jobId} missing at fail: ${error}`);
+      return;
+    }
     job.status = 'failed';
     job.error = error;
-    this.touchJobRecord(jobId, job);
+    this.touchJobRecord(jobId, job, true);
   }
 
   getJob(jobId: string) {
     this.pruneExpired();
-    const job = this.resolveJob(jobId);
+    const job = this.getOrLoadJob(jobId);
     if (!job) return null;
     this.touchJobRecord(jobId, job);
     return {
       status: job.status,
+      phase: job.phase,
       completed: job.completed,
       total: job.total,
       successCount: job.successCount,
@@ -111,7 +135,7 @@ export class IdCardsGenerateJobsService {
 
   consumeDownload(jobId: string): GenerateJobDownloadResult {
     this.pruneExpired();
-    const job = this.resolveJob(jobId);
+    const job = this.getOrLoadJob(jobId);
     if (!job || job.status !== 'done' || !job.result) {
       throw new NotFoundException('Generate job not ready for download');
     }
@@ -120,7 +144,7 @@ export class IdCardsGenerateJobsService {
     return result;
   }
 
-  private resolveJob(jobId: string): GenerateJobRecord | null {
+  private getOrLoadJob(jobId: string): GenerateJobRecord | null {
     let job = this.jobs.get(jobId);
     if (!job) {
       const loaded = this.loadJob(jobId);
@@ -129,16 +153,19 @@ export class IdCardsGenerateJobsService {
         this.jobs.set(jobId, job);
       }
     }
-    if (!job || job.expiresAt <= Date.now()) {
-      if (job) this.removeJob(jobId, job);
-      return null;
-    }
+    if (!job || job.expiresAt <= Date.now()) return null;
+    if (!job.phase) job.phase = 'rendering';
     return job;
   }
 
-  private touchJobRecord(jobId: string, job: GenerateJobRecord) {
+  private touchJobRecord(jobId: string, job: GenerateJobRecord, forceDisk = false) {
     job.expiresAt = Date.now() + JOB_TTL_MS;
-    this.persistJob(jobId, job);
+    const now = Date.now();
+    const last = this.lastPersistMs.get(jobId) ?? 0;
+    if (forceDisk || job.status !== 'running' || now - last >= JOB_PERSIST_INTERVAL_MS) {
+      this.persistJob(jobId, job, forceDisk);
+      this.lastPersistMs.set(jobId, now);
+    }
   }
 
   private ensureJobDir() {
@@ -149,10 +176,11 @@ export class IdCardsGenerateJobsService {
     return join(JOB_DIR, `${jobId}.json`);
   }
 
-  private persistJob(jobId: string, job: GenerateJobRecord) {
+  private persistJob(jobId: string, job: GenerateJobRecord, sync = false) {
     this.ensureJobDir();
     const payload = {
       status: job.status,
+      phase: job.phase,
       completed: job.completed,
       total: job.total,
       successCount: job.successCount,
@@ -170,13 +198,27 @@ export class IdCardsGenerateJobsService {
           }
         : undefined,
     };
-    writeFileSync(this.jobFilePath(jobId), JSON.stringify(payload));
+    const body = JSON.stringify(payload);
+    if (sync) {
+      writeFileSync(this.jobFilePath(jobId), body);
+      return;
+    }
+    setImmediate(() => {
+      try {
+        writeFileSync(this.jobFilePath(jobId), body);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Failed to persist generate job ${jobId}: ${message}`);
+      }
+    });
   }
 
   private loadJob(jobId: string): GenerateJobRecord | null {
     try {
       const raw = readFileSync(this.jobFilePath(jobId), 'utf8');
-      return JSON.parse(raw) as GenerateJobRecord;
+      const job = JSON.parse(raw) as GenerateJobRecord;
+      if (!job.phase) job.phase = job.status === 'done' ? 'packaging' : 'rendering';
+      return job;
     } catch {
       return null;
     }
@@ -199,6 +241,7 @@ export class IdCardsGenerateJobsService {
       }
     }
     this.jobs.delete(jobId);
+    this.lastPersistMs.delete(jobId);
     this.deleteJobFile(jobId);
   }
 

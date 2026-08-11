@@ -711,8 +711,8 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         destination,
         onProgress:
           destination === 'download'
-            ? (completed, total) => {
-                toast.loading(formatGenerateProgressMessage(completed, total), {
+            ? (completed, total, meta) => {
+                toast.loading(formatGenerateProgressMessage(completed, total, meta), {
                   id: 'generate-id-cards',
                 });
               }
