@@ -46,6 +46,11 @@ pnpm exec next build --webpack
 cleanup_env_local
 trap - EXIT
 
+if [[ ! -f public/sw.js ]]; then
+  echo "ERROR: public/sw.js missing after build — Serwist did not generate the service worker."
+  exit 1
+fi
+
 if [[ ! -f "$STANDALONE/server.js" ]]; then
   echo "ERROR: missing $STANDALONE/server.js — build did not produce standalone output."
   exit 1
@@ -73,6 +78,7 @@ ss -lntp | grep ":$PORT" || true
 echo "Health:"
 curl -sI "http://127.0.0.1:$PORT/" | head -n1
 curl -sI "http://127.0.0.1:$PORT/students" | head -n1
+curl -sI "http://127.0.0.1:$PORT/sw.js" | head -n1
 echo ""
 echo "Deployed web revision: ${RELEASE_REVISION} (client: ${NEXT_PUBLIC_APP_REVISION})"
 echo "Browsers auto-refresh once when revision changes; or hard-refresh (Ctrl+Shift+R)."

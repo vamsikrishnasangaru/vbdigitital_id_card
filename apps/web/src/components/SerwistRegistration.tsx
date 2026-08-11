@@ -24,6 +24,28 @@ function scriptName(scriptUrl: string | undefined): string {
   }
 }
 
+function isRecoverableServiceWorkerError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /not found|404|failed to update a serviceworker|networkerror|load failed/i.test(message);
+}
+
+async function safeServiceWorkerUpdate(
+  registration: ServiceWorkerRegistration,
+): Promise<'ok' | 'unregistered'> {
+  try {
+    await registration.update();
+    return 'ok';
+  } catch (error) {
+    if (isRecoverableServiceWorkerError(error)) {
+      console.warn('[PWA] Service worker script unavailable — clearing stale registration.');
+      await registration.unregister().catch(() => undefined);
+      return 'unregistered';
+    }
+    console.warn('[PWA] Service worker update check failed:', error);
+    return 'ok';
+  }
+}
+
 function isSerwistWorkerPath(path: string): boolean {
   return path === SERWIST_SW_PATH;
 }
@@ -137,6 +159,19 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
 
       if (cancelled) return;
 
+      if (!isDev) {
+        try {
+          const probe = await fetch(swUrl, { cache: 'no-store', credentials: 'same-origin' });
+          if (!probe.ok) {
+            console.warn(`[PWA] ${swUrl} returned ${probe.status} — skipping service worker registration.`);
+            return;
+          }
+        } catch {
+          console.warn('[PWA] Service worker script probe failed — skipping registration.');
+          return;
+        }
+      }
+
       const registration = await navigator.serviceWorker.register(swUrl, {
         scope: '/',
         type: 'classic',
@@ -145,11 +180,12 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
 
       if (cancelled) return;
 
-      void registration.update();
+      const updateResult = await safeServiceWorkerUpdate(registration);
+      if (updateResult === 'unregistered' || cancelled) return;
 
       onVisible = () => {
         if (document.visibilityState === 'visible') {
-          void registration.update();
+          void safeServiceWorkerUpdate(registration);
         }
       };
       document.addEventListener('visibilitychange', onVisible);
@@ -191,6 +227,10 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
         });
       });
     })().catch((err) => {
+      if (isRecoverableServiceWorkerError(err)) {
+        console.warn('[PWA] Service worker registration skipped:', err);
+        return;
+      }
       console.error('[PWA] Service worker registration failed:', err);
     });
 

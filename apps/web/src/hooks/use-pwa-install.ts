@@ -28,6 +28,7 @@ export function usePwaInstall() {
     setDismissed(isPwaInstallDismissed());
 
     const onPrompt = (event: BeforeInstallPromptEvent) => {
+      if (getIsStandalone() || !isMobileInstallContext()) return;
       event.preventDefault();
       setInstallPrompt(event);
       setCanNativeInstall(true);
