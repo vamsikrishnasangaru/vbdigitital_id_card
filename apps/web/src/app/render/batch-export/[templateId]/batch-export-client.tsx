@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useSearchParams } from 'next/navigation';
 import { IdCardDesigner } from '@/components/designer/IdCardDesigner';
 import api from '@/lib/api';
-import { BATCH_DOWNLOAD_PIXEL_RATIO } from '@/lib/designer-utils';
+import { BATCH_DOWNLOAD_PIXEL_RATIO, collectRenderImageUrls } from '@/lib/designer-utils';
 import { normalizeFrontConfig } from '@/lib/template-utils';
 
 type RenderTemplate = {
@@ -109,19 +109,19 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
   const loadStudent = useCallback(
     async (studentId: string) => {
       if (!token) throw new Error('Missing render token');
-      setLoadingStudent(true);
-      setCanvasReady(false);
       setError(null);
       setActiveStudentId(studentId);
+      setCanvasReady(false);
 
+      const cached = studentCacheRef.current.get(studentId);
+      if (cached) {
+        setStudent(cached);
+        return;
+      }
+
+      setLoadingStudent(true);
+      setStudent(null);
       try {
-        const cached = studentCacheRef.current.get(studentId);
-        if (cached) {
-          setStudent(cached);
-          return;
-        }
-
-        setStudent(null);
         const { data } = await api.get<Record<string, unknown>>(`/students/${studentId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -139,6 +139,33 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
     },
     [token],
   );
+
+  useEffect(() => {
+    if (!template || !prefetchDone || studentCacheRef.current.size === 0) return;
+
+    const elements = normalizeFrontConfig(template.frontConfig);
+    const urls = new Set<string>();
+    for (const row of studentCacheRef.current.values()) {
+      for (const url of collectRenderImageUrls(template.frontBgUrl || '', elements, row, {
+        absolute: true,
+      })) {
+        urls.add(url);
+      }
+    }
+
+    void Promise.all(
+      [...urls].map(
+        (url) =>
+          new Promise<void>((resolve) => {
+            const img = new window.Image();
+            if (url.startsWith('http')) img.crossOrigin = 'anonymous';
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+            img.src = url;
+          }),
+      ),
+    );
+  }, [template, prefetchDone]);
 
   useEffect(() => {
     if (loadingTemplate || !template || !token || !prefetchDone) return;
@@ -211,6 +238,7 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
           student={student}
           onClose={() => {}}
           isRenderMode
+          batchExportMode
           renderExportRatio={renderExportRatio}
           onRenderReady={() => setCanvasReady(true)}
         />

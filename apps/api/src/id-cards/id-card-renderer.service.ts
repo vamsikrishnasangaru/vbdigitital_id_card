@@ -19,10 +19,14 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
-/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). Default 2 — safer on 8GB VPS. */
+/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). Default 3 on 8GB VPS. */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 2),
+  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 3),
+);
+const BATCH_RETRY_CONCURRENCY = Math.max(
+  1,
+  Math.min(3, Number(process.env.ID_CARD_BATCH_RETRY_CONCURRENCY) || 2),
 );
 
 class Semaphore {
@@ -188,14 +192,20 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     return this.capturePdf(url, { format: 'A4', margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
   }
 
-  private async prepareRenderPage(page: Page): Promise<void> {
+  private async prepareRenderPage(page: Page, batch = false): Promise<void> {
     await page.setCacheEnabled(true);
-    page.setDefaultNavigationTimeout(120000);
-    page.setDefaultTimeout(120000);
+    page.setDefaultNavigationTimeout(batch ? 90000 : 120000);
+    page.setDefaultTimeout(batch ? 90000 : 120000);
     await page.setRequestInterception(true);
     page.on('request', (req) => {
       const type = req.resourceType();
-      if (type === 'websocket' || type === 'media') {
+      if (
+        type === 'websocket' ||
+        type === 'media' ||
+        type === 'manifest' ||
+        type === 'eventsource' ||
+        type === 'ping'
+      ) {
         req.abort();
       } else {
         req.continue();
@@ -203,7 +213,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async waitForRenderReady(page: Page): Promise<void> {
+  private async waitForRenderReady(page: Page, batch = false): Promise<void> {
     await page.waitForFunction(
       () => {
         const nodes = Array.from(document.querySelectorAll('[data-render-status]'));
@@ -214,7 +224,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         if (statuses.includes('ready')) return true;
         return false;
       },
-      { timeout: 90000 },
+      { timeout: batch ? 60000 : 90000 },
     );
 
     const renderError = await page.evaluate(() => {
@@ -225,14 +235,19 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       throw new Error(renderError);
     }
 
-    await page.waitForSelector('#id-card-canvas[data-render-images-ready="true"]', { timeout: 90000 });
-    await page.waitForSelector('#id-card-canvas canvas', { timeout: 30000 });
-
-    await page.evaluate(async () => {
-      await document.fonts?.ready;
+    await page.waitForSelector('#id-card-canvas[data-render-images-ready="true"]', {
+      timeout: batch ? 60000 : 90000,
     });
+    if (!batch) {
+      await page.waitForSelector('#id-card-canvas canvas', { timeout: 30000 });
+    }
 
-    await new Promise((r) => setTimeout(r, 50));
+    if (!batch) {
+      await page.evaluate(async () => {
+        await document.fonts?.ready;
+      });
+      await new Promise((r) => setTimeout(r, 50));
+    }
   }
 
   private async waitForBatchExportHost(page: Page): Promise<void> {
@@ -255,7 +270,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       }
     }, studentId);
     if (error) throw new Error(error);
-    await this.waitForRenderReady(page);
+    await this.waitForRenderReady(page, true);
   }
 
   private buildBatchExportUrl(
@@ -298,11 +313,14 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     page: Page,
     _orientation: 'HORIZONTAL' | 'VERTICAL',
     pixelRatio: number = DOWNLOAD_RENDER_PIXEL_RATIO,
+    fastBatch = false,
   ): Promise<Buffer> {
-    const dataUrl = await page.evaluate(async (targetPixelRatio) => {
+    const dataUrl = await page.evaluate(async (targetPixelRatio, skipWarmup) => {
       const ratio = Math.max(4, targetPixelRatio);
 
-      await document.fonts?.ready;
+      if (!skipWarmup) {
+        await document.fonts?.ready;
+      }
 
       const root = document.querySelector('#id-card-canvas');
       const expectedWidth = Number(root?.getAttribute('data-export-width')) || 0;
@@ -371,6 +389,10 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         );
 
         await new Promise<void>((resolve) => {
+          if (skipWarmup) {
+            requestAnimationFrame(() => resolve());
+            return;
+          }
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         });
 
@@ -436,6 +458,10 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       if (canvasIsPrintResolution) {
         if (root) await waitForImages(root);
         await new Promise<void>((resolve) => {
+          if (skipWarmup) {
+            requestAnimationFrame(() => resolve());
+            return;
+          }
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
         });
         return canvas!.toDataURL('image/png');
@@ -451,7 +477,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       }
 
       throw new Error('Konva canvas not found');
-    }, pixelRatio);
+    }, pixelRatio, fastBatch);
 
     const base64 = dataUrl.split(',')[1];
     if (!base64) throw new Error('Failed to export card PNG');
@@ -515,7 +541,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         const worker = async () => {
           const page = await this.newPage();
           try {
-            await this.prepareRenderPage(page);
+            await this.prepareRenderPage(page, true);
             let batchPageReady = false;
             while (true) {
               const index = nextIndex++;
@@ -531,6 +557,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
                   page,
                   orientation,
                   BATCH_RENDER_PIXEL_RATIO,
+                  true,
                 );
                 results[index] = { studentId, buffer };
               } catch (err: unknown) {
@@ -551,29 +578,40 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           .map((result, index) => (result.error ? index : -1))
           .filter((index) => index >= 0);
 
-        for (const index of failedIndices) {
-          const studentId = studentIds[index];
-          try {
-            await this.restartBrowser(`retry ${studentId}`);
-            const page = await this.newPage();
-            try {
-              await this.prepareRenderPage(page);
-              await this.prepareBatchExportPage(page, templateId, token, studentIds, orientation);
-              await this.renderStudentOnBatchPage(page, studentId);
-              const buffer = await this.captureCanvasPng(
-                page,
-                orientation,
-                BATCH_RENDER_PIXEL_RATIO,
-              );
-              results[index] = { studentId, buffer };
-            } finally {
-              await this.safeClosePage(page);
+        if (failedIndices.length) {
+          await this.restartBrowser('retry failed batch cards');
+          let retrySlot = 0;
+          const retryWorker = async () => {
+            while (true) {
+              const slot = retrySlot++;
+              if (slot >= failedIndices.length) break;
+              const index = failedIndices[slot];
+              const studentId = studentIds[index];
+              try {
+                const page = await this.newPage();
+                try {
+                  await this.prepareRenderPage(page, true);
+                  await this.prepareBatchExportPage(page, templateId, token, studentIds, orientation);
+                  await this.renderStudentOnBatchPage(page, studentId);
+                  const buffer = await this.captureCanvasPng(
+                    page,
+                    orientation,
+                    BATCH_RENDER_PIXEL_RATIO,
+                    true,
+                  );
+                  results[index] = { studentId, buffer };
+                } finally {
+                  await this.safeClosePage(page);
+                }
+              } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                this.logger.warn(`Batch retry failed for ${studentId}: ${message}`);
+                results[index] = { studentId, error: message };
+              }
             }
-          } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : String(err);
-            this.logger.warn(`Batch retry failed for ${studentId}: ${message}`);
-            results[index] = { studentId, error: message };
-          }
+          };
+          const retryWorkers = Math.min(BATCH_RETRY_CONCURRENCY, failedIndices.length);
+          await Promise.all(Array.from({ length: retryWorkers }, () => retryWorker()));
         }
 
         return results;

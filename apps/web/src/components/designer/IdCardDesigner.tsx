@@ -95,6 +95,8 @@ interface IdCardDesignerProps {
   onRenderReady?: () => void;
   /** Server batch export pixel ratio (defaults to full print quality). */
   renderExportRatio?: number;
+  /** Headless batch ZIP — skip extra render settle delays between students. */
+  batchExportMode?: boolean;
   /** Force protected preview (no export). Auto-enabled for school admin / teacher student preview. */
   restrictedPreview?: boolean;
   /** Allow PNG/PDF download inside protected preview (super admin). */
@@ -139,6 +141,7 @@ export function IdCardDesigner({
   onSaveAs,
   onRenderReady,
   renderExportRatio,
+  batchExportMode = false,
   restrictedPreview: restrictedPreviewProp,
   allowPreviewExport = false,
   previewNavigation,
@@ -818,7 +821,8 @@ export function IdCardDesigner({
       if (bgStatus === 'failed') return;
       if (bgStatus === 'loaded' && !backgroundImage) return;
     }
-    const timer = setTimeout(() => onRenderReady(), 50);
+    const delayMs = batchExportMode ? 0 : 50;
+    const timer = setTimeout(() => onRenderReady(), delayMs);
     return () => clearTimeout(timer);
   }, [
     isRenderMode,
@@ -831,6 +835,7 @@ export function IdCardDesigner({
     displayElements,
     historyVersion,
     previewStudent,
+    batchExportMode,
   ]);
 
   if (isRenderMode) {
