@@ -153,7 +153,8 @@ export class IdCardsGenerateJobsService {
       throw new NotFoundException('Generate job not ready for download');
     }
     const result = job.result;
-    this.removeJob(jobId, job);
+    // Keep temp ZIP on disk until the HTTP response finishes streaming.
+    this.removeJob(jobId, job, { keepResultFile: true });
     return result;
   }
 
@@ -246,8 +247,8 @@ export class IdCardsGenerateJobsService {
     }
   }
 
-  private removeJob(jobId: string, job: GenerateJobRecord) {
-    if (job.result?.filePath) {
+  private removeJob(jobId: string, job: GenerateJobRecord, options?: { keepResultFile?: boolean }) {
+    if (job.result?.filePath && !options?.keepResultFile) {
       try {
         unlinkSync(job.result.filePath);
       } catch {
