@@ -7,14 +7,24 @@ API_DIR="$APP_ROOT/apps/api"
 
 echo "=== Rebuilding API ==="
 cd "$APP_ROOT"
+git pull
 pnpm install
 pnpm --filter @repo/db run generate
 cd "$API_DIR"
-rm -f tsconfig.tsbuildinfo
-pnpm run build
+rm -rf dist tsconfig.tsbuildinfo
+echo "Running: pnpm run build"
+if ! pnpm run build 2>&1 | tee /tmp/vb-api-build.log; then
+  echo "ERROR: pnpm run build failed."
+  exit 1
+fi
 
 if [[ ! -f "$API_DIR/dist/main.js" ]]; then
-  echo "ERROR: Still no dist/main.js after build. Paste the build errors above."
+  echo ""
+  echo "ERROR: Still no dist/main.js after build."
+  echo "Last 40 lines of build log:"
+  tail -n 40 /tmp/vb-api-build.log || true
+  echo ""
+  echo "Try manually: cd $API_DIR && rm -rf dist tsconfig.tsbuildinfo && npx nest build"
   exit 1
 fi
 

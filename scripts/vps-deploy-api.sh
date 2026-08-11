@@ -39,7 +39,7 @@ pnpm --filter @repo/db run generate
 bash "$APP_ROOT/scripts/vps-install-chrome.sh"
 
 cd "$API_DIR"
-rm -f tsconfig.tsbuildinfo
+rm -rf dist tsconfig.tsbuildinfo
 pnpm run build
 
 if [[ ! -f "$API_DIR/dist/main.js" ]]; then
