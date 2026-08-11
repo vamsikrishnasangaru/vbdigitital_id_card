@@ -41,6 +41,12 @@ bash "$APP_ROOT/scripts/vps-install-chrome.sh"
 cd "$API_DIR"
 pnpm run build
 
+if [[ ! -f "$API_DIR/dist/main.js" ]]; then
+  echo "ERROR: Build did not produce $API_DIR/dist/main.js — PM2 cannot start vb-api."
+  echo "Check the nest build output above for TypeScript errors."
+  exit 1
+fi
+
 # Puppeteer loads render pages from the local Next server (not the public URL).
 if ! grep -q '^FRONTEND_URL=' "$API_DIR/.env" 2>/dev/null; then
   echo "WARN: Add FRONTEND_URL=http://127.0.0.1:3000 to $API_DIR/.env for reliable ID card rendering."
@@ -50,7 +56,7 @@ if ! grep -q '^ID_CARD_BATCH_CONCURRENCY=' "$API_DIR/.env" 2>/dev/null; then
   echo "TIP: ID_CARD_BATCH_CONCURRENCY defaults to 3. Set to 4 if batch downloads stay stable and you want more speed."
 fi
 
-pm2 restart vb-api
+pm2 startOrReload "$APP_ROOT/ecosystem.config.cjs" --only vb-api --update-env
 pm2 save
 
 if [[ -f "$APP_ROOT/scripts/vps-nginx-generate-timeout.sh" ]]; then
