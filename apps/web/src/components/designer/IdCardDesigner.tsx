@@ -818,7 +818,7 @@ export function IdCardDesigner({
       if (bgStatus === 'failed') return;
       if (bgStatus === 'loaded' && !backgroundImage) return;
     }
-    const timer = setTimeout(() => onRenderReady(), 200);
+    const timer = setTimeout(() => onRenderReady(), 100);
     return () => clearTimeout(timer);
   }, [
     isRenderMode,

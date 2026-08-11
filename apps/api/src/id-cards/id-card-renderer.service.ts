@@ -21,7 +21,7 @@ const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
 /** Parallel Puppeteer tabs during multi-card batch (env override on VPS). */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(3, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 2),
+  Math.min(4, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 3),
 );
 
 class Semaphore {
@@ -231,6 +231,53 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     });
 
     await new Promise((r) => setTimeout(r, 50));
+  }
+
+  private async waitForBatchExportHost(page: Page): Promise<void> {
+    await page.waitForFunction(
+      () => (window as unknown as { __vbBatchRender?: { ready?: boolean } }).__vbBatchRender?.ready === true,
+      { timeout: 120000 },
+    );
+  }
+
+  private async renderStudentOnBatchPage(page: Page, studentId: string): Promise<void> {
+    const error = await page.evaluate(async (id) => {
+      try {
+        const api = (window as unknown as { __vbBatchRender?: { renderStudent?: (sid: string) => Promise<void> } })
+          .__vbBatchRender;
+        if (!api?.renderStudent) throw new Error('Batch render API not ready');
+        await api.renderStudent(id);
+        return null;
+      } catch (err: unknown) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    }, studentId);
+    if (error) throw new Error(error);
+    await this.waitForRenderReady(page);
+  }
+
+  private buildBatchExportUrl(templateId: string, token: string): string {
+    const params = new URLSearchParams({ token });
+    return `${this.frontendUrl}/render/batch-export/${templateId}?${params.toString()}`;
+  }
+
+  private async prepareBatchExportPage(
+    page: Page,
+    templateId: string,
+    token: string,
+    orientation: 'HORIZONTAL' | 'VERTICAL',
+  ): Promise<void> {
+    const size = CARD_SIZES[orientation];
+    await page.setViewport({
+      width: size.width + 80,
+      height: size.height + 80,
+      deviceScaleFactor: 1,
+    });
+    await page.goto(this.buildBatchExportUrl(templateId, token), {
+      waitUntil: BATCH_GOTO_WAIT_UNTIL,
+      timeout: 120000,
+    });
+    await this.waitForBatchExportHost(page);
   }
 
   private async captureCanvasPng(
@@ -449,17 +496,21 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           const page = await this.newPage();
           try {
             await this.prepareRenderPage(page);
+            let batchPageReady = false;
             while (true) {
               const index = nextIndex++;
               if (index >= studentIds.length) break;
               const studentId = studentIds[index];
               try {
-                const buffer = await this.renderCardOnPage(
+                if (!batchPageReady) {
+                  await this.prepareBatchExportPage(page, templateId, token, orientation);
+                  batchPageReady = true;
+                }
+                await this.renderStudentOnBatchPage(page, studentId);
+                const buffer = await this.captureCanvasPng(
                   page,
-                  templateId,
-                  studentId,
-                  token,
                   orientation,
+                  DOWNLOAD_RENDER_PIXEL_RATIO,
                 );
                 results[index] = { studentId, buffer };
               } catch (err: unknown) {

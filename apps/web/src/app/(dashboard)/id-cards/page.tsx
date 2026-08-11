@@ -184,7 +184,19 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
         destination,
       });
     },
+    onMutate: (destination) => {
+      const count = students.length;
+      toast.loading(
+        destination === 'download'
+          ? count > 1
+            ? `Generating ${count} ID cards at print quality… Large batches may take a few minutes.`
+            : 'Generating ID card…'
+          : `Uploading ${count} ID card(s) to Google Drive…`,
+        { id: 'generate-id-cards' },
+      );
+    },
     onSuccess: (result) => {
+      toast.dismiss('generate-id-cards');
       setShowGenerateDialog(false);
       if (result.kind === 'file') {
         triggerIdCardDownload(result.blob, result.filename);
@@ -220,6 +232,7 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
+      toast.dismiss('generate-id-cards');
       if (!err.response && !navigator.onLine) return;
       toast.error(
         (err as { message?: string }).message ||
