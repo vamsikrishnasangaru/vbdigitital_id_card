@@ -1883,6 +1883,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         studentCount={visibleStudents.length}
         isSubmitting={generateMutation.isPending}
         driveAvailable={driveStatus?.canUpload ?? false}
+        driveAuthHint={driveStatus?.authHint || driveStatus?.authError}
         onDownload={() => generateMutation.mutate('download')}
         onGoogleDrive={() => generateMutation.mutate('drive')}
       />

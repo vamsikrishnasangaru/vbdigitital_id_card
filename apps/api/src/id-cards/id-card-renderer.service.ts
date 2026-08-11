@@ -295,7 +295,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     try {
       await page.evaluate(() =>
         new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          requestAnimationFrame(() => resolve());
         }),
       );
       const png = await element.screenshot({ type: 'png' });
@@ -564,11 +564,16 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   ): Promise<Array<{ studentId: string; buffer?: Buffer; error?: string }>> {
     if (!studentIds.length) return [];
 
+    const workerCount = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
+    /** Small batches (e.g. 37) use more workers; large batches cap chunk size for memory. */
+    const chunkSize = Math.min(
+      BATCH_PAGE_SIZE,
+      Math.max(5, Math.ceil(studentIds.length / workerCount)),
+    );
     const chunks: Array<{ ids: string[]; startIndex: number }> = [];
-    for (let i = 0; i < studentIds.length; i += BATCH_PAGE_SIZE) {
-      chunks.push({ ids: studentIds.slice(i, i + BATCH_PAGE_SIZE), startIndex: i });
+    for (let i = 0; i < studentIds.length; i += chunkSize) {
+      chunks.push({ ids: studentIds.slice(i, i + chunkSize), startIndex: i });
     }
-    const workerCount = Math.min(BATCH_RENDER_CONCURRENCY, chunks.length);
 
     let completed = 0;
     const reportProgress = () => {
@@ -619,7 +624,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           }
         };
 
-        await Promise.all(Array.from({ length: workerCount }, () => renderChunkWorker()));
+        await Promise.all(Array.from({ length: Math.min(workerCount, chunks.length) }, () => renderChunkWorker()));
 
         const failedIndices = results
           .map((result, index) => (result.error ? index : -1))

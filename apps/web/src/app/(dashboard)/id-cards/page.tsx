@@ -813,6 +813,7 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
         studentCount={students.length}
         isSubmitting={generateMutation.isPending}
         driveAvailable={driveStatus?.canUpload ?? false}
+        driveAuthHint={driveStatus?.authHint || driveStatus?.authError}
         onDownload={() => generateMutation.mutate('download')}
         onGoogleDrive={() => generateMutation.mutate('drive')}
       />

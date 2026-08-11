@@ -4,6 +4,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { google, drive_v3 } from 'googleapis';
 import { Readable } from 'stream';
 
+type GoogleOAuth2Client = InstanceType<typeof google.auth.OAuth2>;
+
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 
 function escapeDriveQueryValue(value: string): string {
@@ -17,8 +19,14 @@ export class DriveService implements OnModuleInit {
   private isConfigured = false;
   /** OAuth uploads use the signed-in user's storage (required for personal Gmail). */
   private usesUserOAuth = false;
+  private oauth2Client: GoogleOAuth2Client | null = null;
+  private authHealthy = true;
+  private authErrorMessage?: string;
   private rootFolderId: string | undefined;
   private sharedDriveId: string | undefined;
+  /** Cache folder IDs during batch uploads (School/Class/Section). */
+  private readonly folderCache = new Map<string, string>();
+  private readonly hierarchyCache = new Map<string, string>();
 
   isDriveEnabled(): boolean {
     return this.isConfigured;
@@ -26,7 +34,26 @@ export class DriveService implements OnModuleInit {
 
   /** True when uploads can use user OAuth or a Workspace shared drive (not service-account-only). */
   canUploadToDrive(): boolean {
-    return this.isConfigured && (this.usesUserOAuth || Boolean(this.sharedDriveId));
+    return this.isConfigured && this.authHealthy && (this.usesUserOAuth || Boolean(this.sharedDriveId));
+  }
+
+  getAuthStatus(): { ok: boolean; error?: string; hint?: string } {
+    if (!this.isConfigured) {
+      return { ok: false, error: 'Google Drive is not configured on the server.' };
+    }
+    if (this.authHealthy) return { ok: true };
+    return {
+      ok: false,
+      error: this.authErrorMessage || 'Google Drive authorization failed.',
+      hint: /invalid_grant|expired|revoked/i.test(this.authErrorMessage || '')
+        ? 'Re-run OAuth setup: cd apps/api && pnpm run drive:oauth-setup — then update GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN in apps/api/.env and restart vb-api.'
+        : undefined,
+    };
+  }
+
+  beginBatchUploads() {
+    this.folderCache.clear();
+    this.hierarchyCache.clear();
   }
 
   onModuleInit() {
@@ -87,6 +114,7 @@ export class DriveService implements OnModuleInit {
 
     const oauth2 = this.tryInitOAuth();
     if (oauth2) {
+      this.oauth2Client = oauth2;
       this.drive = google.drive({ version: 'v3', auth: oauth2 });
       this.usesUserOAuth = true;
       this.isConfigured = true;
@@ -147,6 +175,86 @@ export class DriveService implements OnModuleInit {
     }
   }
 
+  private markAuthFailure(error: unknown) {
+    const message = DriveService.formatDriveError(error);
+    this.authHealthy = false;
+    this.authErrorMessage = message;
+    this.logger.error(`Google Drive auth failed: ${message}`);
+  }
+
+  private async ensureAccessTokenFresh() {
+    if (!this.oauth2Client) return;
+    try {
+      await this.oauth2Client.getAccessToken();
+      this.authHealthy = true;
+      this.authErrorMessage = undefined;
+    } catch (error: unknown) {
+      this.markAuthFailure(error);
+      throw error;
+    }
+  }
+
+  /** Pre-create School/Class/Section folders once per batch, then upload in parallel. */
+  async uploadFilesBatch(
+    files: Array<{
+      fileName: string;
+      mimeType: string;
+      buffer: Buffer;
+      folderHierarchy: string[];
+    }>,
+    concurrency = 4,
+  ): Promise<Array<{ fileName: string; driveFileId?: string; error?: string }>> {
+    this.beginBatchUploads();
+    if (this.usesUserOAuth) {
+      await this.ensureAccessTokenFresh();
+    }
+    if (!this.canUploadToDrive()) {
+      const message = this.authErrorMessage || 'Google Drive upload is not available.';
+      return files.map((file) => ({ fileName: file.fileName, error: message }));
+    }
+
+    const hierarchyKeys = new Set<string>();
+    for (const file of files) {
+      if (file.folderHierarchy.length) {
+        hierarchyKeys.add(file.folderHierarchy.join('\0'));
+      }
+    }
+    await Promise.all(
+      [...hierarchyKeys].map(async (key) => {
+        const folders = key.split('\0');
+        await this.resolveFolderHierarchy(folders);
+      }),
+    );
+
+    const results: Array<{ fileName: string; driveFileId?: string; error?: string }> = files.map(
+      (file) => ({ fileName: file.fileName }),
+    );
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= files.length) break;
+        const file = files[index];
+        try {
+          results[index].driveFileId = await this.uploadFile(
+            file.fileName,
+            file.mimeType,
+            file.buffer,
+            file.folderHierarchy,
+          );
+        } catch (error: unknown) {
+          results[index].error =
+            error instanceof Error ? error.message : 'Google Drive upload failed';
+        }
+      }
+    };
+
+    const workers = Math.min(concurrency, files.length);
+    await Promise.all(Array.from({ length: workers }, () => worker()));
+    return results;
+  }
+
   async uploadFile(
     fileName: string,
     mimeType: string,
@@ -155,6 +263,14 @@ export class DriveService implements OnModuleInit {
   ): Promise<string> {
     if (!this.isConfigured) {
       throw new Error('Google Drive is not configured.');
+    }
+
+    if (this.usesUserOAuth) {
+      await this.ensureAccessTokenFresh();
+    }
+
+    if (!this.canUploadToDrive()) {
+      throw new Error(this.authErrorMessage || 'Google Drive upload is not available.');
     }
 
     if (!this.usesUserOAuth && !this.rootFolderId && !this.sharedDriveId) {
@@ -187,6 +303,9 @@ export class DriveService implements OnModuleInit {
       return await this.createFileInParent(driveFileName, mimeType, fileBuffer, parentId);
     } catch (error: unknown) {
       const message = DriveService.formatDriveError(error);
+      if (/invalid_grant|expired|revoked/i.test(message)) {
+        this.markAuthFailure(error);
+      }
       this.logger.error(`Error uploading file ${fileName} to Google Drive: ${message}`);
       throw new Error(message);
     }
@@ -237,6 +356,14 @@ export class DriveService implements OnModuleInit {
   }
 
   private async verifyUploadTarget(): Promise<void> {
+    if (this.usesUserOAuth) {
+      try {
+        await this.ensureAccessTokenFresh();
+      } catch {
+        return;
+      }
+    }
+
     const folderId = this.rootFolderId ?? this.sharedDriveId;
     if (!folderId) return;
 
@@ -249,6 +376,9 @@ export class DriveService implements OnModuleInit {
       this.logger.log(`Drive upload target OK: "${meta.data.name}" (${meta.data.id})`);
     } catch (error: unknown) {
       const message = DriveService.formatDriveError(error);
+      if (/invalid_grant|expired|revoked/i.test(message)) {
+        this.markAuthFailure(error);
+      }
       this.logger.error(`Cannot access Drive folder ${folderId}: ${message}`);
     }
   }
@@ -265,6 +395,14 @@ export class DriveService implements OnModuleInit {
   }
 
   private async resolveFolderHierarchy(folders: string[]): Promise<string | null> {
+    if (!folders.length) {
+      return this.rootFolderId ?? this.sharedDriveId ?? null;
+    }
+
+    const cacheKey = folders.join('\0');
+    const cached = this.hierarchyCache.get(cacheKey);
+    if (cached) return cached;
+
     let currentParentId: string | undefined = this.rootFolderId ?? this.sharedDriveId;
 
     for (const folderName of folders) {
@@ -273,7 +411,9 @@ export class DriveService implements OnModuleInit {
       currentParentId = result;
     }
 
-    return currentParentId ?? null;
+    const resolved = currentParentId ?? null;
+    if (resolved) this.hierarchyCache.set(cacheKey, resolved);
+    return resolved;
   }
 
   private async getOrCreateFolder(folderName: string, parentId?: string): Promise<string | null> {
@@ -281,6 +421,10 @@ export class DriveService implements OnModuleInit {
       this.logger.error('Cannot create Drive folder without a parent (set GOOGLE_DRIVE_ROOT_FOLDER_ID).');
       return null;
     }
+
+    const cacheKey = `${parentId}\0${folderName}`;
+    const cached = this.folderCache.get(cacheKey);
+    if (cached) return cached;
 
     const safeName = escapeDriveQueryValue(folderName);
     const query = [
@@ -300,7 +444,9 @@ export class DriveService implements OnModuleInit {
     );
 
     if (res.data.files && res.data.files.length > 0) {
-      return res.data.files[0].id || null;
+      const folderId = res.data.files[0].id || null;
+      if (folderId) this.folderCache.set(cacheKey, folderId);
+      return folderId;
     }
 
     const createRes = await this.drive.files.create({
@@ -312,7 +458,9 @@ export class DriveService implements OnModuleInit {
       fields: 'id',
       supportsAllDrives: true,
     });
-    return createRes.data.id || null;
+    const folderId = createRes.data.id || null;
+    if (folderId) this.folderCache.set(cacheKey, folderId);
+    return folderId;
   }
 
   async downloadFile(fileId: string): Promise<Buffer | null> {

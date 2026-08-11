@@ -102,7 +102,7 @@ export async function resolveOfflineGet(
     const cached = offlineGetCache.get(url, params);
     if (cached) return { data: cached, status: 200, config };
     return {
-      data: { configured: false, canUpload: false },
+      data: { configured: false, canUpload: false, authOk: false },
       status: 200,
       config,
     };

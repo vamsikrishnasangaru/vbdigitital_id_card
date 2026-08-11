@@ -6,6 +6,9 @@ export type GenerateDestination = 'download' | 'drive';
 export type DriveStatus = {
   configured: boolean;
   canUpload: boolean;
+  authOk?: boolean;
+  authError?: string;
+  authHint?: string;
 };
 
 async function readApiErrorMessage(data: unknown, fallback: string): Promise<string> {

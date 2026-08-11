@@ -40,9 +40,13 @@ export class IdCardsService {
   ) {}
 
   getDriveStatus() {
+    const auth = this.driveService.getAuthStatus();
     return {
       configured: this.driveService.isDriveEnabled(),
       canUpload: this.driveService.canUploadToDrive(),
+      authOk: auth.ok,
+      authError: auth.error,
+      authHint: auth.hint,
     };
   }
 
@@ -56,9 +60,12 @@ export class IdCardsService {
     }
 
     if (destination === IdCardGenerateDestination.DRIVE) {
+      const auth = this.driveService.getAuthStatus();
       if (!this.driveService.canUploadToDrive()) {
         throw new ServiceUnavailableException(
-          'Google Drive upload is not configured. Set GOOGLE_DRIVE_OAUTH_* in the API environment, or choose Download instead.',
+          auth.hint ||
+            auth.error ||
+            'Google Drive upload is not configured. Set GOOGLE_DRIVE_OAUTH_* in the API environment, or choose Download instead.',
         );
       }
       return this.generateToDrive(templateId, studentIds);
@@ -225,55 +232,83 @@ export class IdCardsService {
       driveFileId?: string;
     }[] = [];
 
-    await Promise.all(
-      rendered.map(async (result) => {
-        if (!result.buffer) {
-          this.logger.warn(`ID card render failed for student ${result.studentId}: ${result.error}`);
-          results.push({ studentId: result.studentId, status: 'FAILED', error: result.error || 'Render failed' });
-          return;
-        }
+    const uploadItems: Array<{
+      studentId: string;
+      fileName: string;
+      buffer: Buffer;
+      folderHierarchy: string[];
+    }> = [];
 
+    for (const result of rendered) {
+      if (!result.buffer) {
+        this.logger.warn(`ID card render failed for student ${result.studentId}: ${result.error}`);
+        results.push({ studentId: result.studentId, status: 'FAILED', error: result.error || 'Render failed' });
+        continue;
+      }
+
+      const student = studentMap.get(result.studentId);
+      if (!student) {
+        results.push({
+          studentId: result.studentId,
+          status: 'FAILED',
+          error: `Student not found: ${result.studentId}`,
+        });
+        continue;
+      }
+
+      const schoolName = student.school?.name || student.section?.class?.school?.name || 'School';
+      const className = student.class?.name || student.section?.class?.name || 'Class';
+      const sectionName = student.section?.name || 'Section';
+
+      uploadItems.push({
+        studentId: result.studentId,
+        fileName: `${idCardFileBaseName(student)}.png`,
+        buffer: result.buffer,
+        folderHierarchy: [schoolName, className, sectionName],
+      });
+    }
+
+    const uploadResults = await this.driveService.uploadFilesBatch(
+      uploadItems.map((item) => ({
+        fileName: item.fileName,
+        mimeType: 'image/png',
+        buffer: item.buffer,
+        folderHierarchy: item.folderHierarchy,
+      })),
+      4,
+    );
+
+    const successStudentIds: string[] = [];
+    for (let i = 0; i < uploadItems.length; i += 1) {
+      const item = uploadItems[i];
+      const upload = uploadResults[i];
+      if (upload.driveFileId) {
         try {
-          await this.ensureIdCardRecord(result.studentId, templateId);
-          const student = studentMap.get(result.studentId);
-          if (!student) {
-            throw new BadRequestException(`Student not found: ${result.studentId}`);
-          }
-          const schoolName = student.school?.name || student.section?.class?.school?.name || 'School';
-          const className = student.class?.name || student.section?.class?.name || 'Class';
-          const sectionName = student.section?.name || 'Section';
-
-          const fileName = `${idCardFileBaseName(student)}.png`;
-          let driveFileId: string | undefined;
-
-          try {
-            driveFileId = await this.driveService.uploadFile(
-              fileName,
-              'image/png',
-              result.buffer,
-              [schoolName, className, sectionName],
-            );
-          } catch (driveErr: unknown) {
-            const driveMessage =
-              driveErr instanceof Error ? driveErr.message : 'Google Drive upload failed';
-            this.logger.warn(`Drive upload failed for ${fileName}: ${driveMessage}`);
-            results.push({ studentId: result.studentId, status: 'FAILED', error: driveMessage });
-            return;
-          }
-
-          await this.prisma.idCard.updateMany({
-            where: { studentId: result.studentId, templateId },
-            data: { status: 'PRINTED' },
+          await this.ensureIdCardRecord(item.studentId, templateId);
+          successStudentIds.push(item.studentId);
+          results.push({
+            studentId: item.studentId,
+            status: 'SUCCESS',
+            driveFileId: upload.driveFileId,
           });
-
-          results.push({ studentId: result.studentId, status: 'SUCCESS', driveFileId });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`ID card post-process failed for student ${result.studentId}: ${message}`);
-          results.push({ studentId: result.studentId, status: 'FAILED', error: message });
+          this.logger.warn(`ID card post-process failed for student ${item.studentId}: ${message}`);
+          results.push({ studentId: item.studentId, status: 'FAILED', error: message });
         }
-      }),
-    );
+      } else {
+        const driveMessage = upload.error || 'Google Drive upload failed';
+        this.logger.warn(`Drive upload failed for ${item.fileName}: ${driveMessage}`);
+        results.push({ studentId: item.studentId, status: 'FAILED', error: driveMessage });
+      }
+    }
+
+    if (successStudentIds.length) {
+      await this.prisma.idCard.updateMany({
+        where: { studentId: { in: successStudentIds }, templateId },
+        data: { status: 'PRINTED' },
+      });
+    }
 
     const successCount = results.filter((r) => r.status === 'SUCCESS').length;
     const failCount = results.filter((r) => r.status === 'FAILED').length;

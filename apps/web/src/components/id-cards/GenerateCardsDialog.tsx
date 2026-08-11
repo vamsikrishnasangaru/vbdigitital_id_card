@@ -9,6 +9,7 @@ type GenerateCardsDialogProps = {
   studentCount: number;
   isSubmitting: boolean;
   driveAvailable: boolean;
+  driveAuthHint?: string;
   onDownload: () => void;
   onGoogleDrive: () => void;
 };
@@ -19,6 +20,7 @@ export function GenerateCardsDialog({
   studentCount,
   isSubmitting,
   driveAvailable,
+  driveAuthHint,
   onDownload,
   onGoogleDrive,
 }: GenerateCardsDialogProps) {
@@ -99,7 +101,8 @@ export function GenerateCardsDialog({
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
                 {driveAvailable
                   ? 'Upload PNG images to your configured Google Drive folder (School → Class → Section).'
-                  : 'Not configured yet. Set up OAuth on the server when you are ready — use Download for now.'}
+                  : driveAuthHint ||
+                    'Not configured yet. Set up OAuth on the server when you are ready — use Download for now.'}
               </p>
             </div>
           </button>
