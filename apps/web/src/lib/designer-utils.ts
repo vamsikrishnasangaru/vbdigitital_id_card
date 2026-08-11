@@ -18,6 +18,9 @@ export const PREVIEW_PIXEL_RATIO = 6;
  */
 export const DOWNLOAD_PIXEL_RATIO = 12;
 
+/** Batch ZIP download — 768 DPI; faster than 12× with no visible loss on PVC cards. */
+export const BATCH_DOWNLOAD_PIXEL_RATIO = 8;
+
 export function getExportPixelSize(
   orientation: 'HORIZONTAL' | 'VERTICAL',
   pixelRatio: number = DOWNLOAD_PIXEL_RATIO,

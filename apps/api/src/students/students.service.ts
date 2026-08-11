@@ -369,6 +369,21 @@ export class StudentsService {
     return student;
   }
 
+  /** Same shape as findOne — used by batch ID card render to prefetch all students in one query. */
+  async findManyByIds(ids: string[]) {
+    const unique = [...new Set((ids ?? []).filter(Boolean))];
+    if (!unique.length) return [];
+    return this.prisma.student.findMany({
+      where: { id: { in: unique } },
+      include: {
+        class: true,
+        section: true,
+        school: true,
+        idCards: { orderBy: { createdAt: 'desc' }, take: 5 },
+      },
+    });
+  }
+
   async update(
     id: string,
     data: any,

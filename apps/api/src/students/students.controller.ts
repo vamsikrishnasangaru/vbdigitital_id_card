@@ -46,6 +46,12 @@ export class StudentsController {
     return this.studentsService.getClassWiseStats(schoolId);
   }
 
+  @Post('by-ids')
+  @ApiOperation({ summary: 'Fetch multiple students by ID (batch ID card render)' })
+  findManyByIds(@Body() body: { ids: string[] }) {
+    return this.studentsService.findManyByIds(body.ids ?? []);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get student details' })
   findOne(@Param('id') id: string) {

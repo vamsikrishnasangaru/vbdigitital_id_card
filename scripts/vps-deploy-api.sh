@@ -46,6 +46,10 @@ if ! grep -q '^FRONTEND_URL=' "$API_DIR/.env" 2>/dev/null; then
   echo "WARN: Add FRONTEND_URL=http://127.0.0.1:3000 to $API_DIR/.env for reliable ID card rendering."
 fi
 
+if ! grep -q '^ID_CARD_BATCH_CONCURRENCY=' "$API_DIR/.env" 2>/dev/null; then
+  echo "TIP: Add ID_CARD_BATCH_CONCURRENCY=4 (or 6 on a larger VPS) to $API_DIR/.env for faster batch downloads."
+fi
+
 pm2 restart vb-api
 pm2 save
 

@@ -1,9 +1,10 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { IdCardDesigner } from '@/components/designer/IdCardDesigner';
 import api from '@/lib/api';
+import { BATCH_DOWNLOAD_PIXEL_RATIO } from '@/lib/designer-utils';
 import { normalizeFrontConfig } from '@/lib/template-utils';
 
 type RenderTemplate = {
@@ -25,13 +26,26 @@ declare global {
 export function BatchExportClient({ templateId }: { templateId: string }) {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
+  const exportRatioParam = searchParams.get('exportRatio');
+  const studentIdsParam = searchParams.get('studentIds');
+  const studentIds = useMemo(
+    () => (studentIdsParam ? studentIdsParam.split(',').filter(Boolean) : []),
+    [studentIdsParam],
+  );
+  const renderExportRatio = useMemo(() => {
+    const parsed = exportRatioParam ? Number(exportRatioParam) : BATCH_DOWNLOAD_PIXEL_RATIO;
+    return Number.isFinite(parsed) && parsed >= 4 ? parsed : BATCH_DOWNLOAD_PIXEL_RATIO;
+  }, [exportRatioParam]);
+
   const [template, setTemplate] = useState<RenderTemplate | null>(null);
   const [student, setStudent] = useState<Record<string, unknown> | null>(null);
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(true);
   const [loadingStudent, setLoadingStudent] = useState(false);
+  const [prefetchDone, setPrefetchDone] = useState(false);
   const [canvasReady, setCanvasReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const studentCacheRef = useRef<Map<string, Record<string, unknown>>>(new Map());
   const pendingRef = useRef<{
     resolve: () => void;
     reject: (err: Error) => void;
@@ -41,33 +55,56 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
     if (!token || !templateId) {
       setError('Missing render token');
       setLoadingTemplate(false);
+      setPrefetchDone(true);
       return;
     }
 
     let cancelled = false;
     void (async () => {
       try {
-        const { data } = await api.get<RenderTemplate>(`/templates/${templateId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!cancelled) setTemplate(data);
+        const headers = { Authorization: `Bearer ${token}` };
+        const requests: Promise<unknown>[] = [
+          api.get<RenderTemplate>(`/templates/${templateId}`, { headers }).then(({ data }) => {
+            if (!cancelled) setTemplate(data);
+          }),
+        ];
+
+        if (studentIds.length) {
+          requests.push(
+            api
+              .post<Record<string, unknown>[]>('/students/by-ids', { ids: studentIds }, { headers })
+              .then(({ data }) => {
+                const map = new Map<string, Record<string, unknown>>();
+                for (const row of data) {
+                  const id = typeof row.id === 'string' ? row.id : null;
+                  if (id) map.set(id, row);
+                }
+                studentCacheRef.current = map;
+              }),
+          );
+        }
+
+        await Promise.all(requests);
       } catch (err: unknown) {
         if (!cancelled) {
           const message =
             err && typeof err === 'object' && 'response' in err
               ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
               : undefined;
-          setError(message || 'Failed to load template');
+          setError(message || 'Failed to load batch render data');
         }
       } finally {
-        if (!cancelled) setLoadingTemplate(false);
+        if (!cancelled) {
+          setLoadingTemplate(false);
+          setPrefetchDone(true);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [templateId, token]);
+  }, [templateId, token, studentIds]);
 
   const loadStudent = useCallback(
     async (studentId: string) => {
@@ -75,12 +112,20 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
       setLoadingStudent(true);
       setCanvasReady(false);
       setError(null);
-      setStudent(null);
       setActiveStudentId(studentId);
+
       try {
+        const cached = studentCacheRef.current.get(studentId);
+        if (cached) {
+          setStudent(cached);
+          return;
+        }
+
+        setStudent(null);
         const { data } = await api.get<Record<string, unknown>>(`/students/${studentId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        studentCacheRef.current.set(studentId, data);
         setStudent(data);
       } catch (err: unknown) {
         const message =
@@ -96,7 +141,7 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
   );
 
   useEffect(() => {
-    if (loadingTemplate || !template || !token) return;
+    if (loadingTemplate || !template || !token || !prefetchDone) return;
 
     window.__vbBatchRender = {
       ready: true,
@@ -113,7 +158,7 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
     return () => {
       delete window.__vbBatchRender;
     };
-  }, [loadingTemplate, template, token, loadStudent]);
+  }, [loadingTemplate, template, token, prefetchDone, loadStudent]);
 
   useEffect(() => {
     if (!canvasReady || !pendingRef.current) return;
@@ -123,11 +168,11 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
 
   const renderStatus = error
     ? 'error'
-    : loadingTemplate || loadingStudent || !canvasReady
+    : loadingTemplate || !prefetchDone || loadingStudent || !canvasReady
       ? 'loading'
       : 'ready';
 
-  if (loadingTemplate) {
+  if (loadingTemplate || !prefetchDone) {
     return <div className="bg-white" data-render-status="loading" data-batch-export-host="loading" />;
   }
 
@@ -159,7 +204,6 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
     >
       {student ? (
         <IdCardDesigner
-          key={activeStudentId ?? 'pending'}
           bgUrl={template.frontBgUrl || ''}
           elements={normalizeFrontConfig(template.frontConfig)}
           templateName={template.name}
@@ -167,6 +211,7 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
           student={student}
           onClose={() => {}}
           isRenderMode
+          renderExportRatio={renderExportRatio}
           onRenderReady={() => setCanvasReady(true)}
         />
       ) : (

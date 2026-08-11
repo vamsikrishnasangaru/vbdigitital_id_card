@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as puppeteer from 'puppeteer';
 import type { Browser, Page } from 'puppeteer';
 import {
+  BATCH_RENDER_PIXEL_RATIO,
   DOWNLOAD_RENDER_PIXEL_RATIO,
 } from './id-card-export.constants';
 import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-launch';
@@ -21,7 +22,7 @@ const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
 /** Parallel Puppeteer tabs during multi-card batch (env override on VPS). */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(4, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 3),
+  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 4),
 );
 
 class Semaphore {
@@ -256,8 +257,19 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     await this.waitForRenderReady(page);
   }
 
-  private buildBatchExportUrl(templateId: string, token: string): string {
-    const params = new URLSearchParams({ token });
+  private buildBatchExportUrl(
+    templateId: string,
+    token: string,
+    studentIds: string[],
+    exportRatio: number = BATCH_RENDER_PIXEL_RATIO,
+  ): string {
+    const params = new URLSearchParams({
+      token,
+      exportRatio: String(exportRatio),
+    });
+    if (studentIds.length) {
+      params.set('studentIds', studentIds.join(','));
+    }
     return `${this.frontendUrl}/render/batch-export/${templateId}?${params.toString()}`;
   }
 
@@ -265,6 +277,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     page: Page,
     templateId: string,
     token: string,
+    studentIds: string[],
     orientation: 'HORIZONTAL' | 'VERTICAL',
   ): Promise<void> {
     const size = CARD_SIZES[orientation];
@@ -273,7 +286,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       height: size.height + 80,
       deviceScaleFactor: 1,
     });
-    await page.goto(this.buildBatchExportUrl(templateId, token), {
+    await page.goto(this.buildBatchExportUrl(templateId, token, studentIds, BATCH_RENDER_PIXEL_RATIO), {
       waitUntil: BATCH_GOTO_WAIT_UNTIL,
       timeout: 120000,
     });
@@ -509,14 +522,14 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
               const studentId = studentIds[index];
               try {
                 if (!batchPageReady) {
-                  await this.prepareBatchExportPage(page, templateId, token, orientation);
+                  await this.prepareBatchExportPage(page, templateId, token, studentIds, orientation);
                   batchPageReady = true;
                 }
                 await this.renderStudentOnBatchPage(page, studentId);
                 const buffer = await this.captureCanvasPng(
                   page,
                   orientation,
-                  DOWNLOAD_RENDER_PIXEL_RATIO,
+                  BATCH_RENDER_PIXEL_RATIO,
                 );
                 results[index] = { studentId, buffer };
               } catch (err: unknown) {
