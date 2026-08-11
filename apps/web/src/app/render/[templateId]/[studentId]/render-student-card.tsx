@@ -14,6 +14,8 @@ export function RenderStudentCard({
   studentId: string;
 }) {
   const searchParams = useSearchParams();
+  const exportRatioParam = searchParams.get('exportRatio');
+  const renderExportRatio = exportRatioParam ? Number(exportRatioParam) : undefined;
   const [template, setTemplate] = useState<any>(null);
   const [student, setStudent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -75,6 +77,11 @@ export function RenderStudentCard({
         student={student}
         onClose={() => {}}
         isRenderMode
+        renderExportRatio={
+          renderExportRatio && Number.isFinite(renderExportRatio) && renderExportRatio >= 4
+            ? renderExportRatio
+            : undefined
+        }
         onRenderReady={() => setCanvasReady(true)}
       />
     </div>

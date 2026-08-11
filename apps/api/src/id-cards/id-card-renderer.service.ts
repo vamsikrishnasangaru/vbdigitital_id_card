@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as puppeteer from 'puppeteer';
 import type { Browser, Page } from 'puppeteer';
 import {
+  BATCH_DOWNLOAD_PIXEL_RATIO,
   DOWNLOAD_RENDER_PIXEL_RATIO,
 } from './id-card-export.constants';
 import { getPuppeteerLaunchOptions, resolveChromeExecutable } from './puppeteer-launch';
@@ -18,6 +19,11 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
+/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). */
+const BATCH_RENDER_CONCURRENCY = Math.max(
+  1,
+  Math.min(3, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 2),
+);
 
 class Semaphore {
   private active = 0;
@@ -185,6 +191,15 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     await page.setCacheEnabled(true);
     page.setDefaultNavigationTimeout(120000);
     page.setDefaultTimeout(120000);
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (type === 'websocket' || type === 'media') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
   }
 
   private async waitForRenderReady(page: Page): Promise<void> {
@@ -213,32 +228,17 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     await page.waitForSelector('#id-card-canvas canvas', { timeout: 30000 });
 
     await page.evaluate(async () => {
-      const root = document.querySelector('#id-card-canvas');
-      if (!root) return;
-      const imgs = Array.from(root.querySelectorAll('img, canvas'));
-      await Promise.all(
-        imgs.map(
-          (el) =>
-            new Promise<void>((resolve) => {
-              if (el instanceof HTMLImageElement) {
-                if (el.complete) resolve();
-                else {
-                  el.onload = () => resolve();
-                  el.onerror = () => resolve();
-                }
-              } else {
-                resolve();
-              }
-            }),
-        ),
-      );
       await document.fonts?.ready;
     });
 
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 50));
   }
 
-  private async captureCanvasPng(page: Page, _orientation: 'HORIZONTAL' | 'VERTICAL'): Promise<Buffer> {
+  private async captureCanvasPng(
+    page: Page,
+    _orientation: 'HORIZONTAL' | 'VERTICAL',
+    pixelRatio: number = DOWNLOAD_RENDER_PIXEL_RATIO,
+  ): Promise<Buffer> {
     const dataUrl = await page.evaluate(async (targetPixelRatio) => {
       const ratio = Math.max(4, targetPixelRatio);
 
@@ -391,7 +391,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       }
 
       throw new Error('Konva canvas not found');
-    }, DOWNLOAD_RENDER_PIXEL_RATIO);
+    }, pixelRatio);
 
     const base64 = dataUrl.split(',')[1];
     if (!base64) throw new Error('Failed to export card PNG');
@@ -404,18 +404,29 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     studentId: string,
     token: string | undefined,
     orientation: 'HORIZONTAL' | 'VERTICAL',
-    waitUntil: puppeteer.PuppeteerLifeCycleEvent = BATCH_GOTO_WAIT_UNTIL,
+    options: {
+      waitUntil?: puppeteer.PuppeteerLifeCycleEvent;
+      pixelRatio?: number;
+    } = {},
   ): Promise<Buffer> {
+    const waitUntil = options.waitUntil ?? BATCH_GOTO_WAIT_UNTIL;
+    const pixelRatio = options.pixelRatio ?? DOWNLOAD_RENDER_PIXEL_RATIO;
     const size = CARD_SIZES[orientation];
     await page.setViewport({
       width: size.width + 80,
       height: size.height + 80,
       deviceScaleFactor: 1,
     });
-    const url = `${this.frontendUrl}/render/${templateId}/${studentId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    const params = new URLSearchParams();
+    if (token) params.set('token', token);
+    if (pixelRatio !== DOWNLOAD_RENDER_PIXEL_RATIO) {
+      params.set('exportRatio', String(pixelRatio));
+    }
+    const query = params.toString();
+    const url = `${this.frontendUrl}/render/${templateId}/${studentId}${query ? `?${query}` : ''}`;
     await page.goto(url, { waitUntil, timeout: 120000 });
     await this.waitForRenderReady(page);
-    return this.captureCanvasPng(page, orientation);
+    return this.captureCanvasPng(page, orientation, pixelRatio);
   }
 
   async renderCardsBatch(
@@ -426,26 +437,47 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   ): Promise<Array<{ studentId: string; buffer?: Buffer; error?: string }>> {
     if (!studentIds.length) return [];
 
+    const batchPixelRatio =
+      studentIds.length > 1 ? BATCH_DOWNLOAD_PIXEL_RATIO : DOWNLOAD_RENDER_PIXEL_RATIO;
+    const concurrency = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
+
     const release = await this.renderSemaphore.acquire();
     try {
       return await this.withRenderRetries(`PNG batch ${templateId}`, async () => {
-        const page = await this.newPage();
-        try {
-          await this.prepareRenderPage(page);
-          const results: Array<{ studentId: string; buffer?: Buffer; error?: string }> = [];
-          for (const studentId of studentIds) {
-            try {
-              const buffer = await this.renderCardOnPage(page, templateId, studentId, token, orientation);
-              results.push({ studentId, buffer });
-            } catch (err: unknown) {
-              const message = err instanceof Error ? err.message : String(err);
-              results.push({ studentId, error: message });
+        const results: Array<{ studentId: string; buffer?: Buffer; error?: string }> =
+          studentIds.map((studentId) => ({ studentId }));
+        let nextIndex = 0;
+
+        const worker = async () => {
+          const page = await this.newPage();
+          try {
+            await this.prepareRenderPage(page);
+            while (true) {
+              const index = nextIndex++;
+              if (index >= studentIds.length) break;
+              const studentId = studentIds[index];
+              try {
+                const buffer = await this.renderCardOnPage(
+                  page,
+                  templateId,
+                  studentId,
+                  token,
+                  orientation,
+                  { pixelRatio: batchPixelRatio },
+                );
+                results[index] = { studentId, buffer };
+              } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                results[index] = { studentId, error: message };
+              }
             }
+          } finally {
+            await this.safeClosePage(page);
           }
-          return results;
-        } finally {
-          await this.safeClosePage(page);
-        }
+        };
+
+        await Promise.all(Array.from({ length: concurrency }, () => worker()));
+        return results;
       });
     } finally {
       release();

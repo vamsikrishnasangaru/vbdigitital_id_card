@@ -10,6 +10,7 @@ import {
   type DesignerElement,
   DESIGN_PPI,
   getPrintExportPixelSize,
+  getExportPixelSize,
   getDownloadPixelRatio,
   DOWNLOAD_PIXEL_RATIO,
   PREVIEW_PIXEL_RATIO,
@@ -92,6 +93,8 @@ interface IdCardDesignerProps {
   onSaveAs?: () => void;
   /** Headless PDF render: fired when the card canvas has settled (images loaded). */
   onRenderReady?: () => void;
+  /** Server batch export pixel ratio (defaults to full print quality). */
+  renderExportRatio?: number;
   /** Force protected preview (no export). Auto-enabled for school admin / teacher student preview. */
   restrictedPreview?: boolean;
   /** Allow PNG/PDF download inside protected preview (super admin). */
@@ -135,6 +138,7 @@ export function IdCardDesigner({
   backElements: initialBackElements = [],
   onSaveAs,
   onRenderReady,
+  renderExportRatio,
   restrictedPreview: restrictedPreviewProp,
   allowPreviewExport = false,
   previewNavigation,
@@ -214,12 +218,17 @@ export function IdCardDesigner({
   const unitScale = 1;
   const liveStudentCardPreview = !isRenderMode && !!student && !onSave;
   const exportQualityPreview = !isRenderMode && (restrictedPreview || liveStudentCardPreview);
+  const downloadPixelRatio = isRenderMode
+    ? Math.max(4, renderExportRatio ?? DOWNLOAD_PIXEL_RATIO)
+    : DOWNLOAD_PIXEL_RATIO;
   const stagePixelRatio = isRenderMode
-    ? DOWNLOAD_PIXEL_RATIO
+    ? downloadPixelRatio
     : exportQualityPreview
       ? PREVIEW_PIXEL_RATIO
       : 1;
-  const exportPixelSize = getPrintExportPixelSize(orientation);
+  const exportPixelSize = isRenderMode
+    ? getExportPixelSize(orientation, downloadPixelRatio)
+    : getPrintExportPixelSize(orientation);
   const isVertical = orientation === 'VERTICAL';
   const CARD_WIDTH = isVertical ? 2.125 * PPI : 3.375 * PPI;
   const CARD_HEIGHT = isVertical ? 3.375 * PPI : 2.125 * PPI;
@@ -809,7 +818,7 @@ export function IdCardDesigner({
       if (bgStatus === 'failed') return;
       if (bgStatus === 'loaded' && !backgroundImage) return;
     }
-    const timer = setTimeout(() => onRenderReady(), 700);
+    const timer = setTimeout(() => onRenderReady(), 200);
     return () => clearTimeout(timer);
   }, [
     isRenderMode,
@@ -853,7 +862,7 @@ export function IdCardDesigner({
       <div
         id="id-card-canvas"
         data-render-images-ready="true"
-        data-export-pixel-ratio={getDownloadPixelRatio()}
+        data-export-pixel-ratio={downloadPixelRatio}
         data-export-width={exportPixelSize.width}
         data-export-height={exportPixelSize.height}
         className="bg-white overflow-hidden"
