@@ -63,6 +63,7 @@ import {
   generateIdCards,
   triggerIdCardDownload,
   fetchDriveStatus,
+  formatGenerateProgressMessage,
   type GenerateDestination,
 } from '@/lib/generate-id-cards';
 
@@ -703,22 +704,27 @@ export default function StudentsPage({ params }: NextClientPageProps) {
 
   const generateMutation = useMutation({
     mutationFn: async (destination: GenerateDestination) => {
+      const studentIds = visibleStudents.map((s: { id: string }) => s.id);
       return generateIdCards({
         templateId: selectedTemplateId,
-        studentIds: visibleStudents.map((s: { id: string }) => s.id),
+        studentIds,
         destination,
+        onProgress:
+          destination === 'download'
+            ? (completed, total) => {
+                toast.loading(formatGenerateProgressMessage(completed, total), {
+                  id: 'generate-id-cards',
+                });
+              }
+            : undefined,
       });
     },
     onMutate: (destination) => {
-      const count = visibleStudents.length;
-      toast.loading(
-        destination === 'download'
-          ? count > 1
-            ? `Generating ${count} ID cards at print quality… Large batches may take a few minutes.`
-            : 'Generating ID card…'
-          : `Uploading ${count} ID card(s) to Google Drive…`,
-        { id: 'generate-id-cards' },
-      );
+      if (destination === 'drive') {
+        toast.loading(`Uploading ${visibleStudents.length} ID card(s) to Google Drive…`, {
+          id: 'generate-id-cards',
+        });
+      }
     },
     onSuccess: (result) => {
       toast.dismiss('generate-id-cards');

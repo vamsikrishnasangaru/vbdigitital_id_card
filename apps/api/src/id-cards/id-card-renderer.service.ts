@@ -480,10 +480,16 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     studentIds: string[],
     token: string,
     orientation: 'HORIZONTAL' | 'VERTICAL' = 'HORIZONTAL',
+    onProgress?: (completed: number, total: number) => void,
   ): Promise<Array<{ studentId: string; buffer?: Buffer; error?: string }>> {
     if (!studentIds.length) return [];
 
     const concurrency = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
+    let completed = 0;
+    const reportProgress = () => {
+      completed += 1;
+      onProgress?.(completed, studentIds.length);
+    };
 
     const release = await this.renderSemaphore.acquire();
     try {
@@ -516,6 +522,8 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
               } catch (err: unknown) {
                 const message = err instanceof Error ? err.message : String(err);
                 results[index] = { studentId, error: message };
+              } finally {
+                reportProgress();
               }
             }
           } finally {

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Query, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Query, Res, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { IdCardsService } from './id-cards.service';
@@ -62,6 +62,34 @@ export class IdCardsController {
       IdCardGenerateDestination.DRIVE,
     );
     return res.json(result);
+  }
+
+  @Post('generate/async')
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Start async ID card download job with progress polling' })
+  startAsyncGenerate(@Body() body: GenerateIdCardsDto) {
+    return this.idCardsService.startDownloadGenerate(body.templateId, body.studentIds);
+  }
+
+  @Get('generate/jobs/:jobId')
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Poll async ID card generate job progress' })
+  getGenerateJob(@Param('jobId') jobId: string) {
+    return this.idCardsService.getDownloadGenerateJob(jobId);
+  }
+
+  @Get('generate/jobs/:jobId/download')
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Download completed async ID card generate job' })
+  downloadGenerateJob(@Param('jobId') jobId: string, @Res() res: Response) {
+    const pack = this.idCardsService.consumeDownloadGenerateJob(jobId);
+    res.set({
+      'Content-Type': pack.kind === 'single' ? 'image/png' : 'application/zip',
+      'Content-Disposition': contentDispositionAttachment(pack.filename),
+      'X-Cards-Success': String(pack.successCount),
+      'X-Cards-Failed': String(pack.failCount),
+    });
+    return res.send(pack.buffer);
   }
 
   @Get()

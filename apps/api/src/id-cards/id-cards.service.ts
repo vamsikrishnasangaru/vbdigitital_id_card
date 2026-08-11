@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DriveService } from '../drive/drive.service';
 import { IdCardRendererService } from './id-card-renderer.service';
 import { AuthService } from '../auth/auth.service';
+import { IdCardsGenerateJobsService } from './id-cards-generate-jobs.service';
 import { Orientation } from '@prisma/client';
 import { IdCardGenerateDestination } from './dto/generate-id-cards.dto';
 import { buildIdCardsZip, buildIdCardsZipFilename, idCardFileBaseName, idCardZipEntryPath } from './id-cards-download.util';
@@ -32,6 +33,7 @@ export class IdCardsService {
     private driveService: DriveService,
     private rendererService: IdCardRendererService,
     private authService: AuthService,
+    private generateJobs: IdCardsGenerateJobsService,
   ) {}
 
   getDriveStatus() {
@@ -62,7 +64,49 @@ export class IdCardsService {
     return this.generateDownloadPack(templateId, studentIds);
   }
 
-  private async generateDownloadPack(templateId: string, studentIds: string[]) {
+  startDownloadGenerate(templateId: string, studentIds: string[]) {
+    if (!templateId || !studentIds?.length) {
+      throw new BadRequestException('Template ID and Student IDs are required');
+    }
+    const jobId = this.generateJobs.createJob(studentIds.length);
+    void this.runDownloadGenerateJob(jobId, templateId, studentIds);
+    return { jobId, total: studentIds.length };
+  }
+
+  getDownloadGenerateJob(jobId: string) {
+    const job = this.generateJobs.getJob(jobId);
+    if (!job) throw new BadRequestException('Generate job not found or expired');
+    return job;
+  }
+
+  consumeDownloadGenerateJob(jobId: string) {
+    return this.generateJobs.consumeDownload(jobId);
+  }
+
+  private async runDownloadGenerateJob(jobId: string, templateId: string, studentIds: string[]) {
+    try {
+      const pack = await this.generateDownloadPack(templateId, studentIds, (completed, total) => {
+        this.generateJobs.updateProgress(jobId, completed, total);
+      });
+      this.generateJobs.complete(jobId, {
+        kind: pack.kind,
+        filename: pack.filename,
+        buffer: pack.buffer,
+        successCount: pack.successCount,
+        failCount: pack.failCount,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Download generate job ${jobId} failed: ${message}`);
+      this.generateJobs.fail(jobId, message);
+    }
+  }
+
+  private async generateDownloadPack(
+    templateId: string,
+    studentIds: string[],
+    onProgress?: (completed: number, total: number) => void,
+  ) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
     const [rendered, studentMap] = await Promise.all([
@@ -71,6 +115,7 @@ export class IdCardsService {
         studentIds,
         renderToken,
         template.orientation as Orientation,
+        onProgress,
       ),
       this.loadStudents(studentIds),
     ]);

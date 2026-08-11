@@ -91,10 +91,91 @@ export async function fetchDriveStatus(): Promise<DriveStatus> {
   return data;
 }
 
+export function formatGenerateProgressMessage(completed: number, total: number): string {
+  if (total <= 1) return 'Generating ID card…';
+  if (completed <= 0) return `Starting generation of ${total} ID cards…`;
+  if (completed >= total) return `Packaging ${total} ID cards for download…`;
+  return `Generated ${completed} of ${total} ID cards…`;
+}
+
+type GenerateJobStatus = {
+  status: 'running' | 'done' | 'failed';
+  completed: number;
+  total: number;
+  successCount: number;
+  failCount: number;
+  error?: string;
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateIdCardsDownloadAsync(
+  params: { templateId: string; studentIds: string[] },
+  onProgress?: (completed: number, total: number) => void,
+): Promise<{ kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }> {
+  const total = params.studentIds.length;
+  onProgress?.(0, total);
+
+  const { data: start } = await api.post<{ jobId: string; total: number }>(
+    '/id-cards/generate/async',
+    {
+      templateId: params.templateId,
+      studentIds: params.studentIds,
+    },
+    {
+      timeout: 60_000,
+      _skipOfflineQueue: true,
+    } as VbAxiosConfig,
+  );
+
+  const deadline = Date.now() + 600_000;
+
+  while (Date.now() < deadline) {
+    await sleep(750);
+    const { data: job } = await api.get<GenerateJobStatus>(`/id-cards/generate/jobs/${start.jobId}`);
+    onProgress?.(job.completed, job.total);
+
+    if (job.status === 'failed') {
+      throw new Error(job.error || 'Failed to generate ID cards');
+    }
+
+    if (job.status === 'done') {
+      onProgress?.(job.total, job.total);
+      const response = await api.get(`/id-cards/generate/jobs/${start.jobId}/download`, {
+        responseType: 'blob',
+        timeout: 120_000,
+        _skipOfflineQueue: true,
+      } as VbAxiosConfig);
+
+      let blob = coerceDownloadBlob(response.data);
+      blob = await ensureBinaryDownloadBlob(blob);
+
+      const filename =
+        parseFilenameFromDisposition(response.headers['content-disposition']) ||
+        (total === 1 ? 'id-card.png' : 'id-cards.zip');
+
+      return {
+        kind: 'file',
+        blob,
+        filename,
+        successCount: job.successCount || Number(response.headers['x-cards-success'] ?? total),
+        failCount: job.failCount || Number(response.headers['x-cards-failed'] ?? 0),
+      };
+    }
+  }
+
+  throw new Error(
+    'Generation timed out. Try fewer students at once, or ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server.',
+  );
+}
+
 export async function generateIdCards(params: {
   templateId: string;
   studentIds: string[];
   destination: GenerateDestination;
+  onProgress?: (completed: number, total: number) => void;
 }): Promise<{ kind: 'json'; data: unknown } | { kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }> {
   if (params.destination === 'drive') {
     const { data } = await api.post('/id-cards/generate', {
@@ -108,33 +189,7 @@ export async function generateIdCards(params: {
   }
 
   try {
-    const response = await api.post('/id-cards/generate', {
-      templateId: params.templateId,
-      studentIds: params.studentIds,
-      destination: 'download',
-    }, {
-      responseType: 'blob',
-      timeout: 600_000,
-      _skipOfflineQueue: true,
-    } as VbAxiosConfig);
-
-    let blob = coerceDownloadBlob(response.data);
-    blob = await ensureBinaryDownloadBlob(blob);
-    const contentType = String(response.headers['content-type'] || blob.type || '');
-
-    if (contentType.includes('application/json') || blob.type.includes('json')) {
-      const message = await readApiErrorMessage(blob, 'Failed to generate ID cards');
-      throw new Error(message);
-    }
-
-    const filename =
-      parseFilenameFromDisposition(response.headers['content-disposition']) ||
-      (params.studentIds.length === 1 ? 'id-card.png' : 'id-cards.zip');
-
-    const successCount = Number(response.headers['x-cards-success'] ?? params.studentIds.length);
-    const failCount = Number(response.headers['x-cards-failed'] ?? 0);
-
-    return { kind: 'file', blob, filename, successCount, failCount };
+    return await generateIdCardsDownloadAsync(params, params.onProgress);
   } catch (err: unknown) {
     const axiosErr = err as { response?: { data?: unknown; status?: number }; message?: string };
     if (axiosErr.response?.status === 504) {
