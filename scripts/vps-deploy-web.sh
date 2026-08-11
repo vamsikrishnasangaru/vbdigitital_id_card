@@ -2,12 +2,11 @@
 # If student photo uploads return HTTP 413, add to nginx server block:
 #   client_max_body_size 15M;
 # See scripts/nginx-upload-limit.snippet — then: sudo nginx -t && sudo systemctl reload nginx
-# Rebuild web + sync standalone assets + restart PM2 (run on VPS from repo root).
+# Rebuild web + restart PM2 with `next start` (run on VPS from repo root).
 set -euo pipefail
 
 APP_ROOT="${APP_ROOT:-/var/www/id-app}"
 WEB_DIR="$APP_ROOT/apps/web"
-STANDALONE="$WEB_DIR/.next/standalone/apps/web"
 
 cd "$APP_ROOT"
 git pull
@@ -54,34 +53,21 @@ if [[ ! -f public/sw.js ]]; then
   exit 1
 fi
 
-if [[ ! -f "$STANDALONE/server.js" ]]; then
-  echo "ERROR: missing $STANDALONE/server.js — build did not produce standalone output."
+if [[ ! -f .next/BUILD_ID ]]; then
+  echo "ERROR: missing .next/BUILD_ID — build did not complete."
   exit 1
 fi
 
-if [[ ! -d "$STANDALONE/.next/server" ]]; then
-  echo "ERROR: missing $STANDALONE/.next/server — standalone output is incomplete."
-  exit 1
-fi
-
-# Do NOT copy .next/server from the repo root — standalone uses file-traced server output.
-# Only sync public assets and static chunks into the standalone runtime tree.
-rm -rf "$STANDALONE/public"
-cp -r public "$STANDALONE/public"
-rm -rf "$STANDALONE/.next/static"
-cp -r .next/static "$STANDALONE/.next/static"
-
-NOT_FOUND_MANIFEST="$STANDALONE/.next/server/app/_not-found/page_client-reference-manifest.js"
+NOT_FOUND_MANIFEST=".next/server/app/_not-found/page_client-reference-manifest.js"
 if [[ ! -f "$NOT_FOUND_MANIFEST" ]]; then
-  echo "ERROR: missing $NOT_FOUND_MANIFEST"
-  echo "Standalone server output is incomplete — rebuild failed for monorepo tracing."
+  echo "ERROR: missing $NOT_FOUND_MANIFEST — 404 pages will crash at runtime."
   exit 1
 fi
 
-RENDER_MANIFEST="$STANDALONE/.next/server/app/render/batch-export/[templateId]/page_client-reference-manifest.js"
-if [[ ! -f "$RENDER_MANIFEST" ]]; then
-  echo "WARN: missing batch render manifest — checking alternate build output..."
-  ls -la "$STANDALONE/.next/server/app/render/batch-export/" 2>/dev/null || true
+RENDER_PAGE=".next/server/app/render/batch-export/[templateId]/page.js"
+if [[ ! -f "$RENDER_PAGE" ]]; then
+  echo "ERROR: missing $RENDER_PAGE — batch ID card render route was not built."
+  exit 1
 fi
 
 # One vb-web only — kill stale listeners and duplicate PM2 entries.
@@ -92,7 +78,7 @@ sleep 2
 pm2 start "$APP_ROOT/ecosystem.config.cjs" --only vb-web --update-env
 pm2 save
 
-sleep 2
+sleep 3
 echo "Listen:"
 ss -lntp | grep ":$PORT" || true
 echo "Health:"
@@ -101,9 +87,18 @@ curl -sI "http://127.0.0.1:$PORT/students" | head -n1
 curl -sI "http://127.0.0.1:$PORT/sw.js" | head -n1
 curl -sI "http://127.0.0.1:$PORT/teachers" | head -n1
 curl -sI "http://127.0.0.1:$PORT/icon.svg" | head -n1
+echo "404 handling:"
+NOT_FOUND_CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/__vb-deploy-health-missing__")"
+echo "HTTP $NOT_FOUND_CODE (expect 404)"
+if [[ "$NOT_FOUND_CODE" != "404" ]]; then
+  echo "ERROR: missing routes should return 404, not $NOT_FOUND_CODE — check pm2 logs vb-web"
+  pm2 logs vb-web --lines 20 --nostream || true
+  exit 1
+fi
 echo "Render host:"
 curl -sI "http://127.0.0.1:$PORT/render/batch-export/test-template-id" | head -n1 || true
 echo ""
 echo "Deployed web revision: ${RELEASE_REVISION} (client: ${NEXT_PUBLIC_APP_REVISION})"
+echo "Running: pnpm exec next start from apps/web (not standalone server.js)"
 echo "Browsers auto-refresh once when revision changes; or hard-refresh (Ctrl+Shift+R)."
 echo "Student edit should use PUT /api/v1/students/:id — NOT POST /api/v1/uploads."

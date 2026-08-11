@@ -3,9 +3,10 @@ module.exports = {
   apps: [
     {
       name: 'vb-web',
-      cwd: '/var/www/id-app/apps/web/.next/standalone/apps/web',
-      script: 'server.js',
-      interpreter: 'node',
+      /** Use full .next output — standalone tracing misses client reference manifests on pnpm monorepos. */
+      cwd: '/var/www/id-app/apps/web',
+      script: 'pnpm',
+      args: 'exec next start --port 3000 --hostname 0.0.0.0',
       env: {
         NODE_ENV: 'production',
         PORT: '3000',
