@@ -1,4 +1,10 @@
 export function downloadBlob(blob: Blob, filename: string) {
+  if (!(blob instanceof Blob)) {
+    throw new Error('Download failed — invalid file data.');
+  }
+  if (blob.size === 0) {
+    throw new Error('Download failed — empty file.');
+  }
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;

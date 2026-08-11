@@ -1,4 +1,4 @@
-import api from '@/lib/api';
+import api, { type VbAxiosConfig } from '@/lib/api';
 import { downloadBlob, parseFilenameFromDisposition } from '@/lib/download-blob';
 
 export type GenerateDestination = 'download' | 'drive';
@@ -56,6 +56,36 @@ function normalizeApiErrorText(text: string, fallback: string): string {
   return fallback;
 }
 
+function coerceDownloadBlob(data: unknown): Blob {
+  if (data instanceof Blob) return data;
+  if (data instanceof ArrayBuffer) {
+    return new Blob([data], { type: 'application/octet-stream' });
+  }
+  if (
+    typeof data === 'object' &&
+    data !== null &&
+    '_offline' in data
+  ) {
+    throw new Error(
+      (data as { message?: string }).message ||
+        'ID card download requires an internet connection.',
+    );
+  }
+  throw new Error('Download failed — server returned invalid file data.');
+}
+
+async function ensureBinaryDownloadBlob(blob: Blob): Promise<Blob> {
+  const type = blob.type.toLowerCase();
+  if (type.includes('json') || type.includes('text/html') || type.includes('text/plain')) {
+    const message = await readApiErrorMessage(blob, 'Failed to generate ID cards');
+    throw new Error(message);
+  }
+  if (blob.size === 0) {
+    throw new Error('Download failed — server returned an empty file.');
+  }
+  return blob;
+}
+
 export async function fetchDriveStatus(): Promise<DriveStatus> {
   const { data } = await api.get<DriveStatus>('/id-cards/drive-status');
   return data;
@@ -85,12 +115,14 @@ export async function generateIdCards(params: {
     }, {
       responseType: 'blob',
       timeout: 600_000,
-    });
+      _skipOfflineQueue: true,
+    } as VbAxiosConfig);
 
-    const blob = response.data as Blob;
+    let blob = coerceDownloadBlob(response.data);
+    blob = await ensureBinaryDownloadBlob(blob);
     const contentType = String(response.headers['content-type'] || blob.type || '');
 
-    if (contentType.includes('application/json') || (blob.type && blob.type.includes('json'))) {
+    if (contentType.includes('application/json') || blob.type.includes('json')) {
       const message = await readApiErrorMessage(blob, 'Failed to generate ID cards');
       throw new Error(message);
     }
