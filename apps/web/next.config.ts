@@ -71,6 +71,12 @@ const nextConfig: NextConfig = {
       { source: '/login/:path*', destination: '/', permanent: false },
       /** Nest API is on port 4000; bare `/api` is not a Next page. */
       { source: '/api', destination: '/', permanent: false },
+      { source: '/orders', destination: '/dashboard', permanent: false },
+      { source: '/orders/:path*', destination: '/dashboard', permanent: false },
+      { source: '/print', destination: '/dashboard', permanent: false },
+      { source: '/print/:path*', destination: '/dashboard', permanent: false },
+      { source: '/deliveries', destination: '/dashboard', permanent: false },
+      { source: '/deliveries/:path*', destination: '/dashboard', permanent: false },
     ];
   },
   async rewrites() {

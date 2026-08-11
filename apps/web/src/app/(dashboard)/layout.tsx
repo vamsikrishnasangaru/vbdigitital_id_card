@@ -9,7 +9,7 @@ import { OfflineAppBanner } from '@/components/OfflineAppBanner';
 import { PwaInstallBanner } from '@/components/PwaInstallBanner';
 
 /** Routes only Super Admin may open (school admin & teacher are redirected). */
-const SUPER_ADMIN_ONLY_PATHS = ['/orders', '/deliveries', '/analytics'];
+const SUPER_ADMIN_ONLY_PATHS = ['/analytics'];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();

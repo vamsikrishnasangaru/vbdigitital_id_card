@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import {
   LayoutDashboard, School, Users, GraduationCap, CreditCard,
-  ShoppingCart, Printer, Package, BarChart3, Bell, Settings,
+  BarChart3, Bell, Settings,
   LogOut, ChevronRight, BookOpen, Palette, X
 } from 'lucide-react';
 
@@ -17,9 +17,6 @@ const allRoutes = [
   { label: 'Classes', icon: BookOpen, href: '/classes', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
   { label: 'Students', icon: Users, href: '/students', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
   { label: 'Generate Cards', icon: CreditCard, href: '/id-cards', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'], previewLabel: 'Preview Cards' },
-  { label: 'Orders', icon: ShoppingCart, href: '/orders', roles: ['SUPER_ADMIN'] },
-  { label: 'Printing', icon: Printer, href: '/print', roles: ['SUPER_ADMIN'] },
-  { label: 'Shipping', icon: Package, href: '/deliveries', roles: ['SUPER_ADMIN'] },
   { label: 'Reports', icon: BarChart3, href: '/analytics', roles: ['SUPER_ADMIN'] },
   { label: 'Templates', icon: Palette, href: '/templates', roles: ['SUPER_ADMIN'] },
   { label: 'Alerts', icon: Bell, href: '/notifications', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
