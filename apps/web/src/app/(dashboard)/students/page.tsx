@@ -709,22 +709,15 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         templateId: selectedTemplateId,
         studentIds,
         destination,
-        onProgress:
-          destination === 'download'
-            ? (completed, total, meta) => {
-                toast.loading(formatGenerateProgressMessage(completed, total, meta), {
-                  id: 'generate-id-cards',
-                });
-              }
-            : undefined,
+        onProgress: (completed, total, meta) => {
+          toast.loading(formatGenerateProgressMessage(completed, total, meta), {
+            id: 'generate-id-cards',
+          });
+        },
       });
     },
-    onMutate: (destination) => {
-      if (destination === 'drive') {
-        toast.loading(`Uploading ${visibleStudents.length} ID card(s) to Google Drive…`, {
-          id: 'generate-id-cards',
-        });
-      }
+    onMutate: () => {
+      // Progress toast is driven by onProgress in mutationFn.
     },
     onSuccess: (result) => {
       toast.dismiss('generate-id-cards');

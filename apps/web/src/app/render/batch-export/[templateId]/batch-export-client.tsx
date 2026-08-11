@@ -191,10 +191,8 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
     if (!canvasReady || !pendingRef.current) return;
     const pending = pendingRef.current;
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        pending.resolve();
-        if (pendingRef.current === pending) pendingRef.current = null;
-      });
+      pending.resolve();
+      if (pendingRef.current === pending) pendingRef.current = null;
     });
   }, [canvasReady]);
 

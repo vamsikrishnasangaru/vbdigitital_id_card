@@ -74,13 +74,37 @@ export class IdCardsService {
     return this.generateDownloadPack(templateId, studentIds);
   }
 
-  startDownloadGenerate(templateId: string, studentIds: string[]) {
+  startAsyncGenerate(
+    templateId: string,
+    studentIds: string[],
+    destination: IdCardGenerateDestination = IdCardGenerateDestination.DOWNLOAD,
+  ) {
     if (!templateId || !studentIds?.length) {
       throw new BadRequestException('Template ID and Student IDs are required');
     }
-    const { jobId, pollToken } = this.generateJobs.createJob(studentIds.length);
+
+    if (destination === IdCardGenerateDestination.DRIVE) {
+      const auth = this.driveService.getAuthStatus();
+      if (!this.driveService.canUploadToDrive()) {
+        throw new ServiceUnavailableException(
+          auth.hint ||
+            auth.error ||
+            'Google Drive upload is not configured. Set GOOGLE_DRIVE_OAUTH_* in the API environment, or choose Download instead.',
+        );
+      }
+      const { jobId, pollToken } = this.generateJobs.createJob(studentIds.length, 'drive');
+      void this.runDriveGenerateJob(jobId, templateId, studentIds);
+      return { jobId, pollToken, total: studentIds.length, destination: 'drive' as const };
+    }
+
+    const { jobId, pollToken } = this.generateJobs.createJob(studentIds.length, 'download');
     void this.runDownloadGenerateJob(jobId, templateId, studentIds);
-    return { jobId, pollToken, total: studentIds.length };
+    return { jobId, pollToken, total: studentIds.length, destination: 'download' as const };
+  }
+
+  /** @deprecated use startAsyncGenerate */
+  startDownloadGenerate(templateId: string, studentIds: string[]) {
+    return this.startAsyncGenerate(templateId, studentIds, IdCardGenerateDestination.DOWNLOAD);
   }
 
   getDownloadGenerateJob(jobId: string) {
@@ -212,7 +236,41 @@ export class IdCardsService {
     };
   }
 
-  private async generateToDrive(templateId: string, studentIds: string[]) {
+  private async runDriveGenerateJob(jobId: string, templateId: string, studentIds: string[]) {
+    try {
+      const result = await this.generateToDrive(templateId, studentIds, {
+        onRenderProgress: (completed, total) => {
+          this.generateJobs.updateProgress(jobId, completed, total);
+        },
+        onUploadStart: (total) => {
+          this.generateJobs.setUploading(jobId, total);
+        },
+        onUploadProgress: (completed, total) => {
+          this.generateJobs.updateUploadProgress(jobId, completed, total);
+        },
+      });
+      this.generateJobs.complete(jobId, {
+        kind: 'drive',
+        message: result.message,
+        successCount: result.successCount,
+        failCount: result.failCount,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Drive generate job ${jobId} failed: ${message}`);
+      this.generateJobs.fail(jobId, message);
+    }
+  }
+
+  private async generateToDrive(
+    templateId: string,
+    studentIds: string[],
+    options?: {
+      onRenderProgress?: (completed: number, total: number) => void;
+      onUploadStart?: (total: number) => void;
+      onUploadProgress?: (completed: number, total: number) => void;
+    },
+  ) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
     const [rendered, studentMap] = await Promise.all([
@@ -221,6 +279,7 @@ export class IdCardsService {
         studentIds,
         renderToken,
         template.orientation as Orientation,
+        options?.onRenderProgress,
       ),
       this.loadStudents(studentIds),
     ]);
@@ -268,6 +327,14 @@ export class IdCardsService {
       });
     }
 
+    if (!uploadItems.length) {
+      throw new BadRequestException(
+        results[0]?.error || 'Failed to generate any ID card images',
+      );
+    }
+
+    options?.onUploadStart?.(uploadItems.length);
+
     const uploadResults = await this.driveService.uploadFilesBatch(
       uploadItems.map((item) => ({
         fileName: item.fileName,
@@ -275,7 +342,8 @@ export class IdCardsService {
         buffer: item.buffer,
         folderHierarchy: item.folderHierarchy,
       })),
-      4,
+      undefined,
+      options?.onUploadProgress,
     );
 
     const successStudentIds: string[] = [];
@@ -283,19 +351,12 @@ export class IdCardsService {
       const item = uploadItems[i];
       const upload = uploadResults[i];
       if (upload.driveFileId) {
-        try {
-          await this.ensureIdCardRecord(item.studentId, templateId);
-          successStudentIds.push(item.studentId);
-          results.push({
-            studentId: item.studentId,
-            status: 'SUCCESS',
-            driveFileId: upload.driveFileId,
-          });
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`ID card post-process failed for student ${item.studentId}: ${message}`);
-          results.push({ studentId: item.studentId, status: 'FAILED', error: message });
-        }
+        successStudentIds.push(item.studentId);
+        results.push({
+          studentId: item.studentId,
+          status: 'SUCCESS',
+          driveFileId: upload.driveFileId,
+        });
       } else {
         const driveMessage = upload.error || 'Google Drive upload failed';
         this.logger.warn(`Drive upload failed for ${item.fileName}: ${driveMessage}`);
@@ -304,9 +365,14 @@ export class IdCardsService {
     }
 
     if (successStudentIds.length) {
-      await this.prisma.idCard.updateMany({
-        where: { studentId: { in: successStudentIds }, templateId },
-        data: { status: 'PRINTED' },
+      void this.ensureIdCardRecordsBatch(successStudentIds, templateId).then(() =>
+        this.prisma.idCard.updateMany({
+          where: { studentId: { in: successStudentIds }, templateId },
+          data: { status: 'PRINTED' },
+        }),
+      ).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Background ID card status update failed: ${message}`);
       });
     }
 

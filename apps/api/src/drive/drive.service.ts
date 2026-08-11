@@ -8,6 +8,11 @@ type GoogleOAuth2Client = InstanceType<typeof google.auth.OAuth2>;
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 
+const DRIVE_UPLOAD_CONCURRENCY = Math.max(
+  2,
+  Math.min(12, Number(process.env.GOOGLE_DRIVE_UPLOAD_CONCURRENCY) || 8),
+);
+
 function escapeDriveQueryValue(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
@@ -202,7 +207,8 @@ export class DriveService implements OnModuleInit {
       buffer: Buffer;
       folderHierarchy: string[];
     }>,
-    concurrency = 4,
+    concurrency = DRIVE_UPLOAD_CONCURRENCY,
+    onProgress?: (completed: number, total: number) => void,
   ): Promise<Array<{ fileName: string; driveFileId?: string; error?: string }>> {
     this.beginBatchUploads();
     if (this.usesUserOAuth) {
@@ -230,6 +236,7 @@ export class DriveService implements OnModuleInit {
       (file) => ({ fileName: file.fileName }),
     );
     let nextIndex = 0;
+    let uploadCompleted = 0;
 
     const worker = async () => {
       while (true) {
@@ -237,15 +244,19 @@ export class DriveService implements OnModuleInit {
         if (index >= files.length) break;
         const file = files[index];
         try {
-          results[index].driveFileId = await this.uploadFile(
+          results[index].driveFileId = await this.uploadFileInternal(
             file.fileName,
             file.mimeType,
             file.buffer,
             file.folderHierarchy,
+            true,
           );
         } catch (error: unknown) {
           results[index].error =
             error instanceof Error ? error.message : 'Google Drive upload failed';
+        } finally {
+          uploadCompleted += 1;
+          onProgress?.(uploadCompleted, files.length);
         }
       }
     };
@@ -261,11 +272,21 @@ export class DriveService implements OnModuleInit {
     fileBuffer: Buffer,
     folderHierarchy: string[],
   ): Promise<string> {
+    return this.uploadFileInternal(fileName, mimeType, fileBuffer, folderHierarchy, false);
+  }
+
+  private async uploadFileInternal(
+    fileName: string,
+    mimeType: string,
+    fileBuffer: Buffer,
+    folderHierarchy: string[],
+    skipAuthRefresh: boolean,
+  ): Promise<string> {
     if (!this.isConfigured) {
       throw new Error('Google Drive is not configured.');
     }
 
-    if (this.usesUserOAuth) {
+    if (this.usesUserOAuth && !skipAuthRefresh) {
       await this.ensureAccessTokenFresh();
     }
 

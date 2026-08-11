@@ -350,11 +350,6 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     pixelRatio: number = DOWNLOAD_RENDER_PIXEL_RATIO,
     fastBatch = false,
   ): Promise<Buffer> {
-    if (fastBatch) {
-      const screenshot = await this.captureCanvasPngViaScreenshot(page);
-      if (screenshot?.length) return screenshot;
-    }
-
     const dataUrl = await page.evaluate(async (targetPixelRatio, skipWarmup) => {
       const ratio = Math.max(4, targetPixelRatio);
 
@@ -631,7 +626,13 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           .filter((index) => index >= 0);
 
         if (failedIndices.length) {
-          await this.restartBrowser('retry failed batch cards');
+          const needsBrowserRestart = failedIndices.some((index) => {
+            const err = results[index].error;
+            return err ? this.isTransientBrowserError(new Error(err)) : false;
+          });
+          if (needsBrowserRestart) {
+            await this.restartBrowser('retry failed batch cards');
+          }
           let retrySlot = 0;
           const retryWorker = async () => {
             while (true) {

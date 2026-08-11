@@ -23,7 +23,9 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: '4000',
-        ID_CARD_BATCH_CONCURRENCY: '6',
+        ID_CARD_BATCH_CONCURRENCY: '4',
+        ID_CARD_BATCH_PIXEL_RATIO: '5',
+        GOOGLE_DRIVE_UPLOAD_CONCURRENCY: '8',
       },
     },
   ],

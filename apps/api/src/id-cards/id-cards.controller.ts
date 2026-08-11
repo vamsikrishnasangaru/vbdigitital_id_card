@@ -68,9 +68,13 @@ export class IdCardsController {
 
   @Post('generate/async')
   @Roles('SUPER_ADMIN')
-  @ApiOperation({ summary: 'Start async ID card download job with progress polling' })
+  @ApiOperation({ summary: 'Start async ID card generate job (download ZIP or Google Drive) with progress polling' })
   startAsyncGenerate(@Body() body: GenerateIdCardsDto) {
-    return this.idCardsService.startDownloadGenerate(body.templateId, body.studentIds);
+    return this.idCardsService.startAsyncGenerate(
+      body.templateId,
+      body.studentIds,
+      body.destination ?? IdCardGenerateDestination.DOWNLOAD,
+    );
   }
 
   @Get('generate/jobs/:jobId')

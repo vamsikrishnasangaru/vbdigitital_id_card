@@ -98,15 +98,35 @@ export function formatGenerateProgressMessage(
   completed: number,
   total: number,
   options?: {
-    phase?: 'rendering' | 'packaging';
+    phase?: 'rendering' | 'packaging' | 'uploading';
     status?: 'running' | 'done' | 'failed';
+    destination?: GenerateDestination;
     packagingCompleted?: number;
+    uploadCompleted?: number;
   },
 ): string {
-  if (total <= 1) return 'Generating ID card…';
-  if (completed <= 0) return `Starting generation of ${total} ID cards…`;
-  if (options?.status === 'done') return `Downloading ${total} ID cards…`;
-  if (options?.phase === 'packaging' || completed >= total) {
+  const destination = options?.destination ?? 'download';
+  if (total <= 1) {
+    return destination === 'drive' ? 'Generating and uploading ID card…' : 'Generating ID card…';
+  }
+  if (completed <= 0) {
+    return destination === 'drive'
+      ? `Starting generation of ${total} ID cards for Google Drive…`
+      : `Starting generation of ${total} ID cards…`;
+  }
+  if (options?.status === 'done') {
+    return destination === 'drive'
+      ? `Finished uploading ${total} ID cards to Google Drive…`
+      : `Downloading ${total} ID cards…`;
+  }
+  if (options?.phase === 'uploading') {
+    const uploaded = options.uploadCompleted ?? completed;
+    if (uploaded > 0 && uploaded < total) {
+      return `Uploading ${uploaded} of ${total} ID cards to Google Drive…`;
+    }
+    return `Uploading ${total} ID cards to Google Drive…`;
+  }
+  if (options?.phase === 'packaging' || (destination === 'download' && completed >= total)) {
     const packed = options?.packagingCompleted ?? 0;
     if (packed > 0 && packed < total) {
       return `Packaging ${packed} of ${total} ID cards…`;
@@ -118,19 +138,24 @@ export function formatGenerateProgressMessage(
 
 type GenerateJobStatus = {
   status: 'running' | 'done' | 'failed';
-  phase?: 'rendering' | 'packaging';
+  destination?: GenerateDestination;
+  phase?: 'rendering' | 'packaging' | 'uploading';
   completed: number;
   total: number;
   packagingCompleted?: number;
+  uploadCompleted?: number;
   successCount: number;
   failCount: number;
   error?: string;
+  message?: string;
 };
 
 export type GenerateProgressMeta = {
-  phase?: 'rendering' | 'packaging';
+  phase?: 'rendering' | 'packaging' | 'uploading';
   status?: 'running' | 'done' | 'failed';
+  destination?: GenerateDestination;
   packagingCompleted?: number;
+  uploadCompleted?: number;
 };
 
 function sleep(ms: number) {
@@ -171,18 +196,32 @@ async function withTransientRetry<T>(
   throw lastError instanceof Error ? lastError : new Error(`${label} failed`);
 }
 
-async function generateIdCardsDownloadAsync(
-  params: { templateId: string; studentIds: string[] },
+async function generateIdCardsAsync(
+  params: {
+    templateId: string;
+    studentIds: string[];
+    destination: GenerateDestination;
+  },
   onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void,
-): Promise<{ kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }> {
+): Promise<
+  | { kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }
+  | { kind: 'json'; data: { message?: string; successCount?: number; failCount?: number } }
+> {
   const total = params.studentIds.length;
-  onProgress?.(0, total);
+  const destination = params.destination;
+  onProgress?.(0, total, { destination, phase: 'rendering' });
 
-  const { data: start } = await api.post<{ jobId: string; pollToken: string; total: number }>(
+  const { data: start } = await api.post<{
+    jobId: string;
+    pollToken: string;
+    total: number;
+    destination?: GenerateDestination;
+  }>(
     '/id-cards/generate/async',
     {
       templateId: params.templateId,
       studentIds: params.studentIds,
+      destination,
     },
     {
       timeout: 60_000,
@@ -207,7 +246,9 @@ async function generateIdCardsDownloadAsync(
     onProgress?.(job.completed, job.total, {
       phase: job.phase,
       status: job.status,
+      destination: job.destination ?? destination,
       packagingCompleted: job.packagingCompleted,
+      uploadCompleted: job.uploadCompleted,
     });
 
     if (job.status === 'failed') {
@@ -215,9 +256,27 @@ async function generateIdCardsDownloadAsync(
     }
 
     if (job.status === 'done') {
+      if ((job.destination ?? destination) === 'drive') {
+        onProgress?.(job.total, job.total, {
+          phase: 'uploading',
+          status: 'done',
+          destination: 'drive',
+          uploadCompleted: job.total,
+        });
+        return {
+          kind: 'json',
+          data: {
+            message: job.message,
+            successCount: job.successCount,
+            failCount: job.failCount,
+          },
+        };
+      }
+
       onProgress?.(job.total, job.total, {
         phase: 'packaging',
         status: 'done',
+        destination: 'download',
         packagingCompleted: job.total,
       });
       const response = await withTransientRetry(
@@ -259,19 +318,8 @@ export async function generateIdCards(params: {
   destination: GenerateDestination;
   onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void;
 }): Promise<{ kind: 'json'; data: unknown } | { kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }> {
-  if (params.destination === 'drive') {
-    const { data } = await api.post('/id-cards/generate', {
-      templateId: params.templateId,
-      studentIds: params.studentIds,
-      destination: 'drive',
-    }, {
-      timeout: 600_000,
-    });
-    return { kind: 'json', data };
-  }
-
   try {
-    return await generateIdCardsDownloadAsync(params, params.onProgress);
+    return await generateIdCardsAsync(params, params.onProgress);
   } catch (err: unknown) {
     const axiosErr = err as { response?: { data?: unknown; status?: number }; message?: string };
     if (axiosErr.response?.status === 401) {
