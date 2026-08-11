@@ -90,7 +90,10 @@ export class IdCardsService {
     try {
       const pack = await this.generateDownloadPack(templateId, studentIds, (completed, total) => {
         this.generateJobs.updateProgress(jobId, completed, total);
-      }, { zipToTempFile: true });
+      }, {
+        zipToTempFile: true,
+        onPackaging: () => this.generateJobs.touchJob(jobId),
+      });
       this.generateJobs.complete(jobId, {
         kind: pack.kind,
         filename: pack.filename,
@@ -110,7 +113,7 @@ export class IdCardsService {
     templateId: string,
     studentIds: string[],
     onProgress?: (completed: number, total: number) => void,
-    options?: { zipToTempFile?: boolean },
+    options?: { zipToTempFile?: boolean; onPackaging?: () => void },
   ) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
@@ -168,6 +171,7 @@ export class IdCardsService {
     }
 
     if (options?.zipToTempFile) {
+      options.onPackaging?.();
       const zipPath = join(tmpdir(), `id-cards-${randomUUID()}.zip`);
       buildIdCardsZipToFile(files, zipPath);
       this.persistGeneratedIdCards(successStudentIds, templateId);
@@ -182,6 +186,7 @@ export class IdCardsService {
     }
 
     const zipBuffer = buildIdCardsZip(files);
+    options?.onPackaging?.();
     this.persistGeneratedIdCards(successStudentIds, templateId);
 
     return {

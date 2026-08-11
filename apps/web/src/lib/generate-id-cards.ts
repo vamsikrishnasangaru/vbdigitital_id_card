@@ -233,6 +233,16 @@ export async function generateIdCards(params: {
     if (axiosErr.response?.status === 401) {
       throw new Error('Session expired during generation. Please sign in and try again.');
     }
+    if (axiosErr.response?.status === 400 || axiosErr.response?.status === 404) {
+      const message = axiosErr.response?.data
+        ? await readApiErrorMessage(axiosErr.response.data, '')
+        : '';
+      if (/not found or expired/i.test(message)) {
+        throw new Error(
+          'Generation job was lost — the server may have restarted during your batch. Please try again (avoid redeploying while a batch is running).',
+        );
+      }
+    }
     if (axiosErr.response?.status === 504) {
       throw new Error(
         'Generation timed out. Try fewer students at once, or ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server.',
