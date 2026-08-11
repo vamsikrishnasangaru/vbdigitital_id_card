@@ -19,10 +19,15 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
-/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). Default 4 on 8GB VPS. */
+/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). Default 6 on 8GB VPS. */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 4),
+  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 6),
+);
+/** Students loaded per batch-export page — smaller pages prefetch faster (318-card batches). */
+const BATCH_PAGE_SIZE = Math.max(
+  10,
+  Math.min(40, Number(process.env.ID_CARD_BATCH_PAGE_SIZE) || 25),
 );
 const BATCH_RETRY_CONCURRENCY = Math.max(
   1,
@@ -559,12 +564,11 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   ): Promise<Array<{ studentId: string; buffer?: Buffer; error?: string }>> {
     if (!studentIds.length) return [];
 
-    const effectiveConcurrency = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
-    const chunkSize = Math.ceil(studentIds.length / effectiveConcurrency);
     const chunks: Array<{ ids: string[]; startIndex: number }> = [];
-    for (let i = 0; i < studentIds.length; i += chunkSize) {
-      chunks.push({ ids: studentIds.slice(i, i + chunkSize), startIndex: i });
+    for (let i = 0; i < studentIds.length; i += BATCH_PAGE_SIZE) {
+      chunks.push({ ids: studentIds.slice(i, i + BATCH_PAGE_SIZE), startIndex: i });
     }
+    const workerCount = Math.min(BATCH_RENDER_CONCURRENCY, chunks.length);
 
     let completed = 0;
     const reportProgress = () => {
@@ -578,37 +582,44 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         const results: Array<{ studentId: string; buffer?: Buffer; error?: string }> =
           studentIds.map((studentId) => ({ studentId }));
 
-        const renderChunk = async ({ ids, startIndex }: { ids: string[]; startIndex: number }) => {
-          if (!ids.length) return;
-          const page = await this.newPage();
-          try {
-            await this.prepareRenderPage(page, true);
-            await this.prepareBatchExportPage(page, templateId, token, ids, orientation);
-            for (let j = 0; j < ids.length; j += 1) {
-              const index = startIndex + j;
-              const studentId = ids[j];
-              try {
-                await this.renderStudentOnBatchPage(page, studentId);
-                const buffer = await this.captureCanvasPng(
-                  page,
-                  orientation,
-                  BATCH_RENDER_PIXEL_RATIO,
-                  true,
-                );
-                results[index] = { studentId, buffer };
-              } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : String(err);
-                results[index] = { studentId, error: message };
-              } finally {
-                reportProgress();
+        let nextChunk = 0;
+        const renderChunkWorker = async () => {
+          while (true) {
+            const chunkIndex = nextChunk++;
+            if (chunkIndex >= chunks.length) break;
+            const { ids, startIndex } = chunks[chunkIndex];
+            if (!ids.length) continue;
+
+            const page = await this.newPage();
+            try {
+              await this.prepareRenderPage(page, true);
+              await this.prepareBatchExportPage(page, templateId, token, ids, orientation);
+              for (let j = 0; j < ids.length; j += 1) {
+                const index = startIndex + j;
+                const studentId = ids[j];
+                try {
+                  await this.renderStudentOnBatchPage(page, studentId);
+                  const buffer = await this.captureCanvasPng(
+                    page,
+                    orientation,
+                    BATCH_RENDER_PIXEL_RATIO,
+                    true,
+                  );
+                  results[index] = { studentId, buffer };
+                } catch (err: unknown) {
+                  const message = err instanceof Error ? err.message : String(err);
+                  results[index] = { studentId, error: message };
+                } finally {
+                  reportProgress();
+                }
               }
+            } finally {
+              await this.safeClosePage(page);
             }
-          } finally {
-            await this.safeClosePage(page);
           }
         };
 
-        await Promise.all(chunks.map((chunk) => renderChunk(chunk)));
+        await Promise.all(Array.from({ length: workerCount }, () => renderChunkWorker()));
 
         const failedIndices = results
           .map((result, index) => (result.error ? index : -1))

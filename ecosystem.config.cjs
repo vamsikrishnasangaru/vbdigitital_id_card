@@ -23,7 +23,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: '4000',
-        ID_CARD_BATCH_CONCURRENCY: '4',
+        ID_CARD_BATCH_CONCURRENCY: '6',
       },
     },
   ],

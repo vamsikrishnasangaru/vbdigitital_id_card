@@ -122,36 +122,30 @@ export class IdCardsService {
 
     const files: { name: string; buffer: Buffer }[] = [];
     const errors: { studentId: string; error: string }[] = [];
+    const successStudentIds: string[] = [];
 
-    await Promise.all(
-      rendered.map(async (result) => {
-        if (!result.buffer) {
-          this.logger.warn(`Download render failed for ${result.studentId}: ${result.error}`);
-          errors.push({ studentId: result.studentId, error: result.error || 'Render failed' });
-          return;
-        }
-        try {
-          const student = studentMap.get(result.studentId);
-          if (!student) {
-            throw new BadRequestException(`Student not found: ${result.studentId}`);
-          }
-          await this.ensureIdCardRecord(result.studentId, templateId);
-          const pngFileName = `${idCardFileBaseName(student)}.png`;
-          files.push({
-            name: idCardZipEntryPath(student, pngFileName),
-            buffer: result.buffer,
-          });
-          await this.prisma.idCard.updateMany({
-            where: { studentId: result.studentId, templateId },
-            data: { status: 'PRINTED' },
-          });
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`Download post-process failed for ${result.studentId}: ${message}`);
-          errors.push({ studentId: result.studentId, error: message });
-        }
-      }),
-    );
+    for (const result of rendered) {
+      if (!result.buffer) {
+        this.logger.warn(`Download render failed for ${result.studentId}: ${result.error}`);
+        errors.push({ studentId: result.studentId, error: result.error || 'Render failed' });
+        continue;
+      }
+      const student = studentMap.get(result.studentId);
+      if (!student) {
+        errors.push({ studentId: result.studentId, error: `Student not found: ${result.studentId}` });
+        continue;
+      }
+      const pngFileName = `${idCardFileBaseName(student)}.png`;
+      files.push({
+        name: idCardZipEntryPath(student, pngFileName),
+        buffer: result.buffer,
+      });
+      successStudentIds.push(result.studentId);
+    }
+
+    if (successStudentIds.length) {
+      await this.ensureIdCardRecordsBatch(successStudentIds, templateId);
+    }
 
     if (files.length === 0) {
       throw new BadRequestException(
@@ -160,6 +154,12 @@ export class IdCardsService {
     }
 
     if (files.length === 1) {
+      if (successStudentIds.length) {
+        await this.prisma.idCard.updateMany({
+          where: { studentId: { in: successStudentIds }, templateId },
+          data: { status: 'PRINTED' },
+        });
+      }
       const singleName = files[0].name.split('/').pop() || files[0].name;
       return {
         kind: 'single' as const,
@@ -172,6 +172,14 @@ export class IdCardsService {
     }
 
     const zipBuffer = await buildIdCardsZip(files);
+
+    if (successStudentIds.length) {
+      await this.prisma.idCard.updateMany({
+        where: { studentId: { in: successStudentIds }, templateId },
+        data: { status: 'PRINTED' },
+      });
+    }
+
     return {
       kind: 'zip' as const,
       filename: buildIdCardsZipFilename(files),
@@ -310,6 +318,31 @@ export class IdCardsService {
     await this.prisma.idCard.create({
       data: { studentId, templateId, status: 'DESIGNING' },
     });
+  }
+
+  /** Two bulk queries instead of hundreds of per-student round trips on large batches. */
+  private async ensureIdCardRecordsBatch(studentIds: string[], templateId: string) {
+    if (!studentIds.length) return;
+
+    const existing = await this.prisma.idCard.findMany({
+      where: { studentId: { in: studentIds }, templateId },
+      select: { id: true, studentId: true },
+    });
+    const existingIds = new Set(existing.map((row) => row.studentId));
+    const missing = studentIds.filter((id) => !existingIds.has(id));
+
+    if (existing.length) {
+      await this.prisma.idCard.updateMany({
+        where: { id: { in: existing.map((row) => row.id) } },
+        data: { status: 'DESIGNING' },
+      });
+    }
+    if (missing.length) {
+      await this.prisma.idCard.createMany({
+        data: missing.map((studentId) => ({ studentId, templateId, status: 'DESIGNING' })),
+        skipDuplicates: true,
+      });
+    }
   }
 
   async findAll(query: { studentId?: string; status?: string }) {

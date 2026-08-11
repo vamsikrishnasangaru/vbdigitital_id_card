@@ -93,7 +93,8 @@ export function buildIdCardsZipFilename(files: IdCardDownloadFile[]): string {
 
 export async function buildIdCardsZip(files: IdCardDownloadFile[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    // PNGs are already compressed — max zlib level only slows packaging (37+ cards).
+    const archive = archiver('zip', { zlib: { level: 1 } });
     const stream = new PassThrough();
     const chunks: Buffer[] = [];
 
@@ -104,7 +105,7 @@ export async function buildIdCardsZip(files: IdCardDownloadFile[]): Promise<Buff
 
     archive.pipe(stream);
     for (const file of files) {
-      archive.append(file.buffer, { name: file.name });
+      archive.append(file.buffer, { name: file.name, store: true });
     }
     void archive.finalize();
   });
