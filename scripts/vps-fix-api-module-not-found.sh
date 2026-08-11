@@ -10,6 +10,7 @@ cd "$APP_ROOT"
 pnpm install
 pnpm --filter @repo/db run generate
 cd "$API_DIR"
+rm -f tsconfig.tsbuildinfo
 pnpm run build
 
 if [[ ! -f "$API_DIR/dist/main.js" ]]; then

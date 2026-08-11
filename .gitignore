@@ -1,4 +1,5 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# TypeScript build cache (must not block production emit when dist/ is deleted)
+*.tsbuildinfo
 
 # Dependencies
 node_modules
