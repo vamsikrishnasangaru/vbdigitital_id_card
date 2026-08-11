@@ -93,6 +93,8 @@ export class IdCardsService {
       }, {
         zipToTempFile: true,
         onPackaging: () => this.generateJobs.setPackaging(jobId),
+        onPackagingFile: (index, total) =>
+          this.generateJobs.updatePackagingProgress(jobId, index, total),
       });
       this.generateJobs.complete(jobId, {
         kind: pack.kind,
@@ -113,7 +115,11 @@ export class IdCardsService {
     templateId: string,
     studentIds: string[],
     onProgress?: (completed: number, total: number) => void,
-    options?: { zipToTempFile?: boolean; onPackaging?: () => void },
+    options?: {
+      zipToTempFile?: boolean;
+      onPackaging?: () => void;
+      onPackagingFile?: (index: number, total: number) => void;
+    },
   ) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
@@ -173,7 +179,7 @@ export class IdCardsService {
     if (options?.zipToTempFile) {
       options.onPackaging?.();
       const zipPath = join(tmpdir(), `id-cards-${randomUUID()}.zip`);
-      await buildIdCardsZipToFile(files, zipPath);
+      await buildIdCardsZipToFile(files, zipPath, options?.onPackagingFile);
       this.persistGeneratedIdCards(successStudentIds, templateId);
       return {
         kind: 'zip' as const,

@@ -1,7 +1,21 @@
-import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from 'fs';
-import { join } from 'path';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from 'fs';
+import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 export type IdCardDownloadFile = { name: string; buffer: Buffer };
 
@@ -100,15 +114,29 @@ type ZipCentralEntry = {
   offset: number;
 };
 
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let value = i;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[i] = value;
+  }
+  return table;
+})();
+
+/** Table-driven CRC32 — ~100× faster than naive bit loops on multi-MB PNGs. */
 function crc32Buffer(data: Buffer): number {
   let crc = 0xffffffff;
   for (let i = 0; i < data.length; i += 1) {
-    crc ^= data[i];
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-    }
+    crc = CRC32_TABLE[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
   }
   return (crc ^ 0xffffffff) >>> 0;
+}
+
+function yieldEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 function writeLocalFileHeader(
@@ -174,17 +202,10 @@ function writeCentralDirectory(fd: number, entries: ZipCentralEntry[], cdOffset:
   writeSync(fd, eocd);
 }
 
-function yieldEventLoop(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
-}
-
-/**
- * Stream a store-only ZIP to disk — no re-compression, yields between files so
- * progress polls stay responsive during packaging.
- */
-export async function buildIdCardsZipToFile(
+async function buildIdCardsZipToFileJs(
   files: IdCardDownloadFile[],
   destPath: string,
+  onFile?: (index: number, total: number) => void,
 ): Promise<void> {
   const fd = openSync(destPath, 'w');
   const central: ZipCentralEntry[] = [];
@@ -193,6 +214,7 @@ export async function buildIdCardsZipToFile(
   try {
     for (let i = 0; i < files.length; i += 1) {
       if (i > 0) await yieldEventLoop();
+      onFile?.(i + 1, files.length);
 
       const file = files[i];
       const name = Buffer.from(file.name, 'utf8');
@@ -208,6 +230,55 @@ export async function buildIdCardsZipToFile(
   } finally {
     closeSync(fd);
   }
+}
+
+/** Use native `zip -0` on Linux VPS when available — fastest path for 37+ PNGs. */
+async function buildIdCardsZipToFileNative(
+  files: IdCardDownloadFile[],
+  destPath: string,
+  onFile?: (index: number, total: number) => void,
+): Promise<boolean> {
+  if (process.platform === 'win32') return false;
+
+  const stagingDir = join(tmpdir(), `id-cards-stage-${randomUUID()}`);
+  mkdirSync(stagingDir, { recursive: true });
+
+  try {
+    for (let i = 0; i < files.length; i += 1) {
+      if (i > 0 && i % 5 === 0) await yieldEventLoop();
+      onFile?.(i + 1, files.length);
+      const file = files[i];
+      const fullPath = join(stagingDir, file.name);
+      mkdirSync(dirname(fullPath), { recursive: true });
+      writeFileSync(fullPath, file.buffer);
+    }
+
+    await execFileAsync('zip', ['-0', '-q', '-X', destPath, '.'], { cwd: stagingDir });
+    return existsSync(destPath);
+  } catch {
+    try {
+      unlinkSync(destPath);
+    } catch {
+      // Ignore cleanup errors.
+    }
+    return false;
+  } finally {
+    rmSync(stagingDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Store-only ZIP to disk — no re-compression, no quality change.
+ * Uses native zip on Linux when available; fast table CRC32 fallback.
+ */
+export async function buildIdCardsZipToFile(
+  files: IdCardDownloadFile[],
+  destPath: string,
+  onFile?: (index: number, total: number) => void,
+): Promise<void> {
+  const usedNative = await buildIdCardsZipToFileNative(files, destPath, onFile);
+  if (usedNative) return;
+  await buildIdCardsZipToFileJs(files, destPath, onFile);
 }
 
 /** Small in-memory ZIP for direct (non-async) download responses. */

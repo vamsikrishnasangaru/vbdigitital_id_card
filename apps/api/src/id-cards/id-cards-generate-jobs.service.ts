@@ -27,6 +27,7 @@ type GenerateJobRecord = {
   pollToken: string;
   error?: string;
   result?: GenerateJobDownloadResult;
+  packagingCompleted?: number;
   expiresAt: number;
 };
 
@@ -81,7 +82,17 @@ export class IdCardsGenerateJobsService {
     if (!job || job.status !== 'running') return;
     job.phase = 'packaging';
     job.completed = job.total;
+    job.packagingCompleted = 0;
     this.touchJobRecord(jobId, job, true);
+  }
+
+  updatePackagingProgress(jobId: string, packagingCompleted: number, total?: number) {
+    const job = this.getOrLoadJob(jobId);
+    if (!job || job.status !== 'running' || job.phase !== 'packaging') return;
+    job.packagingCompleted = packagingCompleted;
+    if (total !== undefined) job.total = total;
+    job.completed = job.total;
+    this.touchJobRecord(jobId, job);
   }
 
   /** Extend TTL during packaging or while the client is polling. */
@@ -92,11 +103,12 @@ export class IdCardsGenerateJobsService {
   }
 
   complete(jobId: string, result: GenerateJobDownloadResult) {
-    const job = this.getOrLoadJob(jobId);
+    const job = this.getOrLoadJob(jobId) ?? this.loadJob(jobId);
     if (!job) {
       this.logger.warn(`Generate job ${jobId} missing at complete — result was ready`);
       return;
     }
+    if (!this.jobs.has(jobId)) this.jobs.set(jobId, job);
     job.status = 'done';
     job.phase = 'packaging';
     job.completed = job.total;
@@ -127,6 +139,7 @@ export class IdCardsGenerateJobsService {
       phase: job.phase,
       completed: job.completed,
       total: job.total,
+      packagingCompleted: job.packagingCompleted,
       successCount: job.successCount,
       failCount: job.failCount,
       error: job.error,
@@ -183,6 +196,7 @@ export class IdCardsGenerateJobsService {
       phase: job.phase,
       completed: job.completed,
       total: job.total,
+      packagingCompleted: job.packagingCompleted,
       successCount: job.successCount,
       failCount: job.failCount,
       pollToken: job.pollToken,

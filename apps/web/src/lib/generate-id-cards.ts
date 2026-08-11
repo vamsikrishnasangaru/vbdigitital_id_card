@@ -94,12 +94,20 @@ export async function fetchDriveStatus(): Promise<DriveStatus> {
 export function formatGenerateProgressMessage(
   completed: number,
   total: number,
-  options?: { phase?: 'rendering' | 'packaging'; status?: 'running' | 'done' | 'failed' },
+  options?: {
+    phase?: 'rendering' | 'packaging';
+    status?: 'running' | 'done' | 'failed';
+    packagingCompleted?: number;
+  },
 ): string {
   if (total <= 1) return 'Generating ID card…';
   if (completed <= 0) return `Starting generation of ${total} ID cards…`;
   if (options?.status === 'done') return `Downloading ${total} ID cards…`;
   if (options?.phase === 'packaging' || completed >= total) {
+    const packed = options?.packagingCompleted ?? 0;
+    if (packed > 0 && packed < total) {
+      return `Packaging ${packed} of ${total} ID cards…`;
+    }
     return `Packaging ${total} ID cards for download…`;
   }
   return `Generated ${completed} of ${total} ID cards…`;
@@ -110,6 +118,7 @@ type GenerateJobStatus = {
   phase?: 'rendering' | 'packaging';
   completed: number;
   total: number;
+  packagingCompleted?: number;
   successCount: number;
   failCount: number;
   error?: string;
@@ -118,6 +127,7 @@ type GenerateJobStatus = {
 export type GenerateProgressMeta = {
   phase?: 'rendering' | 'packaging';
   status?: 'running' | 'done' | 'failed';
+  packagingCompleted?: number;
 };
 
 function sleep(ms: number) {
@@ -191,14 +201,22 @@ async function generateIdCardsDownloadAsync(
         } as unknown as VbAxiosConfig),
       'Progress check',
     );
-    onProgress?.(job.completed, job.total, { phase: job.phase, status: job.status });
+    onProgress?.(job.completed, job.total, {
+      phase: job.phase,
+      status: job.status,
+      packagingCompleted: job.packagingCompleted,
+    });
 
     if (job.status === 'failed') {
       throw new Error(job.error || 'Failed to generate ID cards');
     }
 
     if (job.status === 'done') {
-      onProgress?.(job.total, job.total, { phase: 'packaging', status: 'done' });
+      onProgress?.(job.total, job.total, {
+        phase: 'packaging',
+        status: 'done',
+        packagingCompleted: job.total,
+      });
       const response = await withTransientRetry(
         () =>
           api.get(`/id-cards/generate/jobs/${start.jobId}/download`, {
