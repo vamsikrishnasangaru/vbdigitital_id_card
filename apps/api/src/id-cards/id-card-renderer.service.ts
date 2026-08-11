@@ -19,10 +19,10 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
-/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). Default 3 on 8GB VPS. */
+/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). Default 4 on 8GB VPS. */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 3),
+  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 4),
 );
 const BATCH_RETRY_CONCURRENCY = Math.max(
   1,
@@ -270,7 +270,37 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       }
     }, studentId);
     if (error) throw new Error(error);
-    await this.waitForRenderReady(page, true);
+  }
+
+  private async captureCanvasPngViaScreenshot(page: Page): Promise<Buffer | null> {
+    const handle = await page.evaluateHandle(() => {
+      const root = document.querySelector('#id-card-canvas');
+      if (!root) return null;
+      const canvases = Array.from(root.querySelectorAll('canvas')) as HTMLCanvasElement[];
+      if (!canvases.length) return null;
+      return canvases.reduce((best, canvas) =>
+        canvas.width * canvas.height > best.width * best.height ? canvas : best,
+      );
+    });
+    const element = handle.asElement();
+    if (!element) {
+      await handle.dispose();
+      return null;
+    }
+    try {
+      await page.evaluate(() =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+      );
+      const png = await element.screenshot({ type: 'png' });
+      return Buffer.from(png);
+    } catch {
+      return null;
+    } finally {
+      await element.dispose();
+      await handle.dispose();
+    }
   }
 
   private buildBatchExportUrl(
@@ -315,6 +345,11 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     pixelRatio: number = DOWNLOAD_RENDER_PIXEL_RATIO,
     fastBatch = false,
   ): Promise<Buffer> {
+    if (fastBatch) {
+      const screenshot = await this.captureCanvasPngViaScreenshot(page);
+      if (screenshot?.length) return screenshot;
+    }
+
     const dataUrl = await page.evaluate(async (targetPixelRatio, skipWarmup) => {
       const ratio = Math.max(4, targetPixelRatio);
 
@@ -524,7 +559,13 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   ): Promise<Array<{ studentId: string; buffer?: Buffer; error?: string }>> {
     if (!studentIds.length) return [];
 
-    const concurrency = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
+    const effectiveConcurrency = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
+    const chunkSize = Math.ceil(studentIds.length / effectiveConcurrency);
+    const chunks: Array<{ ids: string[]; startIndex: number }> = [];
+    for (let i = 0; i < studentIds.length; i += chunkSize) {
+      chunks.push({ ids: studentIds.slice(i, i + chunkSize), startIndex: i });
+    }
+
     let completed = 0;
     const reportProgress = () => {
       completed += 1;
@@ -536,22 +577,17 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       return await this.withRenderRetries(`PNG batch ${templateId}`, async () => {
         const results: Array<{ studentId: string; buffer?: Buffer; error?: string }> =
           studentIds.map((studentId) => ({ studentId }));
-        let nextIndex = 0;
 
-        const worker = async () => {
+        const renderChunk = async ({ ids, startIndex }: { ids: string[]; startIndex: number }) => {
+          if (!ids.length) return;
           const page = await this.newPage();
           try {
             await this.prepareRenderPage(page, true);
-            let batchPageReady = false;
-            while (true) {
-              const index = nextIndex++;
-              if (index >= studentIds.length) break;
-              const studentId = studentIds[index];
+            await this.prepareBatchExportPage(page, templateId, token, ids, orientation);
+            for (let j = 0; j < ids.length; j += 1) {
+              const index = startIndex + j;
+              const studentId = ids[j];
               try {
-                if (!batchPageReady) {
-                  await this.prepareBatchExportPage(page, templateId, token, studentIds, orientation);
-                  batchPageReady = true;
-                }
                 await this.renderStudentOnBatchPage(page, studentId);
                 const buffer = await this.captureCanvasPng(
                   page,
@@ -572,7 +608,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           }
         };
 
-        await Promise.all(Array.from({ length: concurrency }, () => worker()));
+        await Promise.all(chunks.map((chunk) => renderChunk(chunk)));
 
         const failedIndices = results
           .map((result, index) => (result.error ? index : -1))
@@ -591,7 +627,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
                 const page = await this.newPage();
                 try {
                   await this.prepareRenderPage(page, true);
-                  await this.prepareBatchExportPage(page, templateId, token, studentIds, orientation);
+                  await this.prepareBatchExportPage(page, templateId, token, [studentId], orientation);
                   await this.renderStudentOnBatchPage(page, studentId);
                   const buffer = await this.captureCanvasPng(
                     page,

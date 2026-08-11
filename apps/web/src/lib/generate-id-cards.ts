@@ -159,7 +159,7 @@ async function generateIdCardsDownloadAsync(
   const deadline = Date.now() + GENERATE_JOB_POLL_DEADLINE_MS;
 
   while (Date.now() < deadline) {
-    await sleep(500);
+    await sleep(300);
     const { data: job } = await withTransientRetry(
       () =>
         api.get<GenerateJobStatus>(`/id-cards/generate/jobs/${start.jobId}`, {

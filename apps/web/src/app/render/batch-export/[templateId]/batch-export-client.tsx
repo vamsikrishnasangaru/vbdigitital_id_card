@@ -189,8 +189,13 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
 
   useEffect(() => {
     if (!canvasReady || !pendingRef.current) return;
-    pendingRef.current.resolve();
-    pendingRef.current = null;
+    const pending = pendingRef.current;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        pending.resolve();
+        if (pendingRef.current === pending) pendingRef.current = null;
+      });
+    });
   }, [canvasReady]);
 
   const renderStatus = error

@@ -278,7 +278,7 @@ export function IdCardDesigner({
         : [],
     [isRenderMode, activeBgUrl, elements, previewStudent, mediaOptions, historyVersion],
   );
-  const preloadStatus = usePreloadImages(renderImageUrls);
+  const preloadStatus = usePreloadImages(renderImageUrls, batchExportMode);
 
   useEffect(() => {
     if (selectedId && transformerRef.current && stageRef.current) {

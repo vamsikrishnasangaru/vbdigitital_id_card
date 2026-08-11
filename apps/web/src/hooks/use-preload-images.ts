@@ -15,11 +15,16 @@ function needsCrossOrigin(url: string): boolean {
 }
 
 /** Preload image URLs (used before headless Konva render so backgrounds/frames are painted). */
-export function usePreloadImages(urls: string[]): PreloadImagesStatus {
+export function usePreloadImages(urls: string[], skip = false): PreloadImagesStatus {
   const key = urls.filter(Boolean).join('\0');
-  const [status, setStatus] = useState<PreloadImagesStatus>('idle');
+  const [status, setStatus] = useState<PreloadImagesStatus>(skip ? 'ready' : 'idle');
 
   useEffect(() => {
+    if (skip) {
+      setStatus('ready');
+      return;
+    }
+
     const list = [...new Set(urls.filter(Boolean))];
     if (list.length === 0) {
       setStatus('ready');
@@ -47,7 +52,7 @@ export function usePreloadImages(urls: string[]): PreloadImagesStatus {
     return () => {
       cancelled = true;
     };
-  }, [key]);
+  }, [key, skip]);
 
   return status;
 }
