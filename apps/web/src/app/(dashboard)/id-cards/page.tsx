@@ -221,7 +221,14 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       if (!err.response && !navigator.onLine) return;
-      toast.error(err.response?.data?.message || 'Failed to generate ID cards');
+      toast.error(
+        (err as { message?: string }).message ||
+          (Array.isArray(err.response?.data?.message)
+            ? err.response?.data?.message.join(' · ')
+            : err.response?.data?.message) ||
+          'Failed to generate ID cards',
+        { duration: 8000 },
+      );
     },
   });
 

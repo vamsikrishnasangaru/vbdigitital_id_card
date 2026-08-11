@@ -745,9 +745,15 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       queryClient.invalidateQueries({ queryKey: ['students'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
+    onError: (err: { message?: string; response?: { data?: { message?: string | string[] } } }) => {
       if (!err.response && !navigator.onLine) return;
-      toast.error(err.response?.data?.message || 'Failed to generate ID cards');
+      const msg =
+        err.message ||
+        (Array.isArray(err.response?.data?.message)
+          ? err.response?.data?.message.join(' · ')
+          : err.response?.data?.message) ||
+        'Failed to generate ID cards';
+      toast.error(msg, { duration: 8000 });
     },
   });
 

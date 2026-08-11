@@ -236,6 +236,31 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
       await document.fonts?.ready;
 
+      const waitForImages = async (root: ParentNode) => {
+        const imgs = Array.from(root.querySelectorAll('img'));
+        await Promise.all(
+          imgs.map(
+            (img) =>
+              new Promise<void>((resolve) => {
+                if (img.complete) resolve();
+                else {
+                  img.onload = () => resolve();
+                  img.onerror = () => resolve();
+                }
+              }),
+          ),
+        );
+      };
+
+      const canvas = document.querySelector('#id-card-canvas canvas') as HTMLCanvasElement | null;
+      if (canvas?.width && canvas?.height) {
+        await waitForImages(document.querySelector('#id-card-canvas') ?? document.body);
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+        return canvas.toDataURL('image/png');
+      }
+
       const KonvaGlobal = (window as unknown as {
         Konva?: {
           stages?: Array<{
@@ -245,23 +270,33 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
             height: (h?: number) => number;
             scale: (s: { x: number; y: number }) => void;
             batchDraw: () => void;
-            pixelRatio?: () => number;
-            getAttr?: (name: string) => unknown;
-            find: (selector: string) => Array<{ image: () => unknown }>;
-            toCanvas: (config: {
+            find: (selector: string) => { toArray?: () => Array<{ image: () => unknown }> } | Array<{ image: () => unknown }>;
+            toCanvas?: (config: {
               pixelRatio?: number;
               x?: number;
               y?: number;
               width?: number;
               height?: number;
             }) => HTMLCanvasElement;
+            toDataURL: (config?: {
+              pixelRatio?: number;
+              mimeType?: string;
+              x?: number;
+              y?: number;
+              width?: number;
+              height?: number;
+            }) => string;
           }>;
         };
       }).Konva;
       const stage = KonvaGlobal?.stages?.[0];
-      if (!stage) throw new Error('Konva stage not found');
+      if (!stage) throw new Error('Konva canvas not found');
 
-      const imageNodes = stage.find('Image');
+      const found = stage.find('Image');
+      const imageNodes =
+        found && typeof (found as { toArray?: () => unknown[] }).toArray === 'function'
+          ? (found as { toArray: () => Array<{ image: () => unknown }> }).toArray()
+          : Array.from(found as Array<{ image: () => unknown }>);
       await Promise.all(
         imageNodes.map(
           (node) =>
@@ -285,7 +320,6 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       const scaleY = stage.scaleY() || 1;
       const logicalWidth = stage.width() / scaleX;
       const logicalHeight = stage.height() / scaleY;
-      const exportPixelRatio = ratio;
 
       const oldW = stage.width();
       const oldH = stage.height();
@@ -298,22 +332,27 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       stage.batchDraw();
 
       try {
-        const canvas = stage.toCanvas({
-          pixelRatio: exportPixelRatio,
+        if (typeof stage.toCanvas === 'function') {
+          const exportCanvas = stage.toCanvas({
+            pixelRatio: ratio,
+            x: 0,
+            y: 0,
+            width: logicalWidth,
+            height: logicalHeight,
+          });
+          const png = exportCanvas.toDataURL('image/png');
+          exportCanvas.width = 0;
+          exportCanvas.height = 0;
+          return png;
+        }
+        return stage.toDataURL({
+          pixelRatio: ratio,
+          mimeType: 'image/png',
           x: 0,
           y: 0,
           width: logicalWidth,
           height: logicalHeight,
         });
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-        }
-        const png = canvas.toDataURL('image/png');
-        canvas.width = 0;
-        canvas.height = 0;
-        return png;
       } finally {
         if (needReset) {
           stage.width(oldW);
