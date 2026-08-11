@@ -151,7 +151,7 @@ export class AuthService {
         schoolId: null,
         purpose: 'render',
       },
-      { expiresIn: '10m' },
+      { expiresIn: '60m' },
     );
   }
 

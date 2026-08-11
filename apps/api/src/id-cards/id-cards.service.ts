@@ -68,9 +68,9 @@ export class IdCardsService {
     if (!templateId || !studentIds?.length) {
       throw new BadRequestException('Template ID and Student IDs are required');
     }
-    const jobId = this.generateJobs.createJob(studentIds.length);
+    const { jobId, pollToken } = this.generateJobs.createJob(studentIds.length);
     void this.runDownloadGenerateJob(jobId, templateId, studentIds);
-    return { jobId, total: studentIds.length };
+    return { jobId, pollToken, total: studentIds.length };
   }
 
   getDownloadGenerateJob(jobId: string) {

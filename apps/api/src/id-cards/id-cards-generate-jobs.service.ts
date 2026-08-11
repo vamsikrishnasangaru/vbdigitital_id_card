@@ -17,29 +17,39 @@ type GenerateJobRecord = {
   total: number;
   successCount: number;
   failCount: number;
+  pollToken: string;
   error?: string;
   result?: GenerateJobDownloadResult;
   expiresAt: number;
 };
 
-const JOB_TTL_MS = 15 * 60 * 1000;
+/** Keep finished jobs long enough for slow downloads and large batches. */
+const JOB_TTL_MS = 60 * 60 * 1000;
 
 @Injectable()
 export class IdCardsGenerateJobsService {
   private readonly jobs = new Map<string, GenerateJobRecord>();
 
-  createJob(total: number): string {
+  createJob(total: number): { jobId: string; pollToken: string } {
     this.pruneExpired();
     const jobId = randomUUID();
+    const pollToken = randomUUID();
     this.jobs.set(jobId, {
       status: 'running',
       completed: 0,
       total,
       successCount: 0,
       failCount: 0,
+      pollToken,
       expiresAt: Date.now() + JOB_TTL_MS,
     });
-    return jobId;
+    return { jobId, pollToken };
+  }
+
+  validatePollToken(jobId: string, pollToken: string): boolean {
+    const job = this.jobs.get(jobId);
+    if (!job || job.expiresAt <= Date.now()) return false;
+    return job.pollToken === pollToken;
   }
 
   updateProgress(jobId: string, completed: number, total?: number) {

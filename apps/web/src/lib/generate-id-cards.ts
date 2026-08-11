@@ -118,7 +118,7 @@ async function generateIdCardsDownloadAsync(
   const total = params.studentIds.length;
   onProgress?.(0, total);
 
-  const { data: start } = await api.post<{ jobId: string; total: number }>(
+  const { data: start } = await api.post<{ jobId: string; pollToken: string; total: number }>(
     '/id-cards/generate/async',
     {
       templateId: params.templateId,
@@ -130,11 +130,15 @@ async function generateIdCardsDownloadAsync(
     } as VbAxiosConfig,
   );
 
+  const jobHeaders = { 'X-Generate-Job-Token': start.pollToken };
   const deadline = Date.now() + 600_000;
 
   while (Date.now() < deadline) {
     await sleep(750);
-    const { data: job } = await api.get<GenerateJobStatus>(`/id-cards/generate/jobs/${start.jobId}`);
+    const { data: job } = await api.get<GenerateJobStatus>(
+      `/id-cards/generate/jobs/${start.jobId}`,
+      { headers: jobHeaders, _skipOfflineQueue: true } as unknown as VbAxiosConfig,
+    );
     onProgress?.(job.completed, job.total);
 
     if (job.status === 'failed') {
@@ -146,8 +150,9 @@ async function generateIdCardsDownloadAsync(
       const response = await api.get(`/id-cards/generate/jobs/${start.jobId}/download`, {
         responseType: 'blob',
         timeout: 120_000,
+        headers: jobHeaders,
         _skipOfflineQueue: true,
-      } as VbAxiosConfig);
+      } as unknown as VbAxiosConfig);
 
       let blob = coerceDownloadBlob(response.data);
       blob = await ensureBinaryDownloadBlob(blob);
@@ -192,6 +197,9 @@ export async function generateIdCards(params: {
     return await generateIdCardsDownloadAsync(params, params.onProgress);
   } catch (err: unknown) {
     const axiosErr = err as { response?: { data?: unknown; status?: number }; message?: string };
+    if (axiosErr.response?.status === 401) {
+      throw new Error('Session expired during generation. Please sign in and try again.');
+    }
     if (axiosErr.response?.status === 504) {
       throw new Error(
         'Generation timed out. Try fewer students at once, or ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server.',
