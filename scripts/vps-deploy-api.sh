@@ -49,6 +49,12 @@ fi
 pm2 restart vb-api
 pm2 save
 
+if [[ -f "$APP_ROOT/scripts/vps-nginx-generate-timeout.sh" ]]; then
+  echo "Applying nginx proxy timeouts for batch ID card generate (requires sudo)..."
+  sudo bash "$APP_ROOT/scripts/vps-nginx-generate-timeout.sh" || \
+    echo "WARN: Could not update nginx — run manually: sudo bash scripts/vps-nginx-generate-timeout.sh"
+fi
+
 sleep 2
 echo "API health:"
 curl -sI "http://127.0.0.1:4000/api/docs" | head -n1 || true

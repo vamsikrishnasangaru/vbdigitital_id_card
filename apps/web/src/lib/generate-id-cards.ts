@@ -10,18 +10,11 @@ export type DriveStatus = {
 
 async function readApiErrorMessage(data: unknown, fallback: string): Promise<string> {
   if (!data) return fallback;
-  if (typeof data === 'string') return data || fallback;
+  if (typeof data === 'string') return normalizeApiErrorText(data, fallback);
   if (data instanceof Blob) {
     try {
       const text = await data.text();
-      if (!text.trim()) return fallback;
-      try {
-        const json = JSON.parse(text) as { message?: string | string[] };
-        if (Array.isArray(json.message)) return json.message.join(' · ');
-        if (json.message) return json.message;
-      } catch {
-        return text.slice(0, 500);
-      }
+      return normalizeApiErrorText(text, fallback);
     } catch {
       return fallback;
     }
@@ -31,6 +24,35 @@ async function readApiErrorMessage(data: unknown, fallback: string): Promise<str
     if (Array.isArray(message)) return message.join(' · ');
     if (typeof message === 'string') return message;
   }
+  return fallback;
+}
+
+function normalizeApiErrorText(text: string, fallback: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return fallback;
+
+  if (trimmed.startsWith('<') || /<html[\s>]/i.test(trimmed)) {
+    if (/504|Gateway Time-out|Gateway Timeout/i.test(trimmed)) {
+      return 'Generation timed out. Try fewer students at once, or ask your admin to increase the server timeout (scripts/vps-nginx-generate-timeout.sh).';
+    }
+    if (/502|Bad Gateway/i.test(trimmed)) {
+      return 'Server temporarily unavailable. Please try again in a moment.';
+    }
+    if (/503|Service Unavailable/i.test(trimmed)) {
+      return 'Server is busy. Please try again shortly.';
+    }
+    return fallback;
+  }
+
+  try {
+    const json = JSON.parse(trimmed) as { message?: string | string[] };
+    if (Array.isArray(json.message)) return json.message.join(' · ');
+    if (json.message) return json.message;
+  } catch {
+    if (trimmed.length > 200 && trimmed.includes('<')) return fallback;
+    return trimmed.slice(0, 500);
+  }
+
   return fallback;
 }
 
@@ -49,6 +71,8 @@ export async function generateIdCards(params: {
       templateId: params.templateId,
       studentIds: params.studentIds,
       destination: 'drive',
+    }, {
+      timeout: 600_000,
     });
     return { kind: 'json', data };
   }
@@ -60,6 +84,7 @@ export async function generateIdCards(params: {
       destination: 'download',
     }, {
       responseType: 'blob',
+      timeout: 600_000,
     });
 
     const blob = response.data as Blob;
@@ -79,7 +104,12 @@ export async function generateIdCards(params: {
 
     return { kind: 'file', blob, filename, successCount, failCount };
   } catch (err: unknown) {
-    const axiosErr = err as { response?: { data?: unknown }; message?: string };
+    const axiosErr = err as { response?: { data?: unknown; status?: number }; message?: string };
+    if (axiosErr.response?.status === 504) {
+      throw new Error(
+        'Generation timed out. Try fewer students at once, or ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server.',
+      );
+    }
     if (axiosErr.response?.data) {
       const message = await readApiErrorMessage(
         axiosErr.response.data,

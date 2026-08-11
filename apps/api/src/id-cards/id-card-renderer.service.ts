@@ -15,7 +15,9 @@ const CARD_SIZES = {
 } as const;
 
 const MAX_RENDER_ATTEMPTS = 4;
-const GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
+/** Faster navigation for batch PNG — assets continue loading while Konva renders. */
+const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
+const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
 
 class Semaphore {
   private active = 0;
@@ -179,6 +181,12 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     return this.capturePdf(url, { format: 'A4', margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
   }
 
+  private async prepareRenderPage(page: Page): Promise<void> {
+    await page.setCacheEnabled(true);
+    page.setDefaultNavigationTimeout(120000);
+    page.setDefaultTimeout(120000);
+  }
+
   private async waitForRenderReady(page: Page): Promise<void> {
     await page.waitForFunction(
       () => {
@@ -227,7 +235,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       await document.fonts?.ready;
     });
 
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 150));
   }
 
   private async captureCanvasPng(page: Page, _orientation: 'HORIZONTAL' | 'VERTICAL'): Promise<Buffer> {
@@ -396,6 +404,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     studentId: string,
     token: string | undefined,
     orientation: 'HORIZONTAL' | 'VERTICAL',
+    waitUntil: puppeteer.PuppeteerLifeCycleEvent = BATCH_GOTO_WAIT_UNTIL,
   ): Promise<Buffer> {
     const size = CARD_SIZES[orientation];
     await page.setViewport({
@@ -404,7 +413,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       deviceScaleFactor: 1,
     });
     const url = `${this.frontendUrl}/render/${templateId}/${studentId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-    await page.goto(url, { waitUntil: GOTO_WAIT_UNTIL, timeout: 90000 });
+    await page.goto(url, { waitUntil, timeout: 120000 });
     await this.waitForRenderReady(page);
     return this.captureCanvasPng(page, orientation);
   }
@@ -422,8 +431,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       return await this.withRenderRetries(`PNG batch ${templateId}`, async () => {
         const page = await this.newPage();
         try {
-          page.setDefaultNavigationTimeout(90000);
-          page.setDefaultTimeout(90000);
+          await this.prepareRenderPage(page);
           const results: Array<{ studentId: string; buffer?: Buffer; error?: string }> = [];
           for (const studentId of studentIds) {
             try {
@@ -450,9 +458,10 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       return await this.withRenderRetries(`PDF ${url}`, async () => {
         const page = await this.newPage();
         try {
-          page.setDefaultNavigationTimeout(90000);
-          page.setDefaultTimeout(90000);
-          await page.goto(url, { waitUntil: GOTO_WAIT_UNTIL, timeout: 90000 });
+          await this.prepareRenderPage(page);
+          page.setDefaultNavigationTimeout(120000);
+          page.setDefaultTimeout(120000);
+          await page.goto(url, { waitUntil: PDF_GOTO_WAIT_UNTIL, timeout: 120000 });
           await this.waitForRenderReady(page);
           const pdfBuffer = await page.pdf({
             printBackground: true,
@@ -481,8 +490,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       return await this.withRenderRetries(`PNG ${studentId}`, async () => {
         const page = await this.newPage();
         try {
-          page.setDefaultNavigationTimeout(90000);
-          page.setDefaultTimeout(90000);
+          await this.prepareRenderPage(page);
           return await this.renderCardOnPage(page, templateId, studentId, token, orientation);
         } finally {
           await this.safeClosePage(page);
