@@ -11,6 +11,7 @@ git pull
 pnpm install
 pnpm --filter @repo/db run generate
 cd "$API_DIR"
+pm2 stop vb-api 2>/dev/null || true
 rm -rf dist tsconfig.tsbuildinfo
 echo "Running: pnpm run build"
 if ! pnpm run build 2>&1 | tee /tmp/vb-api-build.log; then

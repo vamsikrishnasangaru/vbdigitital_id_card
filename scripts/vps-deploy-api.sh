@@ -39,6 +39,8 @@ pnpm --filter @repo/db run generate
 bash "$APP_ROOT/scripts/vps-install-chrome.sh"
 
 cd "$API_DIR"
+echo "Stopping vb-api before rebuild (avoids MODULE_NOT_FOUND if PM2 restarts while dist/ is missing)..."
+pm2 stop vb-api 2>/dev/null || true
 rm -rf dist tsconfig.tsbuildinfo
 pnpm run build
 
