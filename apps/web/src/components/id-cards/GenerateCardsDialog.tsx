@@ -2,6 +2,7 @@
 
 import { Download, HardDrive, Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { generateBatchCount, ID_CARD_GENERATE_BATCH_SIZE } from '@/lib/generate-id-cards';
 
 type GenerateCardsDialogProps = {
   open: boolean;
@@ -27,6 +28,8 @@ export function GenerateCardsDialog({
   if (!open) return null;
 
   const single = studentCount === 1;
+  const batchCount = generateBatchCount(studentCount);
+  const multiBatch = batchCount > 1;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -40,6 +43,12 @@ export function GenerateCardsDialog({
             <h3 className="text-xl sm:text-2xl font-black text-foreground">Generate ID Cards</h3>
             <p className="text-sm text-muted-foreground font-medium mt-1">
               {studentCount} student{studentCount === 1 ? '' : 's'} selected — choose where to send the cards.
+              {multiBatch ? (
+                <span className="block mt-1 text-amber-700 dark:text-amber-400">
+                  Large batch: downloads {batchCount} ZIP files (~{ID_CARD_GENERATE_BATCH_SIZE} students each) for
+                  reliability.
+                </span>
+              ) : null}
             </p>
           </div>
           <button
@@ -76,7 +85,9 @@ export function GenerateCardsDialog({
               <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
                 {single
                   ? 'Download one ID card as a PNG image.'
-                  : 'Download a ZIP file with an id-cards folder containing PNG images.'}
+                  : multiBatch
+                    ? `Download ${batchCount} ZIP files (~${ID_CARD_GENERATE_BATCH_SIZE} PNGs each) automatically, one after another.`
+                    : 'Download a ZIP file with an id-cards folder containing PNG images.'}
               </p>
             </div>
           </button>

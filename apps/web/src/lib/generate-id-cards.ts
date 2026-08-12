@@ -205,6 +205,34 @@ async function withTransientRetry<T>(
 
 export type GenerateCardFailure = { studentId: string; error: string };
 
+/** Auto-split large selections so VPS batch render stays stable (~40 per ZIP). */
+export const ID_CARD_GENERATE_BATCH_SIZE = 40;
+
+export function generateBatchCount(
+  studentCount: number,
+  batchSize: number = ID_CARD_GENERATE_BATCH_SIZE,
+): number {
+  if (studentCount <= batchSize) return 1;
+  return Math.ceil(studentCount / batchSize);
+}
+
+function chunkStudentIds(studentIds: string[], batchSize: number): string[][] {
+  const chunks: string[][] = [];
+  for (let i = 0; i < studentIds.length; i += batchSize) {
+    chunks.push(studentIds.slice(i, i + batchSize));
+  }
+  return chunks;
+}
+
+function batchDownloadFilename(filename: string, batchIndex: number, batchCount: number): string {
+  if (batchCount <= 1) return filename;
+  const dot = filename.lastIndexOf('.');
+  if (dot > 0) {
+    return `${filename.slice(0, dot)}_part${batchIndex}${filename.slice(dot)}`;
+  }
+  return `${filename}_part${batchIndex}`;
+}
+
 export type GenerateIdCardsResult =
   | {
       kind: 'file';
@@ -213,6 +241,8 @@ export type GenerateIdCardsResult =
       successCount: number;
       failCount: number;
       failures?: GenerateCardFailure[];
+      /** When >1, each batch ZIP was already downloaded during generation. */
+      batchesDownloaded?: number;
     }
   | { kind: 'json'; data: unknown };
 
@@ -331,6 +361,93 @@ async function generateIdCardsAsync(
   );
 }
 
+async function generateIdCardsInChunks(params: {
+  templateId: string;
+  studentIds: string[];
+  destination: GenerateDestination;
+  onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void;
+}): Promise<GenerateIdCardsResult> {
+  const chunks = chunkStudentIds(params.studentIds, ID_CARD_GENERATE_BATCH_SIZE);
+  const batchCount = chunks.length;
+  let successCount = 0;
+  let failCount = 0;
+  const failures: GenerateCardFailure[] = [];
+  let lastFile: { blob: Blob; filename: string } | null = null;
+
+  for (let i = 0; i < chunks.length; i += 1) {
+    if (i > 0) {
+      await sleep(2000);
+    }
+
+    const batchIndex = i + 1;
+    const chunk = chunks[i];
+    const batchPrefix = `Batch ${batchIndex} of ${batchCount}`;
+
+    params.onProgress?.(0, chunk.length, {
+      destination: params.destination,
+      phase: 'rendering',
+      progressMessage: `${batchPrefix}: starting…`,
+    });
+
+    const result = await generateIdCardsAsync(
+      {
+        templateId: params.templateId,
+        studentIds: chunk,
+        destination: params.destination,
+      },
+      (completed, total, meta) => {
+        params.onProgress?.(completed, total, {
+          ...meta,
+          progressMessage:
+            meta?.progressMessage && meta.status === 'running'
+              ? `${batchPrefix}: ${meta.progressMessage}`
+              : `${batchPrefix}: ${formatGenerateProgressMessage(completed, total, meta)}`,
+        });
+      },
+    );
+
+    if (result.kind === 'json') {
+      const data = result.data as { successCount?: number; failCount?: number };
+      successCount += data.successCount ?? chunk.length;
+      failCount += data.failCount ?? 0;
+      continue;
+    }
+
+    successCount += result.successCount;
+    failCount += result.failCount;
+    if (result.failures?.length) failures.push(...result.failures);
+
+    const filename = batchDownloadFilename(result.filename, batchIndex, batchCount);
+    triggerIdCardDownload(result.blob, filename);
+    lastFile = { blob: result.blob, filename };
+  }
+
+  if (params.destination === 'drive') {
+    return {
+      kind: 'json',
+      data: {
+        message: `Uploaded ${successCount} card(s) to Google Drive in ${batchCount} batch(es)`,
+        successCount,
+        failCount,
+      },
+    };
+  }
+
+  if (!lastFile) {
+    throw new Error('Failed to generate any ID card images');
+  }
+
+  return {
+    kind: 'file',
+    blob: lastFile.blob,
+    filename: lastFile.filename,
+    successCount,
+    failCount,
+    failures: failures.length ? failures : undefined,
+    batchesDownloaded: batchCount,
+  };
+}
+
 export async function generateIdCards(params: {
   templateId: string;
   studentIds: string[];
@@ -338,7 +455,10 @@ export async function generateIdCards(params: {
   onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void;
 }): Promise<GenerateIdCardsResult> {
   try {
-    return await generateIdCardsAsync(params, params.onProgress);
+    if (params.studentIds.length <= ID_CARD_GENERATE_BATCH_SIZE) {
+      return await generateIdCardsAsync(params, params.onProgress);
+    }
+    return await generateIdCardsInChunks(params);
   } catch (err: unknown) {
     const axiosErr = err as { response?: { data?: unknown; status?: number }; message?: string };
     if (axiosErr.response?.status === 401) {

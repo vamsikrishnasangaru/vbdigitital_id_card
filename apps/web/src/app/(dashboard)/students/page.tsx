@@ -724,16 +724,20 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       toast.dismiss('generate-id-cards');
       setShowGenerateDialog(false);
       if (result.kind === 'file') {
-        triggerIdCardDownload(result.blob, result.filename);
+        if (!result.batchesDownloaded || result.batchesDownloaded <= 1) {
+          triggerIdCardDownload(result.blob, result.filename);
+        }
         if (result.failCount > 0) {
           toast.warning(`Downloaded ${result.successCount} of ${visibleStudents.length} card(s); ${result.failCount} failed`);
           const firstErr = result.failures?.[0]?.error;
           if (firstErr) toast.error(firstErr, { duration: 10000 });
         } else {
           toast.success(
-            result.filename.endsWith('.zip')
-              ? `Downloaded ZIP with ${result.successCount} PNG card(s)`
-              : 'Downloaded ID card PNG',
+            result.batchesDownloaded && result.batchesDownloaded > 1
+              ? `Downloaded ${result.batchesDownloaded} ZIP files (${result.successCount} PNG card(s) total)`
+              : result.filename.endsWith('.zip')
+                ? `Downloaded ZIP with ${result.successCount} PNG card(s)`
+                : 'Downloaded ID card PNG',
           );
         }
       } else {
