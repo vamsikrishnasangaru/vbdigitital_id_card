@@ -205,6 +205,26 @@ async function withTransientRetry<T>(
 
 export type GenerateCardFailure = { studentId: string; error: string };
 
+export function uniqueFailedStudentIds(failures?: GenerateCardFailure[]): string[] {
+  if (!failures?.length) return [];
+  return [...new Set(failures.map((f) => f.studentId))];
+}
+
+export function formatFailedStudentLabels(
+  failures: GenerateCardFailure[],
+  students: Array<{ id: string; firstName?: string; lastName?: string }>,
+  maxNames = 3,
+): string {
+  const names = uniqueFailedStudentIds(failures).map((id) => {
+    const student = students.find((row) => row.id === id);
+    return student
+      ? `${student.firstName ?? ''} ${student.lastName ?? ''}`.trim()
+      : id.slice(0, 8);
+  });
+  if (names.length <= maxNames) return names.join(', ');
+  return `${names.slice(0, maxNames).join(', ')} +${names.length - maxNames} more`;
+}
+
 /** Auto-split large selections so VPS batch render stays stable (~40 per ZIP). */
 export const ID_CARD_GENERATE_BATCH_SIZE = 40;
 

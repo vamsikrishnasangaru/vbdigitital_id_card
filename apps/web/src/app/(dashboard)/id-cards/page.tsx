@@ -32,6 +32,9 @@ import {
   triggerIdCardDownload,
   fetchDriveStatus,
   formatGenerateProgressMessage,
+  formatFailedStudentLabels,
+  uniqueFailedStudentIds,
+  type GenerateCardFailure,
   type GenerateDestination,
 } from '@/lib/generate-id-cards';
 import { saveEditStudentIntent } from '@/lib/students-navigation';
@@ -178,11 +181,17 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
 
   // Mutations
   const generateMutation = useMutation({
-    mutationFn: async (destination: GenerateDestination) => {
-      const studentIds = students.map((s: { id: string }) => s.id);
+    mutationFn: async ({
+      destination,
+      studentIds,
+    }: {
+      destination: GenerateDestination;
+      studentIds?: string[];
+    }) => {
+      const ids = studentIds ?? students.map((s: { id: string }) => s.id);
       return generateIdCards({
         templateId: selectedTemplate,
-        studentIds,
+        studentIds: ids,
         destination,
         onProgress: (completed, total, meta) => {
           toast.loading(formatGenerateProgressMessage(completed, total, meta), {
@@ -202,8 +211,23 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
           triggerIdCardDownload(result.blob, result.filename);
         }
         if (result.failCount > 0) {
+          const failedIds = uniqueFailedStudentIds(result.failures);
+          const failedNames = result.failures?.length
+            ? formatFailedStudentLabels(result.failures, students)
+            : '';
           toast.warning(
-            `Downloaded ${result.successCount} of ${students.length} card(s); ${result.failCount} failed`,
+            `Downloaded ${result.successCount} of ${students.length} card(s); ${result.failCount} failed${failedNames ? `: ${failedNames}` : ''}`,
+            {
+              duration: 20000,
+              action:
+                failedIds.length > 0
+                  ? {
+                      label: `Retry ${failedIds.length}`,
+                      onClick: () =>
+                        generateMutation.mutate({ destination: 'download', studentIds: failedIds }),
+                    }
+                  : undefined,
+            },
           );
           const firstErr = result.failures?.[0]?.error;
           if (firstErr) toast.error(firstErr, { duration: 10000 });
@@ -229,8 +253,27 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
           return;
         }
         if ((data.failCount ?? 0) > 0) {
-          toast.warning(data.message || `Some cards failed (${data.failCount})`);
-          const firstErr = data.results?.find((r) => r.status === 'FAILED')?.error;
+          const results = data.results as { studentId?: string; status?: string; error?: string }[] | undefined;
+          const driveFailures: GenerateCardFailure[] =
+            results
+              ?.filter((row) => row.status === 'FAILED' && row.studentId)
+              .map((row) => ({ studentId: row.studentId!, error: row.error || 'Upload failed' })) ?? [];
+          const failedIds = uniqueFailedStudentIds(driveFailures);
+          const failedNames = driveFailures.length
+            ? formatFailedStudentLabels(driveFailures, students)
+            : '';
+          toast.warning(data.message || `Some cards failed (${data.failCount})${failedNames ? `: ${failedNames}` : ''}`, {
+            duration: 20000,
+            action:
+              failedIds.length > 0
+                ? {
+                    label: `Retry ${failedIds.length}`,
+                    onClick: () =>
+                      generateMutation.mutate({ destination: 'drive', studentIds: failedIds }),
+                  }
+                : undefined,
+          });
+          const firstErr = results?.find((r) => r.status === 'FAILED')?.error;
           if (firstErr) toast.error(firstErr, { duration: 8000 });
         } else {
           toast.success(data.message || `Uploaded ${data.successCount} card(s) to Google Drive`);
@@ -815,8 +858,8 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
         isSubmitting={generateMutation.isPending}
         driveAvailable={driveStatus?.canUpload ?? false}
         driveAuthHint={driveStatus?.authHint || driveStatus?.authError}
-        onDownload={() => generateMutation.mutate('download')}
-        onGoogleDrive={() => generateMutation.mutate('drive')}
+        onDownload={() => generateMutation.mutate({ destination: 'download' })}
+        onGoogleDrive={() => generateMutation.mutate({ destination: 'drive' })}
       />
     </div>
   );
