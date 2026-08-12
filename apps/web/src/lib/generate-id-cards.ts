@@ -203,6 +203,19 @@ async function withTransientRetry<T>(
   throw lastError instanceof Error ? lastError : new Error(`${label} failed`);
 }
 
+export type GenerateCardFailure = { studentId: string; error: string };
+
+export type GenerateIdCardsResult =
+  | {
+      kind: 'file';
+      blob: Blob;
+      filename: string;
+      successCount: number;
+      failCount: number;
+      failures?: GenerateCardFailure[];
+    }
+  | { kind: 'json'; data: unknown };
+
 async function generateIdCardsAsync(
   params: {
     templateId: string;
@@ -210,10 +223,7 @@ async function generateIdCardsAsync(
     destination: GenerateDestination;
   },
   onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void,
-): Promise<
-  | { kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number; failures?: { studentId: string; error: string }[] }
-  | { kind: 'json'; data: { message?: string; successCount?: number; failCount?: number } }
-> {
+): Promise<GenerateIdCardsResult> {
   const total = params.studentIds.length;
   const destination = params.destination;
   onProgress?.(0, total, { destination, phase: 'rendering' });
@@ -326,7 +336,7 @@ export async function generateIdCards(params: {
   studentIds: string[];
   destination: GenerateDestination;
   onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void;
-}): Promise<{ kind: 'json'; data: unknown } | { kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }> {
+}): Promise<GenerateIdCardsResult> {
   try {
     return await generateIdCardsAsync(params, params.onProgress);
   } catch (err: unknown) {

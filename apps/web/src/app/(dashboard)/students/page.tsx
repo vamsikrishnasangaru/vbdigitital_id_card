@@ -65,6 +65,7 @@ import {
   fetchDriveStatus,
   formatGenerateProgressMessage,
   type GenerateDestination,
+  type GenerateIdCardsResult,
 } from '@/lib/generate-id-cards';
 
 const SELECT_OPTION_CLASS = 'bg-popover text-popover-foreground';
@@ -719,7 +720,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     onMutate: () => {
       // Progress toast is driven by onProgress in mutationFn.
     },
-    onSuccess: (result) => {
+    onSuccess: (result: GenerateIdCardsResult) => {
       toast.dismiss('generate-id-cards');
       setShowGenerateDialog(false);
       if (result.kind === 'file') {
