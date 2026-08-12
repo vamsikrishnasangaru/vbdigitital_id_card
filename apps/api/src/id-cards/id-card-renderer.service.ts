@@ -33,6 +33,15 @@ const BATCH_RETRY_CONCURRENCY = Math.max(
   1,
   Math.min(4, Number(process.env.ID_CARD_BATCH_RETRY_CONCURRENCY) || 3),
 );
+/** Stagger parallel tabs so five batch-export pages do not hammer vb-web at once. */
+const BATCH_WORKER_STAGGER_MS = Math.max(
+  0,
+  Math.min(2000, Number(process.env.ID_CARD_BATCH_WORKER_STAGGER_MS) || 400),
+);
+const BROWSER_LAUNCH_TIMEOUT_MS = Math.max(
+  15_000,
+  Math.min(120_000, Number(process.env.ID_CARD_BROWSER_LAUNCH_TIMEOUT_MS) || 60_000),
+);
 
 export type BatchCardRenderResult = {
   studentId: string;
@@ -44,6 +53,8 @@ export type RenderCardsBatchOptions = {
   onProgress?: (completed: number, total: number) => void;
   /** Fires after each card — use to pipeline Drive uploads while rendering continues. */
   onCardRendered?: (result: BatchCardRenderResult) => void | Promise<void>;
+  /** Fires once the render lock is acquired, before Chrome/pages start. */
+  onPreparing?: (message: string) => void;
 };
 
 class Semaphore {
@@ -117,6 +128,37 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     await this.ensureBrowser();
   }
 
+  /** Reuse a healthy browser; only launch when disconnected (avoids OOM from restart + 5 tabs). */
+  private async ensureBrowserForBatch(): Promise<void> {
+    if (this.browser?.connected) return;
+    await this.restartBrowser('batch render');
+  }
+
+  private async launchBrowserWithTimeout(): Promise<Browser> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const launchOptions = getPuppeteerLaunchOptions();
+      const chromePath = launchOptions.executablePath ?? resolveChromeExecutable();
+      this.logger.log(
+        chromePath
+          ? `Launching Puppeteer with ${chromePath}`
+          : 'Launching Puppeteer with bundled Chrome (run: pnpm exec puppeteer browsers install chrome)',
+      );
+      const browser = await Promise.race([
+        puppeteer.launch(launchOptions),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Chrome did not start within ${BROWSER_LAUNCH_TIMEOUT_MS / 1000}s`)),
+            BROWSER_LAUNCH_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      return browser;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async onModuleInit() {
     try {
       await this.ensureBrowser();
@@ -134,16 +176,8 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       this.browser = null;
     }
 
-    const launchOptions = getPuppeteerLaunchOptions();
-    const chromePath = launchOptions.executablePath ?? resolveChromeExecutable();
-    this.logger.log(
-      chromePath
-        ? `Launching Puppeteer with ${chromePath}`
-        : 'Launching Puppeteer with bundled Chrome (run: pnpm exec puppeteer browsers install chrome)',
-    );
-
     try {
-      this.browser = await puppeteer.launch(launchOptions);
+      this.browser = await this.launchBrowserWithTimeout();
       this.browser.on('disconnected', () => {
         this.logger.warn('Puppeteer browser disconnected; will re-launch on next render.');
         this.browser = null;
@@ -588,6 +622,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
     const onProgress = options?.onProgress;
     const onCardRendered = options?.onCardRendered;
+    const onPreparing = options?.onPreparing;
 
     const workerCount = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
     /** Small batches (e.g. 37) use more workers; large batches cap chunk size for memory. */
@@ -608,8 +643,9 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
     const release = await this.renderSemaphore.acquire();
     try {
-      /** Fresh Chrome each batch — prevents overnight memory leaks and slow retries. */
-      await this.restartBrowser('fresh batch job');
+      onPreparing?.('Preparing Chrome renderer…');
+      await this.ensureBrowserForBatch();
+      onPreparing?.('Loading template pages…');
 
       return await this.withRenderRetries(`PNG batch ${templateId}`, async () => {
         const results: Array<{ studentId: string; buffer?: Buffer; error?: string }> =
@@ -620,12 +656,19 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         };
 
         let nextChunk = 0;
+        let nextWorker = 0;
         const renderChunkWorker = async () => {
+          const workerIndex = nextWorker++;
+          if (workerIndex > 0 && BATCH_WORKER_STAGGER_MS > 0) {
+            await new Promise((r) => setTimeout(r, workerIndex * BATCH_WORKER_STAGGER_MS));
+          }
           while (true) {
             const chunkIndex = nextChunk++;
             if (chunkIndex >= chunks.length) break;
             const { ids, startIndex } = chunks[chunkIndex];
             if (!ids.length) continue;
+
+            onPreparing?.(`Loading template (${ids.length} students in parallel batch ${chunkIndex + 1}/${chunks.length})…`);
 
             const page = await this.newPage();
             try {

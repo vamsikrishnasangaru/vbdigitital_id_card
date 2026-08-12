@@ -119,10 +119,12 @@ export class IdCardsService {
 
   private async runDownloadGenerateJob(jobId: string, templateId: string, studentIds: string[]) {
     try {
+      this.generateJobs.setPreparing(jobId, 'Starting download job…');
       const pack = await this.generateDownloadPack(templateId, studentIds, (completed, total) => {
         this.generateJobs.updateProgress(jobId, completed, total);
       }, {
         zipToTempFile: true,
+        onPreparing: (message) => this.generateJobs.setPreparing(jobId, message),
         onPackaging: () => this.generateJobs.setPackaging(jobId),
         onPackagingFile: (index, total) =>
           this.generateJobs.updatePackagingProgress(jobId, index, total),
@@ -148,6 +150,7 @@ export class IdCardsService {
     onProgress?: (completed: number, total: number) => void,
     options?: {
       zipToTempFile?: boolean;
+      onPreparing?: (message: string) => void;
       onPackaging?: () => void;
       onPackagingFile?: (index: number, total: number) => void;
     },
@@ -160,7 +163,10 @@ export class IdCardsService {
         studentIds,
         renderToken,
         template.orientation as Orientation,
-        { onProgress },
+        {
+          onProgress,
+          onPreparing: options?.onPreparing,
+        },
       ),
       this.loadStudents(studentIds),
     ]);
@@ -238,7 +244,9 @@ export class IdCardsService {
 
   private async runDriveGenerateJob(jobId: string, templateId: string, studentIds: string[]) {
     try {
+      this.generateJobs.setPreparing(jobId, 'Starting Google Drive job…');
       const result = await this.generateToDrive(templateId, studentIds, {
+        onPreparing: (message) => this.generateJobs.setPreparing(jobId, message),
         onRenderProgress: (completed, total) => {
           this.generateJobs.updateProgress(jobId, completed, total);
         },
@@ -266,6 +274,7 @@ export class IdCardsService {
     templateId: string,
     studentIds: string[],
     options?: {
+      onPreparing?: (message: string) => void;
       onRenderProgress?: (completed: number, total: number) => void;
       onUploadStart?: (total: number) => void;
       onUploadProgress?: (completed: number, total: number) => void;
@@ -364,6 +373,7 @@ export class IdCardsService {
       template.orientation as Orientation,
       {
         onProgress: options?.onRenderProgress,
+        onPreparing: options?.onPreparing,
         onCardRendered: async (result) => {
           if (!result.buffer) {
             this.logger.warn(`ID card render failed for student ${result.studentId}: ${result.error}`);

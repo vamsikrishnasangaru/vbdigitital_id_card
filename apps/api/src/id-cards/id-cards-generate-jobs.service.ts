@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -37,9 +37,12 @@ type GenerateJobRecord = {
   failCount: number;
   pollToken: string;
   error?: string;
+  progressMessage?: string;
   result?: GenerateJobResult;
   packagingCompleted?: number;
   uploadCompleted?: number;
+  startedAt: number;
+  lastProgressAt: number;
   expiresAt: number;
 };
 
@@ -48,17 +51,25 @@ const JOB_TTL_MS = 2 * 60 * 60 * 1000;
 const JOB_DIR = join(tmpdir(), 'id-card-generate-jobs');
 /** Avoid syncing job JSON to disk on every 300ms poll — that blocked the API. */
 const JOB_PERSIST_INTERVAL_MS = 10_000;
+/** Fail jobs that never advance (e.g. API OOM restart left them orphaned on disk). */
+const STALE_JOB_MS_BEFORE_FIRST_CARD = 20 * 60 * 1000;
+const STALE_JOB_MS_AFTER_PROGRESS = 8 * 60 * 1000;
 
 @Injectable()
-export class IdCardsGenerateJobsService {
+export class IdCardsGenerateJobsService implements OnModuleInit {
   private readonly logger = new Logger(IdCardsGenerateJobsService.name);
   private readonly jobs = new Map<string, GenerateJobRecord>();
   private readonly lastPersistMs = new Map<string, number>();
+
+  onModuleInit() {
+    this.failOrphanedRunningJobs();
+  }
 
   createJob(total: number, destination: GenerateJobDestination = 'download'): { jobId: string; pollToken: string } {
     this.pruneExpired();
     const jobId = randomUUID();
     const pollToken = randomUUID();
+    const now = Date.now();
     const job: GenerateJobRecord = {
       status: 'running',
       phase: 'rendering',
@@ -68,7 +79,10 @@ export class IdCardsGenerateJobsService {
       successCount: 0,
       failCount: 0,
       pollToken,
-      expiresAt: Date.now() + JOB_TTL_MS,
+      progressMessage: 'Queued — waiting for renderer…',
+      startedAt: now,
+      lastProgressAt: now,
+      expiresAt: now + JOB_TTL_MS,
     };
     this.jobs.set(jobId, job);
     this.persistJob(jobId, job, true);
@@ -81,12 +95,21 @@ export class IdCardsGenerateJobsService {
     return job.pollToken === pollToken;
   }
 
+  setPreparing(jobId: string, message: string) {
+    const job = this.getOrLoadJob(jobId);
+    if (!job || job.status !== 'running') return;
+    job.phase = 'rendering';
+    job.progressMessage = message;
+    this.touchJobRecord(jobId, job);
+  }
+
   updateProgress(jobId: string, completed: number, total?: number) {
     const job = this.getOrLoadJob(jobId);
     if (!job || job.status !== 'running') return;
     job.phase = 'rendering';
     job.completed = completed;
     if (total !== undefined) job.total = total;
+    if (completed > 0) job.progressMessage = undefined;
     this.touchJobRecord(jobId, job);
   }
 
@@ -127,11 +150,11 @@ export class IdCardsGenerateJobsService {
     this.touchJobRecord(jobId, job);
   }
 
-  /** Extend TTL during packaging or while the client is polling. */
+  /** Extend TTL during packaging or while the client is polling — does not reset progress heartbeat. */
   touchJob(jobId: string) {
     const job = this.getOrLoadJob(jobId);
     if (!job) return;
-    this.touchJobRecord(jobId, job);
+    this.touchJobExpiry(jobId, job);
   }
 
   complete(jobId: string, result: GenerateJobResult) {
@@ -163,9 +186,19 @@ export class IdCardsGenerateJobsService {
 
   getJob(jobId: string) {
     this.pruneExpired();
-    const job = this.getOrLoadJob(jobId);
+    let job = this.getOrLoadJob(jobId);
     if (!job) return null;
-    this.touchJobRecord(jobId, job);
+
+    if (job.status === 'running' && this.isJobStale(job)) {
+      this.fail(
+        jobId,
+        'Generation stalled — the server may have restarted or run out of memory. Try again with fewer students, or ask your admin to increase vb-api memory (ecosystem.config.cjs).',
+      );
+      job = this.getOrLoadJob(jobId);
+      if (!job) return null;
+    }
+
+    this.touchJobExpiry(jobId, job);
 
     const response = {
       status: job.status,
@@ -178,6 +211,7 @@ export class IdCardsGenerateJobsService {
       successCount: job.successCount,
       failCount: job.failCount,
       error: job.error,
+      progressMessage: job.status === 'running' ? job.progressMessage : undefined,
       message: job.result?.kind === 'drive' ? job.result.message : undefined,
     };
 
@@ -214,7 +248,35 @@ export class IdCardsGenerateJobsService {
     return job;
   }
 
-  private touchJobRecord(jobId: string, job: GenerateJobRecord, forceDisk = false) {
+  private isJobStale(job: GenerateJobRecord): boolean {
+    const last = job.lastProgressAt ?? job.startedAt ?? 0;
+    const limit =
+      job.completed > 0 ? STALE_JOB_MS_AFTER_PROGRESS : STALE_JOB_MS_BEFORE_FIRST_CARD;
+    return Date.now() - last > limit;
+  }
+
+  private failOrphanedRunningJobs() {
+    if (!existsSync(JOB_DIR)) return;
+    try {
+      for (const file of readdirSync(JOB_DIR)) {
+        if (!file.endsWith('.json')) continue;
+        const jobId = file.slice(0, -'.json'.length);
+        const job = this.loadJob(jobId);
+        if (!job || job.status !== 'running' || job.expiresAt <= Date.now()) continue;
+        this.jobs.set(jobId, job);
+        this.fail(
+          jobId,
+          'Generation was interrupted when the server restarted. Please try again (avoid redeploying during a batch).',
+        );
+        this.logger.warn(`Marked orphaned generate job ${jobId} as failed after API restart`);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Failed to clean orphaned generate jobs: ${message}`);
+    }
+  }
+
+  private touchJobExpiry(jobId: string, job: GenerateJobRecord, forceDisk = false) {
     job.expiresAt = Date.now() + JOB_TTL_MS;
     const now = Date.now();
     const last = this.lastPersistMs.get(jobId) ?? 0;
@@ -222,6 +284,11 @@ export class IdCardsGenerateJobsService {
       this.persistJob(jobId, job, forceDisk);
       this.lastPersistMs.set(jobId, now);
     }
+  }
+
+  private touchJobRecord(jobId: string, job: GenerateJobRecord, forceDisk = false) {
+    job.lastProgressAt = Date.now();
+    this.touchJobExpiry(jobId, job, forceDisk);
   }
 
   private ensureJobDir() {
@@ -246,6 +313,9 @@ export class IdCardsGenerateJobsService {
       failCount: job.failCount,
       pollToken: job.pollToken,
       error: job.error,
+      progressMessage: job.progressMessage,
+      startedAt: job.startedAt,
+      lastProgressAt: job.lastProgressAt,
       expiresAt: job.expiresAt,
       result: job.result
         ? job.result.kind === 'drive'
@@ -285,6 +355,9 @@ export class IdCardsGenerateJobsService {
       const job = JSON.parse(raw) as GenerateJobRecord;
       if (!job.phase) job.phase = job.status === 'done' ? 'packaging' : 'rendering';
       if (!job.destination) job.destination = 'download';
+      const now = Date.now();
+      if (!job.startedAt) job.startedAt = now;
+      if (!job.lastProgressAt) job.lastProgressAt = job.startedAt;
       return job;
     } catch {
       return null;

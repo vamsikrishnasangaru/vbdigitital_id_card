@@ -103,16 +103,20 @@ export function formatGenerateProgressMessage(
     destination?: GenerateDestination;
     packagingCompleted?: number;
     uploadCompleted?: number;
+    progressMessage?: string;
   },
 ): string {
   const destination = options?.destination ?? 'download';
+  if (options?.progressMessage) {
+    return options.progressMessage;
+  }
   if (total <= 1) {
     return destination === 'drive' ? 'Generating and uploading ID card…' : 'Generating ID card…';
   }
   if (completed <= 0) {
     return destination === 'drive'
-      ? `Starting generation of ${total} ID cards for Google Drive…`
-      : `Starting generation of ${total} ID cards…`;
+      ? `Preparing renderer for ${total} ID cards (Google Drive)…`
+      : `Preparing renderer for ${total} ID cards…`;
   }
   if (options?.status === 'done') {
     return destination === 'drive'
@@ -148,6 +152,7 @@ type GenerateJobStatus = {
   failCount: number;
   error?: string;
   message?: string;
+  progressMessage?: string;
 };
 
 export type GenerateProgressMeta = {
@@ -156,6 +161,7 @@ export type GenerateProgressMeta = {
   destination?: GenerateDestination;
   packagingCompleted?: number;
   uploadCompleted?: number;
+  progressMessage?: string;
 };
 
 function sleep(ms: number) {
@@ -249,6 +255,7 @@ async function generateIdCardsAsync(
       destination: job.destination ?? destination,
       packagingCompleted: job.packagingCompleted,
       uploadCompleted: job.uploadCompleted,
+      progressMessage: job.progressMessage,
     });
 
     if (job.status === 'failed') {
