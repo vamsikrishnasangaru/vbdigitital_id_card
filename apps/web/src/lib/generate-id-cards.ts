@@ -107,7 +107,7 @@ export function formatGenerateProgressMessage(
   },
 ): string {
   const destination = options?.destination ?? 'download';
-  if (options?.progressMessage) {
+  if (options?.progressMessage && completed <= 0) {
     return options.progressMessage;
   }
   if (total <= 1) {

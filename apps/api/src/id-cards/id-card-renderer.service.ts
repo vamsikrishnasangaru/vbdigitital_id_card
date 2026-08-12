@@ -42,6 +42,11 @@ const BROWSER_LAUNCH_TIMEOUT_MS = Math.max(
   15_000,
   Math.min(120_000, Number(process.env.ID_CARD_BROWSER_LAUNCH_TIMEOUT_MS) || 60_000),
 );
+/** Fail queued jobs instead of hanging forever behind a stuck batch. */
+const RENDER_LOCK_TIMEOUT_MS = Math.max(
+  60_000,
+  Math.min(30 * 60_000, Number(process.env.ID_CARD_RENDER_LOCK_TIMEOUT_MS) || 20 * 60_000),
+);
 
 export type BatchCardRenderResult = {
   studentId: string;
@@ -63,12 +68,49 @@ class Semaphore {
 
   constructor(private readonly limit: number) {}
 
-  async acquire(): Promise<() => void> {
+  get isBusy(): boolean {
+    return this.active >= this.limit;
+  }
+
+  async acquire(options?: {
+    onWaiting?: (waitSeconds: number) => void;
+    timeoutMs?: number;
+    timeoutMessage?: string;
+  }): Promise<() => void> {
     if (this.active < this.limit) {
       this.active += 1;
       return () => this.release();
     }
-    await new Promise<void>((resolve) => this.queue.push(resolve));
+
+    const started = Date.now();
+    let timer: ReturnType<typeof setInterval> | undefined;
+    if (options?.onWaiting) {
+      timer = setInterval(() => {
+        options.onWaiting?.(Math.floor((Date.now() - started) / 1000));
+      }, 5000);
+    }
+
+    try {
+      await Promise.race([
+        new Promise<void>((resolve) => this.queue.push(resolve)),
+        new Promise<void>((_, reject) => {
+          if (!options?.timeoutMs) return;
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  options.timeoutMessage ||
+                    `Renderer busy for ${Math.round((options.timeoutMs ?? 0) / 1000)}s — try again in a minute`,
+                ),
+              ),
+            options.timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearInterval(timer);
+    }
+
     this.active += 1;
     return () => this.release();
   }
@@ -90,6 +132,19 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   constructor(private configService: ConfigService) {
     const configured = this.configService.get<string>('FRONTEND_URL')?.trim();
     this.frontendUrl = configured || 'http://127.0.0.1:3000';
+  }
+
+  /** Large school batches — fewer tabs and smaller pages load faster and use less RAM. */
+  private batchWorkerCount(totalStudents: number): number {
+    if (totalStudents > 80) return Math.min(3, BATCH_RENDER_CONCURRENCY);
+    if (totalStudents > 40) return Math.min(4, BATCH_RENDER_CONCURRENCY);
+    return BATCH_RENDER_CONCURRENCY;
+  }
+
+  private batchPageSizeCap(totalStudents: number): number {
+    if (totalStudents > 80) return Math.min(8, BATCH_PAGE_SIZE);
+    if (totalStudents > 40) return Math.min(10, BATCH_PAGE_SIZE);
+    return BATCH_PAGE_SIZE;
   }
 
   private isTransientBrowserError(error: unknown): boolean {
@@ -624,10 +679,11 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     const onCardRendered = options?.onCardRendered;
     const onPreparing = options?.onPreparing;
 
-    const workerCount = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
-    /** Small batches (e.g. 37) use more workers; large batches cap chunk size for memory. */
+    const workerCount = Math.min(this.batchWorkerCount(studentIds.length), studentIds.length);
+    const pageSizeCap = this.batchPageSizeCap(studentIds.length);
+    /** Small batches use more workers; large batches cap chunk size for memory and faster first page. */
     const chunkSize = Math.min(
-      BATCH_PAGE_SIZE,
+      pageSizeCap,
       Math.max(5, Math.ceil(studentIds.length / workerCount)),
     );
     const chunks: Array<{ ids: string[]; startIndex: number }> = [];
@@ -641,7 +697,18 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       onProgress?.(completed, studentIds.length);
     };
 
-    const release = await this.renderSemaphore.acquire();
+    const release = await this.renderSemaphore.acquire({
+      timeoutMs: RENDER_LOCK_TIMEOUT_MS,
+      timeoutMessage:
+        'Another ID card batch is still rendering (or the renderer is stuck). Wait a minute and try again, or ask your admin to restart vb-api.',
+      onWaiting: (seconds) => {
+        onPreparing?.(
+          seconds <= 0
+            ? 'Waiting for the ID card renderer…'
+            : `Waiting for the ID card renderer (${seconds}s — another batch may still be running)…`,
+        );
+      },
+    });
     try {
       onPreparing?.('Preparing Chrome renderer…');
       await this.ensureBrowserForBatch();

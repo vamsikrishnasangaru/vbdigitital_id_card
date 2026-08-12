@@ -127,6 +127,7 @@ export class IdCardsService {
   private async runDownloadGenerateJob(jobId: string, templateId: string, studentIds: string[]) {
     try {
       this.generateJobs.setPreparing(jobId, 'Starting download job…');
+      this.generateJobs.updateProgress(jobId, 0, studentIds.length);
       const pack = await this.generateDownloadPack(templateId, studentIds, (completed, total) => {
         this.generateJobs.updateProgress(jobId, completed, total);
       }, {
@@ -173,9 +174,13 @@ export class IdCardsService {
       onPackagingFile?: (index: number, total: number) => void;
     },
   ) {
-    const template = await this.loadTemplate(templateId);
+    options?.onPreparing?.(`Loading template and ${studentIds.length} student records…`);
+    const [template, studentMap] = await Promise.all([
+      this.loadTemplate(templateId),
+      this.loadStudents(studentIds),
+    ]);
     const renderToken = this.authService.createRenderToken();
-    const studentMap = await this.loadStudents(studentIds);
+    options?.onPreparing?.(`Starting render for ${studentIds.length} ID cards…`);
 
     const usePipelinedZip = Boolean(options?.zipToTempFile && studentIds.length > 1);
     const staging = usePipelinedZip ? createIdCardsZipStaging() : null;
@@ -573,15 +578,26 @@ export class IdCardsService {
   }
 
   private async loadStudents(studentIds: string[]): Promise<Map<string, StudentWithRelations>> {
-    const students = await this.prisma.student.findMany({
-      where: { id: { in: studentIds }, deletedAt: null },
-      include: {
-        section: { include: { class: { include: { school: true } } } },
-        class: true,
-        school: true,
-      },
-    });
-    return new Map(students.map((student) => [student.id, student]));
+    const include = {
+      section: { include: { class: { include: { school: true } } } },
+      class: true,
+      school: true,
+    } as const;
+    const map = new Map<string, StudentWithRelations>();
+    const chunkSize = 80;
+
+    for (let i = 0; i < studentIds.length; i += chunkSize) {
+      const ids = studentIds.slice(i, i + chunkSize);
+      const students = await this.prisma.student.findMany({
+        where: { id: { in: ids }, deletedAt: null },
+        include,
+      });
+      for (const student of students) {
+        map.set(student.id, student);
+      }
+    }
+
+    return map;
   }
 
   private async ensureIdCardRecord(studentId: string, templateId: string) {
