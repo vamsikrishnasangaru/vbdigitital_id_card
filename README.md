@@ -28,9 +28,9 @@ pnpm dev        # runs both API (port 3001) + Web (port 3000)
 
 | Role | Email | Password |
 |------|-------|----------|
-| Super Admin | admin@vbdigital.com | Admin@123 |
-| School Admin | schooladmin@demopublic.edu | Admin@123 |
-| Teacher | teacher@demopublic.edu | Admin@123 |
+| Super Admin | admin@vbdigital.com | Admin@0842 |
+| School Admin | schooladmin@demopublic.edu | Admin@0842 |
+| Teacher | teacher@demopublic.edu | Admin@0842 |
 
 ## Project Structure
 
