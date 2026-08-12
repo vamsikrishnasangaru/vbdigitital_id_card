@@ -37,7 +37,7 @@ async function safeServiceWorkerUpdate(
     return 'ok';
   } catch (error) {
     if (isRecoverableServiceWorkerError(error)) {
-      console.warn('[PWA] Service worker script unavailable — clearing stale registration.');
+      console.info('[PWA] Clearing stale service worker after deploy — will re-register.');
       await registration.unregister().catch(() => undefined);
       return 'unregistered';
     }
@@ -188,7 +188,21 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
       if (cancelled) return;
 
       const updateResult = await safeServiceWorkerUpdate(registration);
-      if (updateResult === 'unregistered' || cancelled) return;
+      if (cancelled) return;
+
+      if (updateResult === 'unregistered') {
+        try {
+          const retry = await navigator.serviceWorker.register(swUrl, {
+            scope: '/',
+            type: 'classic',
+            updateViaCache: 'none',
+          });
+          if (!cancelled) await safeServiceWorkerUpdate(retry);
+        } catch {
+          // Next page load will register fresh.
+        }
+        if (cancelled) return;
+      }
 
       onVisible = () => {
         if (document.visibilityState === 'visible') {
