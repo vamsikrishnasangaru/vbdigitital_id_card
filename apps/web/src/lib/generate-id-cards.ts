@@ -153,6 +153,7 @@ type GenerateJobStatus = {
   error?: string;
   message?: string;
   progressMessage?: string;
+  failures?: { studentId: string; error: string }[];
 };
 
 export type GenerateProgressMeta = {
@@ -210,7 +211,7 @@ async function generateIdCardsAsync(
   },
   onProgress?: (completed: number, total: number, meta?: GenerateProgressMeta) => void,
 ): Promise<
-  | { kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number }
+  | { kind: 'file'; blob: Blob; filename: string; successCount: number; failCount: number; failures?: { studentId: string; error: string }[] }
   | { kind: 'json'; data: { message?: string; successCount?: number; failCount?: number } }
 > {
   const total = params.studentIds.length;
@@ -310,6 +311,7 @@ async function generateIdCardsAsync(
         filename,
         successCount: job.successCount || Number(response.headers['x-cards-success'] ?? total),
         failCount: job.failCount || Number(response.headers['x-cards-failed'] ?? 0),
+        failures: job.failures,
       };
     }
   }

@@ -200,7 +200,11 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
       if (result.kind === 'file') {
         triggerIdCardDownload(result.blob, result.filename);
         if (result.failCount > 0) {
-          toast.warning(`Downloaded ${result.successCount} card(s); ${result.failCount} failed`);
+          toast.warning(
+            `Downloaded ${result.successCount} of ${students.length} card(s); ${result.failCount} failed`,
+          );
+          const firstErr = result.failures?.[0]?.error;
+          if (firstErr) toast.error(firstErr, { duration: 10000 });
         } else {
           toast.success(
             result.filename.endsWith('.zip')

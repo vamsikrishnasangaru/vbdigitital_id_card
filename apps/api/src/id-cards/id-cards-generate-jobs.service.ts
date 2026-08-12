@@ -16,6 +16,7 @@ export type GenerateJobDownloadResult = {
   filePath?: string;
   successCount: number;
   failCount: number;
+  failures?: { studentId: string; error: string }[];
 };
 
 export type GenerateJobDriveResult = {
@@ -212,6 +213,10 @@ export class IdCardsGenerateJobsService implements OnModuleInit {
       failCount: job.failCount,
       error: job.error,
       progressMessage: job.status === 'running' ? job.progressMessage : undefined,
+      failures:
+        job.status === 'done' && job.result && job.result.kind !== 'drive'
+          ? job.result.failures
+          : undefined,
       message: job.result?.kind === 'drive' ? job.result.message : undefined,
     };
 
@@ -331,6 +336,7 @@ export class IdCardsGenerateJobsService implements OnModuleInit {
               filePath: job.result.filePath,
               successCount: job.result.successCount,
               failCount: job.result.failCount,
+              failures: job.result.failures,
             }
         : undefined,
     };

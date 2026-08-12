@@ -153,6 +153,7 @@ export class IdCardsService {
         filePath: pack.filePath,
         successCount: pack.successCount,
         failCount: pack.failCount,
+        failures: pack.errors,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -181,8 +182,7 @@ export class IdCardsService {
     const pendingWrites: Promise<void>[] = [];
     const zipEntries: { name: string }[] = [];
     const files: { name: string; buffer: Buffer }[] = [];
-    const errors: { studentId: string; error: string }[] = [];
-    const successStudentIds: string[] = [];
+    const stagedStudentIds = new Set<string>();
     let stagedCount = 0;
 
     const rendered = await this.rendererService.renderCardsBatch(
@@ -195,32 +195,19 @@ export class IdCardsService {
         onPreparing: options?.onPreparing,
         onCardRendered: staging
           ? async (result) => {
-              if (!result.buffer) {
-                this.logger.warn(
-                  `Download render failed for ${result.studentId}: ${result.error}`,
-                );
-                errors.push({
-                  studentId: result.studentId,
-                  error: result.error || 'Render failed',
-                });
-                return;
-              }
+              if (!result.buffer) return;
+
+              if (stagedStudentIds.has(result.studentId)) return;
 
               const student = studentMap.get(result.studentId);
-              if (!student) {
-                errors.push({
-                  studentId: result.studentId,
-                  error: `Student not found: ${result.studentId}`,
-                });
-                return;
-              }
+              if (!student) return;
 
               const entryPath = idCardZipEntryPath(
                 student,
                 `${idCardFileBaseName(student)}.png`,
               );
+              stagedStudentIds.add(result.studentId);
               zipEntries.push({ name: entryPath });
-              successStudentIds.push(result.studentId);
 
               pendingWrites.push(
                 staging!.writeEntry(entryPath, result.buffer).then(() => {
@@ -233,38 +220,59 @@ export class IdCardsService {
       },
     );
 
+    const errors: { studentId: string; error: string }[] = [];
+    const successStudentIds: string[] = [];
+
     if (!staging) {
       for (const result of rendered) {
-        if (!result.buffer) {
-          this.logger.warn(`Download render failed for ${result.studentId}: ${result.error}`);
-          errors.push({ studentId: result.studentId, error: result.error || 'Render failed' });
-          continue;
-        }
+        if (!result.buffer) continue;
         const student = studentMap.get(result.studentId);
-        if (!student) {
-          errors.push({ studentId: result.studentId, error: `Student not found: ${result.studentId}` });
-          continue;
-        }
+        if (!student) continue;
         const pngFileName = `${idCardFileBaseName(student)}.png`;
         files.push({
           name: idCardZipEntryPath(student, pngFileName),
           buffer: result.buffer,
         });
-        successStudentIds.push(result.studentId);
       }
     } else {
-      for (const result of rendered) {
-        if (
-          !result.buffer &&
-          !errors.some((entry) => entry.studentId === result.studentId)
-        ) {
-          errors.push({
-            studentId: result.studentId,
-            error: result.error || 'Render failed',
-          });
-        }
-      }
       await Promise.all(pendingWrites);
+    }
+
+    for (const result of rendered) {
+      if (result.buffer) {
+        successStudentIds.push(result.studentId);
+        continue;
+      }
+      this.logger.warn(`Download render failed for ${result.studentId}: ${result.error}`);
+      errors.push({
+        studentId: result.studentId,
+        error: result.error || 'Render failed',
+      });
+    }
+
+    const notFoundIds = studentIds.filter(
+      (id) =>
+        !successStudentIds.includes(id) &&
+        !errors.some((entry) => entry.studentId === id),
+    );
+    for (const studentId of notFoundIds) {
+      errors.push({ studentId, error: 'Student not found in database' });
+    }
+
+    if (errors.length) {
+      const summary = errors
+        .slice(0, 5)
+        .map((entry) => {
+          const student = studentMap.get(entry.studentId);
+          const label = student
+            ? `${student.firstName} ${student.lastName}`.trim()
+            : entry.studentId.slice(0, 8);
+          return `${label}: ${entry.error}`;
+        })
+        .join(' · ');
+      this.logger.warn(
+        `Download batch finished: ${successStudentIds.length}/${studentIds.length} OK, ${errors.length} failed — ${summary}${errors.length > 5 ? ' …' : ''}`,
+      );
     }
 
     if (successStudentIds.length === 0) {
@@ -310,7 +318,7 @@ export class IdCardsService {
         kind: 'zip' as const,
         filename: buildIdCardsZipFilename(zipEntries),
         filePath: zipPath,
-        successCount: zipEntries.length,
+        successCount: successStudentIds.length,
         failCount: errors.length,
         errors,
       };
