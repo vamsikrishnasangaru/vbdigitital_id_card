@@ -19,20 +19,32 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
-/** Parallel Puppeteer tabs during multi-card batch (env override on VPS). Default 6 on 8GB VPS. */
+/** Parallel Puppeteer tabs — default 5 (stable on 8GB VPS). Env: ID_CARD_BATCH_CONCURRENCY (max 6). */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 6),
+  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 5),
 );
-/** Students loaded per batch-export page — smaller pages prefetch faster (318-card batches). */
+/** Students per batch-export page — smaller pages load faster (env: ID_CARD_BATCH_PAGE_SIZE). */
 const BATCH_PAGE_SIZE = Math.max(
-  10,
-  Math.min(40, Number(process.env.ID_CARD_BATCH_PAGE_SIZE) || 25),
+  5,
+  Math.min(40, Number(process.env.ID_CARD_BATCH_PAGE_SIZE) || 15),
 );
 const BATCH_RETRY_CONCURRENCY = Math.max(
   1,
-  Math.min(3, Number(process.env.ID_CARD_BATCH_RETRY_CONCURRENCY) || 2),
+  Math.min(4, Number(process.env.ID_CARD_BATCH_RETRY_CONCURRENCY) || 3),
 );
+
+export type BatchCardRenderResult = {
+  studentId: string;
+  buffer?: Buffer;
+  error?: string;
+};
+
+export type RenderCardsBatchOptions = {
+  onProgress?: (completed: number, total: number) => void;
+  /** Fires after each card — use to pipeline Drive uploads while rendering continues. */
+  onCardRendered?: (result: BatchCardRenderResult) => void | Promise<void>;
+};
 
 class Semaphore {
   private active = 0;
@@ -199,11 +211,12 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
   private async prepareRenderPage(page: Page, batch = false): Promise<void> {
     await page.setCacheEnabled(true);
-    page.setDefaultNavigationTimeout(batch ? 90000 : 120000);
-    page.setDefaultTimeout(batch ? 90000 : 120000);
+    page.setDefaultNavigationTimeout(batch ? 60000 : 120000);
+    page.setDefaultTimeout(batch ? 60000 : 120000);
     await page.setRequestInterception(true);
     page.on('request', (req) => {
       const type = req.resourceType();
+      const url = req.url();
       if (
         type === 'websocket' ||
         type === 'media' ||
@@ -212,9 +225,23 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
         type === 'ping'
       ) {
         req.abort();
-      } else {
-        req.continue();
+        return;
       }
+      if (batch) {
+        if (
+          /google-analytics|googletagmanager|hotjar|facebook\.net|doubleclick|service-worker|workbox/i.test(
+            url,
+          )
+        ) {
+          req.abort();
+          return;
+        }
+        if (type === 'font' && !/localhost|127\.0\.0\.1/.test(url)) {
+          req.abort();
+          return;
+        }
+      }
+      req.continue();
     });
   }
 
@@ -555,9 +582,12 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     studentIds: string[],
     token: string,
     orientation: 'HORIZONTAL' | 'VERTICAL' = 'HORIZONTAL',
-    onProgress?: (completed: number, total: number) => void,
+    options?: RenderCardsBatchOptions,
   ): Promise<Array<{ studentId: string; buffer?: Buffer; error?: string }>> {
     if (!studentIds.length) return [];
+
+    const onProgress = options?.onProgress;
+    const onCardRendered = options?.onCardRendered;
 
     const workerCount = Math.min(BATCH_RENDER_CONCURRENCY, studentIds.length);
     /** Small batches (e.g. 37) use more workers; large batches cap chunk size for memory. */
@@ -578,9 +608,16 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
     const release = await this.renderSemaphore.acquire();
     try {
+      /** Fresh Chrome each batch — prevents overnight memory leaks and slow retries. */
+      await this.restartBrowser('fresh batch job');
+
       return await this.withRenderRetries(`PNG batch ${templateId}`, async () => {
         const results: Array<{ studentId: string; buffer?: Buffer; error?: string }> =
           studentIds.map((studentId) => ({ studentId }));
+
+        const emitCard = async (result: BatchCardRenderResult) => {
+          if (onCardRendered) await onCardRendered(result);
+        };
 
         let nextChunk = 0;
         const renderChunkWorker = async () => {
@@ -610,6 +647,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
                   const message = err instanceof Error ? err.message : String(err);
                   results[index] = { studentId, error: message };
                 } finally {
+                  await emitCard(results[index]);
                   reportProgress();
                 }
               }
@@ -654,12 +692,14 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
                   );
                   results[index] = { studentId, buffer };
                 } finally {
+                  await emitCard(results[index]);
                   await this.safeClosePage(page);
                 }
               } catch (err: unknown) {
                 const message = err instanceof Error ? err.message : String(err);
                 this.logger.warn(`Batch retry failed for ${studentId}: ${message}`);
                 results[index] = { studentId, error: message };
+                await emitCard(results[index]);
               }
             }
           };

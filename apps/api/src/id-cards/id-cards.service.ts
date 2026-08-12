@@ -160,7 +160,7 @@ export class IdCardsService {
         studentIds,
         renderToken,
         template.orientation as Orientation,
-        onProgress,
+        { onProgress },
       ),
       this.loadStudents(studentIds),
     ]);
@@ -273,16 +273,7 @@ export class IdCardsService {
   ) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
-    const [rendered, studentMap] = await Promise.all([
-      this.rendererService.renderCardsBatch(
-        templateId,
-        studentIds,
-        renderToken,
-        template.orientation as Orientation,
-        options?.onRenderProgress,
-      ),
-      this.loadStudents(studentIds),
-    ]);
+    const studentMap = await this.loadStudents(studentIds);
 
     const results: {
       studentId: string;
@@ -291,77 +282,129 @@ export class IdCardsService {
       driveFileId?: string;
     }[] = [];
 
-    const uploadItems: Array<{
-      studentId: string;
-      fileName: string;
-      buffer: Buffer;
-      folderHierarchy: string[];
-    }> = [];
+    const successStudentIds: string[] = [];
+    let uploadCompleted = 0;
+    let uploadStarted = false;
+    const uploadConcurrency = Math.max(
+      2,
+      Math.min(12, Number(process.env.GOOGLE_DRIVE_UPLOAD_CONCURRENCY) || 8),
+    );
+    let activeUploads = 0;
+    const uploadWaitQueue: Array<() => void> = [];
 
-    for (const result of rendered) {
-      if (!result.buffer) {
-        this.logger.warn(`ID card render failed for student ${result.studentId}: ${result.error}`);
-        results.push({ studentId: result.studentId, status: 'FAILED', error: result.error || 'Render failed' });
-        continue;
+    const acquireUploadSlot = async () => {
+      while (activeUploads >= uploadConcurrency) {
+        await new Promise<void>((resolve) => uploadWaitQueue.push(resolve));
       }
+      activeUploads += 1;
+    };
 
-      const student = studentMap.get(result.studentId);
-      if (!student) {
-        results.push({
-          studentId: result.studentId,
-          status: 'FAILED',
-          error: `Student not found: ${result.studentId}`,
-        });
-        continue;
-      }
+    const releaseUploadSlot = () => {
+      activeUploads = Math.max(0, activeUploads - 1);
+      uploadWaitQueue.shift()?.();
+    };
 
+    this.driveService.beginBatchUploads();
+
+    const hierarchyKeys = new Set<string>();
+    for (const studentId of studentIds) {
+      const student = studentMap.get(studentId);
+      if (!student) continue;
       const schoolName = student.school?.name || student.section?.class?.school?.name || 'School';
       const className = student.class?.name || student.section?.class?.name || 'Class';
       const sectionName = student.section?.name || 'Section';
-
-      uploadItems.push({
-        studentId: result.studentId,
-        fileName: `${idCardFileBaseName(student)}.png`,
-        buffer: result.buffer,
-        folderHierarchy: [schoolName, className, sectionName],
-      });
+      hierarchyKeys.add([schoolName, className, sectionName].join('\0'));
     }
+    await this.driveService.prepareFolderHierarchies(
+      [...hierarchyKeys].map((key) => key.split('\0')),
+    );
 
-    if (!uploadItems.length) {
+    const uploadPromises: Promise<void>[] = [];
+
+    const queueDriveUpload = (
+      studentId: string,
+      fileName: string,
+      buffer: Buffer,
+      folderHierarchy: string[],
+    ) => {
+      if (!uploadStarted) {
+        uploadStarted = true;
+        options?.onUploadStart?.(studentIds.length);
+      }
+
+      uploadPromises.push(
+        (async () => {
+          await acquireUploadSlot();
+          try {
+            const driveFileId = await this.driveService.uploadFileInBatch(
+              fileName,
+              'image/png',
+              buffer,
+              folderHierarchy,
+            );
+            successStudentIds.push(studentId);
+            results.push({ studentId, status: 'SUCCESS', driveFileId });
+          } catch (error: unknown) {
+            const driveMessage = error instanceof Error ? error.message : 'Google Drive upload failed';
+            this.logger.warn(`Drive upload failed for ${fileName}: ${driveMessage}`);
+            results.push({ studentId, status: 'FAILED', error: driveMessage });
+          } finally {
+            uploadCompleted += 1;
+            options?.onUploadProgress?.(uploadCompleted, studentIds.length);
+            releaseUploadSlot();
+          }
+        })(),
+      );
+    };
+
+    await this.rendererService.renderCardsBatch(
+      templateId,
+      studentIds,
+      renderToken,
+      template.orientation as Orientation,
+      {
+        onProgress: options?.onRenderProgress,
+        onCardRendered: async (result) => {
+          if (!result.buffer) {
+            this.logger.warn(`ID card render failed for student ${result.studentId}: ${result.error}`);
+            results.push({
+              studentId: result.studentId,
+              status: 'FAILED',
+              error: result.error || 'Render failed',
+            });
+            return;
+          }
+
+          const student = studentMap.get(result.studentId);
+          if (!student) {
+            results.push({
+              studentId: result.studentId,
+              status: 'FAILED',
+              error: `Student not found: ${result.studentId}`,
+            });
+            return;
+          }
+
+          const schoolName = student.school?.name || student.section?.class?.school?.name || 'School';
+          const className = student.class?.name || student.section?.class?.name || 'Class';
+          const sectionName = student.section?.name || 'Section';
+
+          queueDriveUpload(
+            result.studentId,
+            `${idCardFileBaseName(student)}.png`,
+            result.buffer,
+            [schoolName, className, sectionName],
+          );
+        },
+      },
+    );
+
+    await Promise.all(uploadPromises);
+
+    if (!successStudentIds.length && results.every((r) => r.status === 'FAILED')) {
       throw new BadRequestException(
         results[0]?.error || 'Failed to generate any ID card images',
       );
-    }
-
-    options?.onUploadStart?.(uploadItems.length);
-
-    const uploadResults = await this.driveService.uploadFilesBatch(
-      uploadItems.map((item) => ({
-        fileName: item.fileName,
-        mimeType: 'image/png',
-        buffer: item.buffer,
-        folderHierarchy: item.folderHierarchy,
-      })),
-      undefined,
-      options?.onUploadProgress,
-    );
-
-    const successStudentIds: string[] = [];
-    for (let i = 0; i < uploadItems.length; i += 1) {
-      const item = uploadItems[i];
-      const upload = uploadResults[i];
-      if (upload.driveFileId) {
-        successStudentIds.push(item.studentId);
-        results.push({
-          studentId: item.studentId,
-          status: 'SUCCESS',
-          driveFileId: upload.driveFileId,
-        });
-      } else {
-        const driveMessage = upload.error || 'Google Drive upload failed';
-        this.logger.warn(`Drive upload failed for ${item.fileName}: ${driveMessage}`);
-        results.push({ studentId: item.studentId, status: 'FAILED', error: driveMessage });
-      }
     }
 
     if (successStudentIds.length) {

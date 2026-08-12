@@ -14,6 +14,9 @@ const PUPPETEER_ARGS = [
   '--disable-crash-reporter',
   '--disable-features=TranslateUI',
   '--disable-ipc-flooding-protection',
+  '--disable-background-timer-throttling',
+  '--disable-renderer-backgrounding',
+  '--disable-backgrounding-occluded-windows',
 ];
 
 /** Resolve Chrome/Chromium for headless PDF rendering (VPS uses system Chromium). */

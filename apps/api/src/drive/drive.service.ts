@@ -61,6 +61,24 @@ export class DriveService implements OnModuleInit {
     this.hierarchyCache.clear();
   }
 
+  /** Pre-create School/Class/Section folders before pipelined uploads. */
+  async prepareFolderHierarchies(foldersList: string[][]) {
+    if (this.usesUserOAuth) {
+      await this.ensureAccessTokenFresh();
+    }
+    await Promise.all(foldersList.map((folders) => this.resolveFolderHierarchy(folders)));
+  }
+
+  /** Upload one file during a batch — skips per-file OAuth refresh (call beginBatchUploads first). */
+  async uploadFileInBatch(
+    fileName: string,
+    mimeType: string,
+    fileBuffer: Buffer,
+    folderHierarchy: string[],
+  ): Promise<string> {
+    return this.uploadFileInternal(fileName, mimeType, fileBuffer, folderHierarchy, true);
+  }
+
   onModuleInit() {
     this.initDriveClient();
   }
