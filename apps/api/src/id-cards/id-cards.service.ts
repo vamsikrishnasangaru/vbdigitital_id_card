@@ -138,11 +138,14 @@ export class IdCardsService {
           this.generateJobs.setPreparing(jobId, 'Creating ZIP file…');
         },
         onPackagingFile: (index, total) => {
-          if (index < total) {
-            this.generateJobs.setPreparing(
-              jobId,
-              `Saving ${index} of ${total} PNGs for download…`,
-            );
+          this.generateJobs.setPreparing(
+            jobId,
+            index < total
+              ? `Saving ${index} of ${total} PNGs for download…`
+              : `Creating ZIP file (${total} PNGs)…`,
+          );
+          if (index >= total) {
+            this.generateJobs.setPackaging(jobId);
           }
           this.generateJobs.updatePackagingProgress(jobId, index, total);
         },

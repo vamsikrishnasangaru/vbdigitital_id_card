@@ -125,10 +125,9 @@ export class IdCardsGenerateJobsService implements OnModuleInit {
 
   updatePackagingProgress(jobId: string, packagingCompleted: number, total?: number) {
     const job = this.getOrLoadJob(jobId);
-    if (!job || job.status !== 'running' || job.phase !== 'packaging') return;
+    if (!job || job.status !== 'running') return;
     job.packagingCompleted = packagingCompleted;
     if (total !== undefined) job.total = total;
-    job.completed = job.total;
     this.touchJobRecord(jobId, job);
   }
 
@@ -199,6 +198,9 @@ export class IdCardsGenerateJobsService implements OnModuleInit {
       if (!job) return null;
     }
 
+    if (job.status === 'running') {
+      job.lastProgressAt = Date.now();
+    }
     this.touchJobExpiry(jobId, job);
 
     const response = {

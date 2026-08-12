@@ -107,7 +107,7 @@ export function formatGenerateProgressMessage(
   },
 ): string {
   const destination = options?.destination ?? 'download';
-  if (options?.progressMessage && completed <= 0) {
+  if (options?.progressMessage && options?.status === 'running') {
     return options.progressMessage;
   }
   if (total <= 1) {
@@ -130,7 +130,7 @@ export function formatGenerateProgressMessage(
     }
     return `Uploading ${total} ID cards to Google Drive…`;
   }
-  if (options?.phase === 'packaging' || (destination === 'download' && completed >= total)) {
+  if (options?.phase === 'packaging') {
     const packed = options?.packagingCompleted ?? 0;
     if (packed > 0 && packed < total) {
       return `Saving ${packed} of ${total} PNGs for download…`;

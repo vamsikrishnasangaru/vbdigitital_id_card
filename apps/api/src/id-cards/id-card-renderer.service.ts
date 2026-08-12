@@ -782,12 +782,18 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
             await this.restartBrowser('retry failed batch cards');
           }
           let retrySlot = 0;
+          onPreparing?.(
+            `Retrying ${failedIndices.length} failed card${failedIndices.length === 1 ? '' : 's'}…`,
+          );
           const retryWorker = async () => {
             while (true) {
               const slot = retrySlot++;
               if (slot >= failedIndices.length) break;
               const index = failedIndices[slot];
               const studentId = studentIds[index];
+              onPreparing?.(
+                `Retrying failed cards (${slot + 1} of ${failedIndices.length})…`,
+              );
               try {
                 const page = await this.newPage();
                 try {
