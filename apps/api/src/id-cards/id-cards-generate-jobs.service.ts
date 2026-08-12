@@ -54,7 +54,10 @@ const JOB_DIR = join(tmpdir(), 'id-card-generate-jobs');
 const JOB_PERSIST_INTERVAL_MS = 10_000;
 /** Fail jobs that never advance (e.g. API OOM restart left them orphaned on disk). */
 const STALE_JOB_MS_BEFORE_FIRST_CARD = 20 * 60 * 1000;
-const STALE_JOB_MS_AFTER_PROGRESS = 8 * 60 * 1000;
+const STALE_JOB_MS_AFTER_PROGRESS = Math.max(
+  8 * 60 * 1000,
+  Math.min(45 * 60 * 1000, Number(process.env.ID_CARD_JOB_STALE_AFTER_PROGRESS_MS) || 25 * 60 * 1000),
+);
 
 @Injectable()
 export class IdCardsGenerateJobsService implements OnModuleInit {

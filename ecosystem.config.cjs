@@ -27,6 +27,7 @@ module.exports = {
         ID_CARD_BATCH_CONCURRENCY: '4',
         ID_CARD_BATCH_PAGE_SIZE: '12',
         ID_CARD_BATCH_PIXEL_RATIO: '5',
+        ID_CARD_BATCH_RETRY_CONCURRENCY: '1',
         GOOGLE_DRIVE_UPLOAD_CONCURRENCY: '8',
       },
     },
