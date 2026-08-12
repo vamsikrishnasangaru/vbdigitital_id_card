@@ -16,6 +16,9 @@ export function shouldBypassServiceWorker(request: Request, url: URL): boolean {
 
   if (url.pathname === '/manifest.json' || url.pathname === '/sw.js') return true;
 
+  /** Never serve cached HTML shells — chunk hashes change every deploy. */
+  if (request.mode === 'navigate' || request.destination === 'document') return true;
+
   if (url.searchParams.has('_rsc')) return true;
   if (request.headers.get('RSC') === '1') return true;
   if (request.headers.get('Next-Router-Prefetch') === '1') return true;

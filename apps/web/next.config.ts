@@ -24,15 +24,6 @@ const withSerwist = withSerwistInit({
           "1";
         return [
           { url: "/~offline", revision },
-          { url: "/", revision },
-          { url: "/students", revision },
-          { url: "/classes", revision },
-          { url: "/teachers", revision },
-          { url: "/dashboard", revision },
-          { url: "/id-cards", revision },
-          { url: "/templates", revision },
-          { url: "/settings", revision },
-          { url: "/install", revision },
         ];
       })(),
 });
@@ -94,6 +85,16 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      {
+        source:
+          "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.json|icon.svg|apple-icon.svg|media-uploads).*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-cache, no-store, max-age=0, must-revalidate",
+          },
+        ],
+      },
       {
         source: '/sw.js',
         headers: [

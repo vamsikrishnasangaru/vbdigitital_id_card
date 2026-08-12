@@ -97,6 +97,21 @@ if [[ "$NOT_FOUND_CODE" != "404" ]]; then
 fi
 echo "Render host:"
 curl -sI "http://127.0.0.1:$PORT/render/batch-export/test-template-id" | head -n1 || true
+LAYOUT_CHUNK="$(find .next/static/chunks/app -maxdepth 1 -name 'layout-*.js' 2>/dev/null | head -n1)"
+if [[ -n "$LAYOUT_CHUNK" ]]; then
+  CHUNK_URL="/_next/static/chunks/app/$(basename "$LAYOUT_CHUNK")"
+  CHUNK_CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT${CHUNK_URL}")"
+  echo "Layout chunk: HTTP $CHUNK_CODE for ${CHUNK_URL}"
+  if [[ "$CHUNK_CODE" != "200" ]]; then
+    echo "ERROR: built layout chunk not served — redeploy may leave browsers on stale script hashes."
+    exit 1
+  fi
+fi
+HTML_CACHE="$(curl -sI "http://127.0.0.1:$PORT/id-cards" | tr -d '\r' | grep -i '^cache-control:' || true)"
+echo "HTML Cache-Control: ${HTML_CACHE:-none}"
+if echo "$HTML_CACHE" | grep -qi 's-maxage=31536000'; then
+  echo "WARN: id-cards HTML is long-cache static — deploy this revision to use force-dynamic (no stale chunk refs)."
+fi
 echo ""
 echo "Deployed web revision: ${RELEASE_REVISION} (client: ${NEXT_PUBLIC_APP_REVISION})"
 echo "Running: pnpm exec next start from apps/web (not standalone server.js)"

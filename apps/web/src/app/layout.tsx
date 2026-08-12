@@ -12,6 +12,9 @@ const inter = Inter({
   display: "swap",
 });
 
+/** Fresh HTML after each deploy — avoids stale script chunk hashes (s-maxage=31536000 broke post-deploy). */
+export const dynamic = "force-dynamic";
+
 export const viewport: Viewport = {
   themeColor: "#4f46e5",
   width: "device-width",
