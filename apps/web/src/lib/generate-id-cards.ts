@@ -133,9 +133,9 @@ export function formatGenerateProgressMessage(
   if (options?.phase === 'packaging' || (destination === 'download' && completed >= total)) {
     const packed = options?.packagingCompleted ?? 0;
     if (packed > 0 && packed < total) {
-      return `Packaging ${packed} of ${total} ID cards…`;
+      return `Saving ${packed} of ${total} PNGs for download…`;
     }
-    return `Packaging ${total} ID cards for download…`;
+    return `Creating ZIP file (${total} PNGs)…`;
   }
   return `Generated ${completed} of ${total} ID cards…`;
 }

@@ -14,7 +14,14 @@ import { AuthService } from '../auth/auth.service';
 import { IdCardsGenerateJobsService } from './id-cards-generate-jobs.service';
 import { Orientation } from '@prisma/client';
 import { IdCardGenerateDestination } from './dto/generate-id-cards.dto';
-import { buildIdCardsZip, buildIdCardsZipFilename, buildIdCardsZipToFile, idCardFileBaseName, idCardZipEntryPath } from './id-cards-download.util';
+import {
+  buildIdCardsZip,
+  buildIdCardsZipFilename,
+  buildIdCardsZipToFile,
+  createIdCardsZipStaging,
+  idCardFileBaseName,
+  idCardZipEntryPath,
+} from './id-cards-download.util';
 
 type StudentWithRelations = {
   id: string;
@@ -125,9 +132,19 @@ export class IdCardsService {
       }, {
         zipToTempFile: true,
         onPreparing: (message) => this.generateJobs.setPreparing(jobId, message),
-        onPackaging: () => this.generateJobs.setPackaging(jobId),
-        onPackagingFile: (index, total) =>
-          this.generateJobs.updatePackagingProgress(jobId, index, total),
+        onPackaging: () => {
+          this.generateJobs.setPackaging(jobId);
+          this.generateJobs.setPreparing(jobId, 'Creating ZIP file…');
+        },
+        onPackagingFile: (index, total) => {
+          if (index < total) {
+            this.generateJobs.setPreparing(
+              jobId,
+              `Saving ${index} of ${total} PNGs for download…`,
+            );
+          }
+          this.generateJobs.updatePackagingProgress(jobId, index, total);
+        },
       });
       this.generateJobs.complete(jobId, {
         kind: pack.kind,
@@ -157,57 +174,143 @@ export class IdCardsService {
   ) {
     const template = await this.loadTemplate(templateId);
     const renderToken = this.authService.createRenderToken();
-    const [rendered, studentMap] = await Promise.all([
-      this.rendererService.renderCardsBatch(
-        templateId,
-        studentIds,
-        renderToken,
-        template.orientation as Orientation,
-        {
-          onProgress,
-          onPreparing: options?.onPreparing,
-        },
-      ),
-      this.loadStudents(studentIds),
-    ]);
+    const studentMap = await this.loadStudents(studentIds);
 
+    const usePipelinedZip = Boolean(options?.zipToTempFile && studentIds.length > 1);
+    const staging = usePipelinedZip ? createIdCardsZipStaging() : null;
+    const pendingWrites: Promise<void>[] = [];
+    const zipEntries: { name: string }[] = [];
     const files: { name: string; buffer: Buffer }[] = [];
     const errors: { studentId: string; error: string }[] = [];
     const successStudentIds: string[] = [];
+    let stagedCount = 0;
 
-    for (const result of rendered) {
-      if (!result.buffer) {
-        this.logger.warn(`Download render failed for ${result.studentId}: ${result.error}`);
-        errors.push({ studentId: result.studentId, error: result.error || 'Render failed' });
-        continue;
+    const rendered = await this.rendererService.renderCardsBatch(
+      templateId,
+      studentIds,
+      renderToken,
+      template.orientation as Orientation,
+      {
+        onProgress,
+        onPreparing: options?.onPreparing,
+        onCardRendered: staging
+          ? async (result) => {
+              if (!result.buffer) {
+                this.logger.warn(
+                  `Download render failed for ${result.studentId}: ${result.error}`,
+                );
+                errors.push({
+                  studentId: result.studentId,
+                  error: result.error || 'Render failed',
+                });
+                return;
+              }
+
+              const student = studentMap.get(result.studentId);
+              if (!student) {
+                errors.push({
+                  studentId: result.studentId,
+                  error: `Student not found: ${result.studentId}`,
+                });
+                return;
+              }
+
+              const entryPath = idCardZipEntryPath(
+                student,
+                `${idCardFileBaseName(student)}.png`,
+              );
+              zipEntries.push({ name: entryPath });
+              successStudentIds.push(result.studentId);
+
+              pendingWrites.push(
+                staging!.writeEntry(entryPath, result.buffer).then(() => {
+                  stagedCount += 1;
+                  options?.onPackagingFile?.(stagedCount, studentIds.length);
+                }),
+              );
+            }
+          : undefined,
+      },
+    );
+
+    if (!staging) {
+      for (const result of rendered) {
+        if (!result.buffer) {
+          this.logger.warn(`Download render failed for ${result.studentId}: ${result.error}`);
+          errors.push({ studentId: result.studentId, error: result.error || 'Render failed' });
+          continue;
+        }
+        const student = studentMap.get(result.studentId);
+        if (!student) {
+          errors.push({ studentId: result.studentId, error: `Student not found: ${result.studentId}` });
+          continue;
+        }
+        const pngFileName = `${idCardFileBaseName(student)}.png`;
+        files.push({
+          name: idCardZipEntryPath(student, pngFileName),
+          buffer: result.buffer,
+        });
+        successStudentIds.push(result.studentId);
       }
-      const student = studentMap.get(result.studentId);
-      if (!student) {
-        errors.push({ studentId: result.studentId, error: `Student not found: ${result.studentId}` });
-        continue;
+    } else {
+      for (const result of rendered) {
+        if (
+          !result.buffer &&
+          !errors.some((entry) => entry.studentId === result.studentId)
+        ) {
+          errors.push({
+            studentId: result.studentId,
+            error: result.error || 'Render failed',
+          });
+        }
       }
-      const pngFileName = `${idCardFileBaseName(student)}.png`;
-      files.push({
-        name: idCardZipEntryPath(student, pngFileName),
-        buffer: result.buffer,
-      });
-      successStudentIds.push(result.studentId);
+      await Promise.all(pendingWrites);
     }
 
-    if (files.length === 0) {
+    if (successStudentIds.length === 0) {
+      staging?.dispose();
       throw new BadRequestException(
         errors[0]?.error || 'Failed to generate any ID card images',
       );
     }
 
-    if (files.length === 1) {
+    if (successStudentIds.length === 1) {
+      staging?.dispose();
+      const onlyBuffer =
+        files[0]?.buffer ??
+        rendered.find((row) => row.studentId === successStudentIds[0])?.buffer;
+      if (!onlyBuffer) {
+        throw new BadRequestException('Failed to generate ID card image');
+      }
+      const singleName =
+        (files[0]?.name ?? zipEntries[0]?.name)?.split('/').pop() ||
+        `${idCardFileBaseName(studentMap.get(successStudentIds[0])!)}.png`;
       this.persistGeneratedIdCards(successStudentIds, templateId);
-      const singleName = files[0].name.split('/').pop() || files[0].name;
       return {
         kind: 'single' as const,
         filename: singleName,
-        buffer: files[0].buffer,
+        buffer: onlyBuffer,
         successCount: 1,
+        failCount: errors.length,
+        errors,
+      };
+    }
+
+    if (staging) {
+      options?.onPreparing?.('Creating ZIP file…');
+      options?.onPackaging?.();
+      const zipPath = join(tmpdir(), `id-cards-${randomUUID()}.zip`);
+      try {
+        await staging.finalizeToFile(zipPath);
+      } finally {
+        staging.dispose();
+      }
+      this.persistGeneratedIdCards(successStudentIds, templateId);
+      return {
+        kind: 'zip' as const,
+        filename: buildIdCardsZipFilename(zipEntries),
+        filePath: zipPath,
+        successCount: zipEntries.length,
         failCount: errors.length,
         errors,
       };
@@ -228,8 +331,8 @@ export class IdCardsService {
       };
     }
 
-    const zipBuffer = await buildIdCardsZip(files);
     options?.onPackaging?.();
+    const zipBuffer = await buildIdCardsZip(files);
     this.persistGeneratedIdCards(successStudentIds, templateId);
 
     return {

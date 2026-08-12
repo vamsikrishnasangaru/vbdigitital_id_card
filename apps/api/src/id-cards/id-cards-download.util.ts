@@ -6,14 +6,15 @@ import {
   readFileSync,
   rmSync,
   unlinkSync,
-  writeFileSync,
   writeSync,
 } from 'fs';
+import { mkdir, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { crc32 } from 'node:zlib';
 
 const execFileAsync = promisify(execFile);
 
@@ -82,7 +83,7 @@ export function idCardFileBaseName(student: {
 }
 
 /** ZIP download name: School_Class_Section.zip when paths share one combo. */
-export function buildIdCardsZipFilename(files: IdCardDownloadFile[]): string {
+export function buildIdCardsZipFilename(files: Pick<IdCardDownloadFile, 'name'>[]): string {
   const parts = files.map((f) => f.name.split('/').filter(Boolean));
   if (parts.length === 0) return 'id-cards.zip';
 
@@ -107,6 +108,44 @@ export function buildIdCardsZipFilename(files: IdCardDownloadFile[]): string {
   return `id-cards_${stamp}.zip`;
 }
 
+export type IdCardsZipStaging = {
+  readonly entries: string[];
+  writeEntry: (relativePath: string, data: Buffer) => Promise<void>;
+  finalizeToFile: (destPath: string) => Promise<void>;
+  dispose: () => void;
+};
+
+/** Write PNGs to disk during render, then one fast store-only zip at the end. */
+export function createIdCardsZipStaging(): IdCardsZipStaging {
+  const stagingDir = join(tmpdir(), `id-cards-stage-${randomUUID()}`);
+  mkdirSync(stagingDir, { recursive: true });
+  const entries: string[] = [];
+
+  return {
+    get entries() {
+      return entries;
+    },
+    async writeEntry(relativePath: string, data: Buffer) {
+      const fullPath = join(stagingDir, relativePath);
+      await mkdir(dirname(fullPath), { recursive: true });
+      await writeFile(fullPath, data);
+      entries.push(relativePath);
+    },
+    async finalizeToFile(destPath: string) {
+      const usedNative = await zipDirectoryStoreOnly(stagingDir, destPath);
+      if (usedNative) return;
+      await buildZipFromStagingJs(stagingDir, entries, destPath);
+    },
+    dispose() {
+      try {
+        rmSync(stagingDir, { recursive: true, force: true });
+      } catch {
+        // Staging dir may already be gone.
+      }
+    },
+  };
+}
+
 type ZipCentralEntry = {
   name: Buffer;
   crc: number;
@@ -114,29 +153,9 @@ type ZipCentralEntry = {
   offset: number;
 };
 
-const CRC32_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    let value = i;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-    table[i] = value;
-  }
-  return table;
-})();
-
-/** Table-driven CRC32 — ~100× faster than naive bit loops on multi-MB PNGs. */
+/** Native zlib CRC32 — much faster than a JS loop on multi-MB PNGs. */
 function crc32Buffer(data: Buffer): number {
-  let crc = 0xffffffff;
-  for (let i = 0; i < data.length; i += 1) {
-    crc = CRC32_TABLE[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function yieldEventLoop(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
+  return crc32(data) >>> 0;
 }
 
 function writeLocalFileHeader(
@@ -213,7 +232,6 @@ async function buildIdCardsZipToFileJs(
 
   try {
     for (let i = 0; i < files.length; i += 1) {
-      if (i > 0) await yieldEventLoop();
       onFile?.(i + 1, files.length);
 
       const file = files[i];
@@ -232,27 +250,23 @@ async function buildIdCardsZipToFileJs(
   }
 }
 
-/** Use native `zip -0` on Linux VPS when available — fastest path for 37+ PNGs. */
-async function buildIdCardsZipToFileNative(
-  files: IdCardDownloadFile[],
+async function buildZipFromStagingJs(
+  stagingDir: string,
+  entryPaths: string[],
   destPath: string,
-  onFile?: (index: number, total: number) => void,
-): Promise<boolean> {
+): Promise<void> {
+  const files: IdCardDownloadFile[] = entryPaths.map((name) => ({
+    name,
+    buffer: readFileSync(join(stagingDir, name)),
+  }));
+  await buildIdCardsZipToFileJs(files, destPath);
+}
+
+/** Store-only zip via system `zip -0` — fastest path when PNGs are already on disk. */
+async function zipDirectoryStoreOnly(stagingDir: string, destPath: string): Promise<boolean> {
   if (process.platform === 'win32') return false;
 
-  const stagingDir = join(tmpdir(), `id-cards-stage-${randomUUID()}`);
-  mkdirSync(stagingDir, { recursive: true });
-
   try {
-    for (let i = 0; i < files.length; i += 1) {
-      if (i > 0 && i % 5 === 0) await yieldEventLoop();
-      onFile?.(i + 1, files.length);
-      const file = files[i];
-      const fullPath = join(stagingDir, file.name);
-      mkdirSync(dirname(fullPath), { recursive: true });
-      writeFileSync(fullPath, file.buffer);
-    }
-
     await execFileAsync('zip', ['-0', '-q', '-X', destPath, '.'], { cwd: stagingDir });
     return existsSync(destPath);
   } catch {
@@ -262,23 +276,28 @@ async function buildIdCardsZipToFileNative(
       // Ignore cleanup errors.
     }
     return false;
-  } finally {
-    rmSync(stagingDir, { recursive: true, force: true });
   }
 }
 
 /**
  * Store-only ZIP to disk — no re-compression, no quality change.
- * Uses native zip on Linux when available; fast table CRC32 fallback.
+ * Uses native zip on Linux when available; fast zlib CRC32 fallback.
  */
 export async function buildIdCardsZipToFile(
   files: IdCardDownloadFile[],
   destPath: string,
   onFile?: (index: number, total: number) => void,
 ): Promise<void> {
-  const usedNative = await buildIdCardsZipToFileNative(files, destPath, onFile);
-  if (usedNative) return;
-  await buildIdCardsZipToFileJs(files, destPath, onFile);
+  const staging = createIdCardsZipStaging();
+  try {
+    for (let i = 0; i < files.length; i += 1) {
+      await staging.writeEntry(files[i].name, files[i].buffer);
+      onFile?.(i + 1, files.length);
+    }
+    await staging.finalizeToFile(destPath);
+  } finally {
+    staging.dispose();
+  }
 }
 
 /** Small in-memory ZIP for direct (non-async) download responses. */
