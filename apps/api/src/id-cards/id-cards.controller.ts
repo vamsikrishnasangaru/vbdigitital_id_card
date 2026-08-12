@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GenerateJobAccessGuard } from './guards/generate-job-access.guard';
+import { Public } from '../auth/decorators/public.decorator';
 import { GenerateIdCardsDto, IdCardGenerateDestination } from './dto/generate-id-cards.dto';
 
 @ApiTags('ID Cards')
@@ -78,6 +79,7 @@ export class IdCardsController {
   }
 
   @Get('generate/jobs/:jobId')
+  @Public()
   @UseGuards(GenerateJobAccessGuard)
   @ApiOperation({ summary: 'Poll async ID card generate job progress' })
   getGenerateJob(@Param('jobId') jobId: string) {
@@ -85,6 +87,7 @@ export class IdCardsController {
   }
 
   @Get('generate/jobs/:jobId/download')
+  @Public()
   @UseGuards(GenerateJobAccessGuard)
   @ApiOperation({ summary: 'Download completed async ID card generate job' })
   downloadGenerateJob(@Param('jobId') jobId: string, @Res() res: Response) {
