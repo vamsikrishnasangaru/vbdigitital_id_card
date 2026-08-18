@@ -15,9 +15,17 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (user: User, accessToken: string, refreshToken: string) => void;
-  logout: () => void;
+  /** Uploads anything still queued before clearing the session. */
+  logout: () => Promise<void>;
   setUser: (user: User) => void;
   initialize: () => void;
+}
+
+function clearSession() {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user');
+  localStorage.removeItem('loginTimestamp');
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -35,11 +43,28 @@ export const useAuthStore = create<AuthState>((set) => ({
     void import('@/lib/sync-engine').then(({ syncEngine }) => syncEngine.flushQueue());
   },
 
-  logout: () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('loginTimestamp');
+  logout: async () => {
+    // Flush while the token is still valid — afterwards every request 401s and
+    // the work would sit on the device until the next sign-in.
+    try {
+      if (navigator.onLine && localStorage.getItem('accessToken')) {
+        const { syncEngine } = await import('@/lib/sync-engine');
+        await syncEngine.flushQueue();
+
+        const remaining = await syncEngine.getQueueLength();
+        if (remaining > 0) {
+          const { toast } = await import('sonner');
+          toast.warning(
+            `${remaining} change${remaining === 1 ? '' : 's'} could not be uploaded. ` +
+              'They stay saved on this device and sync the next time you sign in.',
+          );
+        }
+      }
+    } catch {
+      /* queue is preserved; it syncs after the next sign-in */
+    }
+
+    clearSession();
     set({ user: null, isAuthenticated: false, isLoading: false });
   },
 
@@ -60,10 +85,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           const loginTs = Number(localStorage.getItem('loginTimestamp') || '0');
           const SESSION_MAX_MS = 7 * 24 * 60 * 60 * 1000;
           if (loginTs > 0 && Date.now() - loginTs > SESSION_MAX_MS) {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('user');
-            localStorage.removeItem('loginTimestamp');
+            clearSession();
             set({ user: null, isAuthenticated: false, isLoading: false });
             return;
           }

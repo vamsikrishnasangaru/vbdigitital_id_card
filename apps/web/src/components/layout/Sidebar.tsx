@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import {
   LayoutDashboard, School, Users, GraduationCap, CreditCard,
   BarChart3, Bell, Settings,
-  LogOut, ChevronRight, BookOpen, Palette, X
+  LogOut, ChevronRight, BookOpen, Palette, X, Loader2
 } from 'lucide-react';
 
 const allRoutes = [
@@ -30,7 +31,18 @@ interface SidebarProps {
 export function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
+  const [loggingOut, setLoggingOut] = useState(false);
   const routes = allRoutes.filter(r => user && r.roles.includes(user.role));
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-[#111113] text-white border-r border-white/5 relative">
@@ -107,10 +119,16 @@ export function Sidebar({ onClose }: SidebarProps) {
             <div className="text-[9px] text-white/30 font-bold uppercase truncate">{user?.role?.replace('_', ' ')}</div>
           </div>
           <button
-            onClick={logout}
-            className="p-2 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            onClick={() => void handleLogout()}
+            disabled={loggingOut}
+            title={loggingOut ? 'Saving your changes to the server…' : 'Log out'}
+            className="p-2 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-60"
           >
-            <LogOut className="h-4 w-4" />
+            {loggingOut ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <LogOut className="h-4 w-4" />
+            )}
           </button>
         </div>
       </div>

@@ -139,9 +139,9 @@ export default function SettingsPage({ params }: NextClientPageProps) {
         newPassword: passwordForm.newPassword,
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Password updated. Please sign in again.');
-      logout();
+      await logout();
       router.push('/login');
     },
     onError: (err: unknown) => {
