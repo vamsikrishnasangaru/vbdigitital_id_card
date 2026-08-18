@@ -33,6 +33,7 @@ export type EditStudentPayload = {
   emergencyContact?: string | null;
   transportDetails?: string | null;
   photoUrl?: string | null;
+  originalPhotoUrl?: string | null;
 };
 
 export function saveStudentsClassSectionFilter(filter: StudentsClassSectionFilter): void {

@@ -15,6 +15,7 @@ import { offlineStore, isBrowserOnline } from '@/lib/offline-store';
 
 export type OfflineSyncState = {
   isOffline: boolean;
+  serverUnavailable: boolean;
   pendingCount: number;
   offlineStudentCount: number;
   offlineClassCount: number;
@@ -29,6 +30,7 @@ const REFRESH_INTERVAL_MS = 60_000;
 function useOfflineSyncInternal(): OfflineSyncState {
   const queryClient = useQueryClient();
   const [isOffline, setIsOffline] = useState(false);
+  const [serverUnavailable, setServerUnavailable] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [offlineStudentCount, setOfflineStudentCount] = useState(0);
   const [offlineClassCount, setOfflineClassCount] = useState(0);
@@ -81,6 +83,14 @@ function useOfflineSyncInternal(): OfflineSyncState {
     window.addEventListener('vb-offline-data-changed', onDataChanged);
     window.addEventListener('vb-offline-sync-complete', scheduleInvalidate);
 
+    const onServerStatus = (e: Event) => {
+      const unavailable = (e as CustomEvent<boolean>).detail;
+      setServerUnavailable(unavailable);
+      if (unavailable) setIsOffline(true);
+      else if (isBrowserOnline()) setIsOffline(false);
+    };
+    window.addEventListener('vb-server-unavailable', onServerStatus);
+
     const interval = window.setInterval(refreshCounts, REFRESH_INTERVAL_MS);
 
     return () => {
@@ -89,6 +99,7 @@ function useOfflineSyncInternal(): OfflineSyncState {
       window.removeEventListener('vb-sync-queue-changed', refreshCounts);
       window.removeEventListener('vb-offline-data-changed', onDataChanged);
       window.removeEventListener('vb-offline-sync-complete', scheduleInvalidate);
+      window.removeEventListener('vb-server-unavailable', onServerStatus);
       window.clearInterval(interval);
       if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
     };
@@ -96,6 +107,7 @@ function useOfflineSyncInternal(): OfflineSyncState {
 
   return {
     isOffline,
+    serverUnavailable,
     pendingCount,
     offlineStudentCount,
     offlineClassCount,

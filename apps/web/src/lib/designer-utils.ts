@@ -885,6 +885,17 @@ export function getStudentPhotoUrl(student: Record<string, unknown> | null | und
   return resolveMediaUrl(String(student.photoUrl));
 }
 
+/** Uploaded/captured original — never replaced by crop/zoom ID-card edits. */
+export function getOriginalStudentPhotoUrl(
+  student: Record<string, unknown> | null | undefined,
+): string {
+  const original = student?.originalPhotoUrl;
+  if (typeof original === 'string' && original.trim()) {
+    return resolveMediaUrl(original);
+  }
+  return getStudentPhotoUrl(student);
+}
+
 export function getElementImageUrl(
   el: DesignerElement,
   student: Record<string, unknown> | null | undefined,

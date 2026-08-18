@@ -8,6 +8,7 @@ export type PhotoAdjustments = {
   warmth: number;
   tint: number;
   sharpness: number;
+  hue: number;
 };
 
 export type PhotoCropState = {
@@ -26,6 +27,7 @@ export const DEFAULT_PHOTO_ADJUSTMENTS: PhotoAdjustments = {
   warmth: 0,
   tint: 0,
   sharpness: 0,
+  hue: 0,
 };
 
 export const DEFAULT_PHOTO_CROP: PhotoCropState = {
@@ -169,6 +171,45 @@ function applyTintLinear(r: number, g: number, b: number, tint: number) {
   return [r + t, g - t, b + t] as const;
 }
 
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return [h, s, l];
+}
+
+function hueToRgb(p: number, q: number, t: number): number {
+  let tt = t;
+  if (tt < 0) tt += 1;
+  if (tt > 1) tt -= 1;
+  if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+  if (tt < 1 / 2) return q;
+  if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+  return p;
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  if (s === 0) return [l, l, l];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [hueToRgb(p, q, h + 1 / 3), hueToRgb(p, q, h), hueToRgb(p, q, h - 1 / 3)];
+}
+
+function applyHueSrgb(r: number, g: number, b: number, hue: number) {
+  if (hue === 0) return [r, g, b] as const;
+  const [h, s, l] = rgbToHsl(r / 255, g / 255, b / 255);
+  const nextH = (h + (hue / 100) * 0.5 + 1) % 1;
+  const [nr, ng, nb] = hslToRgb(nextH, s, l);
+  return [nr * 255, ng * 255, nb * 255] as const;
+}
+
 export function hasPhotoAdjustments(adjustments: PhotoAdjustments): boolean {
   return Object.values(adjustments).some((value) => value !== 0);
 }
@@ -185,10 +226,13 @@ function applyAdjustmentsToImageData(data: ImageData, adjustments: PhotoAdjustme
     saturation,
     warmth,
     tint,
+    hue,
   } = adjustments;
 
   const pixels = data.data;
   for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3] === 0) continue; // skip fully transparent pixels
+
     let rl = srgbToLinear(pixels[i]);
     let gl = srgbToLinear(pixels[i + 1]);
     let bl = srgbToLinear(pixels[i + 2]);
@@ -202,9 +246,14 @@ function applyAdjustmentsToImageData(data: ImageData, adjustments: PhotoAdjustme
     if (warmth !== 0) [rl, gl, bl] = applyWarmthLinear(rl, gl, bl, warmth);
     if (tint !== 0) [rl, gl, bl] = applyTintLinear(rl, gl, bl, tint);
 
-    pixels[i] = clamp255(linearToSrgb(rl));
-    pixels[i + 1] = clamp255(linearToSrgb(gl));
-    pixels[i + 2] = clamp255(linearToSrgb(bl));
+    let r = linearToSrgb(rl);
+    let g = linearToSrgb(gl);
+    let b = linearToSrgb(bl);
+    if (hue !== 0) [r, g, b] = applyHueSrgb(r, g, b, hue);
+
+    pixels[i] = clamp255(r);
+    pixels[i + 1] = clamp255(g);
+    pixels[i + 2] = clamp255(b);
   }
 
   if (adjustments.sharpness !== 0) {
@@ -220,6 +269,7 @@ function applySharpness(data: ImageData, sharpness: number) {
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const idx = (y * width + x) * 4;
+      if (src[idx + 3] === 0) continue;
       for (let c = 0; c < 3; c++) {
         let sum = 0;
         for (let dy = -1; dy <= 1; dy++) {
@@ -285,8 +335,8 @@ export function renderEditedPhoto(
   viewportCanvas.height = viewportSize;
   const vctx = viewportCanvas.getContext('2d');
   if (!vctx) throw new Error('Canvas not supported');
-  vctx.fillStyle = '#000';
-  vctx.fillRect(0, 0, viewportSize, viewportSize);
+  // Keep transparent — don't fill with black so alpha is preserved after BG removal
+  vctx.clearRect(0, 0, viewportSize, viewportSize);
   vctx.drawImage(img, centerX - scaledW / 2, centerY - scaledH / 2, scaledW, scaledH);
 
   const canvas = document.createElement('canvas');
@@ -294,6 +344,7 @@ export function renderEditedPhoto(
   canvas.height = outputSize;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas not supported');
+  ctx.clearRect(0, 0, outputSize, outputSize);
 
   ctx.drawImage(
     viewportCanvas,

@@ -16,6 +16,18 @@ export const api = axios.create({
 });
 
 let offlineMutationToastShown = false;
+let serverUnavailableEmitted = false;
+
+function emitServerStatus(unavailable: boolean) {
+  if (typeof window === 'undefined') return;
+  if (unavailable && !serverUnavailableEmitted) {
+    serverUnavailableEmitted = true;
+    window.dispatchEvent(new CustomEvent('vb-server-unavailable', { detail: true }));
+  } else if (!unavailable && serverUnavailableEmitted) {
+    serverUnavailableEmitted = false;
+    window.dispatchEvent(new CustomEvent('vb-server-unavailable', { detail: false }));
+  }
+}
 
 type RefreshResult = { accessToken: string; refreshToken: string };
 let refreshInFlight: Promise<RefreshResult> | null = null;
@@ -71,11 +83,19 @@ function shouldQueueMutation(config?: VbAxiosConfig, networkFailure = false): bo
   return networkFailure;
 }
 
+function isOfflineLikeFailure(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  if (status === 502 || status === 503 || status === 504) return true;
+  if (!status) return true;
+  return false;
+}
+
 /** Cache successful GET responses for offline replay. */
 api.interceptors.response.use(
   (response) => {
     const config = response.config as VbAxiosConfig;
     if (config._skipOfflineQueue) return response;
+    emitServerStatus(false);
     if (config.method?.toLowerCase() === 'get' && response.data !== undefined) {
       offlineGetCache.set(config.url || '', config.params, response.data);
     }
@@ -84,11 +104,8 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config as VbAxiosConfig | undefined;
 
-    const networkFailure =
-      !error.response ||
-      (typeof navigator !== 'undefined' &&
-        !navigator.onLine &&
-        error.response?.status === 503);
+    const networkFailure = isOfflineLikeFailure(error);
+    if (networkFailure) emitServerStatus(true);
     const offlineMutation = shouldQueueMutation(original, networkFailure);
     const offlineGet =
       networkFailure &&

@@ -24,6 +24,21 @@ export class StudentsService {
     private classesService: ClassesService,
   ) {}
 
+  private async saveStudentPhotos(
+    schoolId: string,
+    files?: { photo?: Express.Multer.File; originalPhoto?: Express.Multer.File },
+  ): Promise<{ photoUrl?: string; originalPhotoUrl?: string }> {
+    const dir = `schools/${schoolId}/students`;
+    const originalDir = `${dir}/originals`;
+    const photoUrl = files?.photo
+      ? await this.uploadsService.saveFile(files.photo, dir)
+      : undefined;
+    const originalPhotoUrl = files?.originalPhoto
+      ? await this.uploadsService.saveFile(files.originalPhoto, originalDir)
+      : undefined;
+    return { photoUrl, originalPhotoUrl };
+  }
+
   private parseOptionalDate(value: unknown): Date | null {
     if (!value) return null;
     const raw = String(value).trim();
@@ -157,7 +172,10 @@ export class StudentsService {
     return { classId: resolved.classId, sectionId: resolved.sectionId };
   }
 
-  async create(data: any, file?: Express.Multer.File) {
+  async create(
+    data: any,
+    files?: { photo?: Express.Multer.File; originalPhoto?: Express.Multer.File },
+  ) {
     const requiredFields = ['schoolId', 'firstName', 'parentPhone'] as const;
     for (const field of requiredFields) {
       const value = typeof data[field] === 'string' ? data[field].trim() : data[field];
@@ -167,10 +185,12 @@ export class StudentsService {
     }
 
     let photoUrl = data.photoUrl;
-
-    if (file) {
-      photoUrl = await this.uploadsService.saveFile(file, `schools/${data.schoolId}/students`);
-    }
+    let originalPhotoUrl = data.originalPhotoUrl;
+    const saved = await this.saveStudentPhotos(data.schoolId, files);
+    if (saved.photoUrl) photoUrl = saved.photoUrl;
+    if (saved.originalPhotoUrl) originalPhotoUrl = saved.originalPhotoUrl;
+    if (!originalPhotoUrl && photoUrl) originalPhotoUrl = photoUrl;
+    if (!photoUrl && originalPhotoUrl) photoUrl = originalPhotoUrl;
 
     const {
       photo: _photo,
@@ -243,6 +263,7 @@ export class StudentsService {
           parentPhone,
           address: address ? String(address).trim() : null,
           photoUrl,
+          originalPhotoUrl,
           bloodGroup: bloodGroup ? String(bloodGroup).trim() : null,
           aadharCard: normalizedAadhar,
           emergencyContact: emergencyContact ? String(emergencyContact).trim() : null,
@@ -388,7 +409,7 @@ export class StudentsService {
     id: string,
     data: any,
     actor?: { role?: string; userId?: string },
-    file?: Express.Multer.File,
+    files?: { photo?: Express.Multer.File; originalPhoto?: Express.Multer.File },
   ) {
     const current = await this.findOne(id);
     if (current.status === 'APPROVED' && actor?.role !== 'SUPER_ADMIN') {
@@ -416,6 +437,7 @@ export class StudentsService {
       classId,
       sectionId,
       photoUrl,
+      originalPhotoUrl,
     } = data;
 
     const payload: Record<string, unknown> = {};
@@ -463,13 +485,17 @@ export class StudentsService {
     if (transportDetails !== undefined) {
       payload.transportDetails = transportDetails ? String(transportDetails).trim() : null;
     }
-    if (file) {
-      payload.photoUrl = await this.uploadsService.saveFile(
-        file,
-        `schools/${current.schoolId}/students`,
-      );
-    } else if (photoUrl !== undefined) {
-      payload.photoUrl = photoUrl;
+    const saved = await this.saveStudentPhotos(current.schoolId, files);
+    if (saved.photoUrl) payload.photoUrl = saved.photoUrl;
+    else if (photoUrl !== undefined) payload.photoUrl = photoUrl;
+    if (saved.originalPhotoUrl) payload.originalPhotoUrl = saved.originalPhotoUrl;
+    else if (originalPhotoUrl !== undefined) payload.originalPhotoUrl = originalPhotoUrl;
+    const currentOriginalPhotoUrl =
+      'originalPhotoUrl' in current && typeof current.originalPhotoUrl === 'string'
+        ? current.originalPhotoUrl
+        : null;
+    if (saved.photoUrl && !currentOriginalPhotoUrl && !saved.originalPhotoUrl) {
+      payload.originalPhotoUrl = saved.photoUrl;
     }
     if (dateOfBirth !== undefined) {
       payload.dateOfBirth = dateOfBirth ? this.parseOptionalDate(dateOfBirth) : null;

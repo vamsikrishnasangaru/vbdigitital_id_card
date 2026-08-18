@@ -97,6 +97,21 @@ function freshAuthHeaders(headers?: Record<string, string>): Record<string, stri
   return next;
 }
 
+function shouldKeepForRetry(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  // Retry transient/server outages later; only drop definitive client-side failures.
+  if (!status) return true;
+  // 401/403 mean the session expired, not that the data is invalid — keep so the
+  // work survives an auto-logout and syncs after the user signs in again.
+  if (status === 401 || status === 403) return true;
+  return status >= 500 || status === 429 || status === 408;
+}
+
+function hasAccessToken(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean(localStorage.getItem('accessToken'));
+}
+
 export const syncEngine = {
   async getQueueLength(): Promise<number> {
     const queue: SyncOperation[] = (await get(SYNC_QUEUE_KEY)) || [];
@@ -151,6 +166,10 @@ export const syncEngine = {
     const queue: SyncOperation[] = (await get(SYNC_QUEUE_KEY)) || [];
     if (queue.length === 0) return;
 
+    // Without a token every request 401s and the interceptor bounces to the login
+    // page — leave the queue untouched until the user signs in again.
+    if (!hasAccessToken()) return;
+
     toast.info(`Syncing ${queue.length} pending change${queue.length === 1 ? '' : 's'}…`);
 
     const failedQueue: SyncOperation[] = [];
@@ -169,7 +188,7 @@ export const syncEngine = {
         successCount += 1;
       } catch (error: unknown) {
         const axiosErr = error as { response?: unknown };
-        if (!axiosErr.response) {
+        if (shouldKeepForRetry(error)) {
           failedQueue.push(op);
         } else {
           console.error('Failed to sync operation:', op, axiosErr.response);

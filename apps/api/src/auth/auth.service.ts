@@ -163,15 +163,22 @@ export class AuthService {
       schoolId: user.schoolId,
     };
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const isSuperAdmin = user.role === 'SUPER_ADMIN';
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: isSuperAdmin ? '24h' : '15m',
+    });
     const refreshToken = uuidv4();
 
-    // Store refresh token
+    // Super admin: 365 days session; others: 7 days then forced re-login
+    const sessionDurationMs = isSuperAdmin
+      ? 365 * 24 * 60 * 60 * 1000
+      : 7 * 24 * 60 * 60 * 1000;
+
     await this.prisma.session.create({
       data: {
         userId: user.id,
         refreshToken,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        expiresAt: new Date(Date.now() + sessionDurationMs),
       },
     });
 

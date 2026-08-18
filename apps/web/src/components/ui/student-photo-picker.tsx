@@ -3,16 +3,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, Upload, X, ImageIcon, SlidersHorizontal, RefreshCw, SwitchCamera } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
+import { compressImageForUpload, ORIGINAL_STUDENT_PHOTO_OPTS, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import { StudentPhotoEditor } from '@/components/ui/student-photo-editor';
 
 type CameraFacing = 'user' | 'environment';
 
+export type StudentPhotoChangeMeta = {
+  originalFile?: File | null;
+  originalPreviewUrl?: string | null;
+  replacedOriginal?: boolean;
+};
+
 interface StudentPhotoPickerProps {
   preview: string | null;
-  onPhotoChange: (file: File | null, previewUrl: string | null) => void;
+  /** Persisted original upload/capture kept as backup for admins/export. */
+  originalPreview?: string | null;
+  onPhotoChange: (
+    file: File | null,
+    previewUrl: string | null,
+    meta?: StudentPhotoChangeMeta,
+  ) => void;
   /** Crop, light/color adjustments (all roles in add/edit student modal) */
   enablePhotoEditor?: boolean;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || ''));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 async function readFileAsPreview(
@@ -20,13 +41,17 @@ async function readFileAsPreview(
   onPhotoChange: StudentPhotoPickerProps['onPhotoChange'],
 ) {
   const compressed = await compressImageForUpload(file, STUDENT_PHOTO_UPLOAD_OPTS);
-  const reader = new FileReader();
-  reader.onloadend = () => onPhotoChange(compressed, reader.result as string);
-  reader.readAsDataURL(compressed);
+  const previewUrl = await fileToDataUrl(compressed);
+  onPhotoChange(compressed, previewUrl, {
+    originalFile: compressed,
+    originalPreviewUrl: previewUrl,
+    replacedOriginal: true,
+  });
 }
 
 export function StudentPhotoPicker({
   preview,
+  originalPreview = null,
   onPhotoChange,
   enablePhotoEditor = false,
 }: StudentPhotoPickerProps) {
@@ -39,6 +64,12 @@ export function StudentPhotoPicker({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const originalFileRef = useRef<File | null>(null);
+  const originalPreviewRef = useRef<string | null>(originalPreview);
+
+  useEffect(() => {
+    originalPreviewRef.current = originalPreview;
+  }, [originalPreview]);
 
   const openEditor = useCallback((source: string | File) => {
     setEditorSource(source);
@@ -104,12 +135,18 @@ export function StudentPhotoPicker({
   }, [cameraOpen, cameraFacing, startCamera, stopCamera]);
 
   const finishWithFile = (file: File) => {
-    if (enablePhotoEditor) {
-      openEditor(file);
-      return;
-    }
-    void readFileAsPreview(file, onPhotoChange);
-    setShowOptions(false);
+    void (async () => {
+      const original = await compressImageForUpload(file, ORIGINAL_STUDENT_PHOTO_OPTS);
+      const originalPreviewUrl = await fileToDataUrl(original);
+      originalFileRef.current = original;
+      originalPreviewRef.current = originalPreviewUrl;
+      if (enablePhotoEditor) {
+        openEditor(original);
+        return;
+      }
+      await readFileAsPreview(original, onPhotoChange);
+      setShowOptions(false);
+    })();
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -164,7 +201,13 @@ export function StudentPhotoPicker({
   };
 
   const clearPhoto = () => {
-    onPhotoChange(null, null);
+    originalFileRef.current = null;
+    originalPreviewRef.current = null;
+    onPhotoChange(null, null, {
+      originalFile: null,
+      originalPreviewUrl: null,
+      replacedOriginal: true,
+    });
     setShowOptions(false);
   };
 
@@ -244,7 +287,14 @@ export function StudentPhotoPicker({
                 <>
                   <button
                     type="button"
-                    onClick={() => openEditor(preview)}
+                    onClick={() => {
+                      const editorStart =
+                        preview ||
+                        originalFileRef.current ||
+                        originalPreviewRef.current ||
+                        originalPreview;
+                      if (editorStart) openEditor(editorStart);
+                    }}
                     className="flex items-center gap-4 w-full p-4 rounded-2xl border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all text-left"
                   >
                     <div className="h-12 w-12 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
@@ -418,12 +468,17 @@ export function StudentPhotoPicker({
       <StudentPhotoEditor
         open={editorOpen}
         source={editorSource}
+        backupSource={originalFileRef.current || originalPreviewRef.current || originalPreview}
         onClose={() => {
           setEditorOpen(false);
           setEditorSource(null);
         }}
         onSave={(file, previewUrl) => {
-          onPhotoChange(file, previewUrl);
+          onPhotoChange(file, previewUrl, {
+            originalFile: originalFileRef.current,
+            originalPreviewUrl: originalPreviewRef.current || originalPreview,
+            replacedOriginal: Boolean(originalFileRef.current),
+          });
           setEditorOpen(false);
           setEditorSource(null);
         }}

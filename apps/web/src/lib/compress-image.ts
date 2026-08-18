@@ -7,6 +7,13 @@ export const STUDENT_PHOTO_UPLOAD_OPTS = {
   initialQuality: 0.78,
 } as const;
 
+export const ORIGINAL_STUDENT_PHOTO_OPTS = {
+  maxBytes: 700 * 1024,
+  maxWidth: 1600,
+  maxHeight: 1600,
+  initialQuality: 0.88,
+} as const;
+
 const DEFAULT_MAX_BYTES = STUDENT_PHOTO_UPLOAD_OPTS.maxBytes;
 const DEFAULT_MAX_DIMENSION = STUDENT_PHOTO_UPLOAD_OPTS.maxWidth;
 

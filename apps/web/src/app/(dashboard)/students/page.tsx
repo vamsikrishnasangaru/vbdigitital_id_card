@@ -77,6 +77,24 @@ function templateShortId(tpl: { id: string; code?: string | null }) {
   return tpl.code?.trim() || tpl.id.slice(0, 8).toUpperCase();
 }
 
+async function resolveStudentPhotoFile(
+  photo: File | null,
+  photoPreview: string | null,
+): Promise<File | null> {
+  if (photo) return photo;
+  if (!photoPreview?.startsWith('data:')) return null;
+  try {
+    const res = await fetch(photoPreview);
+    const blob = await res.blob();
+    return new File([blob], `student-photo-${Date.now()}.jpg`, {
+      type: blob.type || 'image/jpeg',
+      lastModified: Date.now(),
+    });
+  } catch {
+    return null;
+  }
+}
+
 function safeLabel(value: unknown, fallback: string) {
   const s = typeof value === 'string' ? value.trim() : '';
   if (!s) return fallback;
@@ -198,7 +216,9 @@ export default function StudentsPage({ params }: NextClientPageProps) {
   const [sections, setSections] = useState<any[]>([]);
   const [form, setForm] = useState<StudentFormState>(() => emptyStudentForm());
   const [photo, setPhoto] = useState<File | null>(null);
+  const [originalPhoto, setOriginalPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [originalPhotoPreview, setOriginalPhotoPreview] = useState<string | null>(null);
   const [viewStudent, setViewStudent] = useState<any | null>(null);
   const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<{
@@ -504,7 +524,9 @@ export default function StudentsPage({ params }: NextClientPageProps) {
   const resetEnrollForm = () => {
     setEditingStudentId(null);
     setPhoto(null);
+    setOriginalPhoto(null);
     setPhotoPreview(null);
+    setOriginalPhotoPreview(null);
     setForm(emptyStudentForm(effectiveSchoolId || ''));
     setSections([]);
   };
@@ -564,6 +586,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     emergencyContact?: string | null;
     transportDetails?: string | null;
     photoUrl?: string | null;
+    originalPhotoUrl?: string | null;
   }) => {
     const schoolId = student.schoolId || effectiveSchoolId || '';
     const classId = student.classId || student.class?.id || '';
@@ -595,7 +618,15 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       transportDetails: student.transportDetails || '',
     });
     setPhoto(null);
+    setOriginalPhoto(null);
     setPhotoPreview(student.photoUrl ? studentPhotoSrc(student.photoUrl) : null);
+    setOriginalPhotoPreview(
+      student.originalPhotoUrl
+        ? studentPhotoSrc(student.originalPhotoUrl)
+        : student.photoUrl
+          ? studentPhotoSrc(student.photoUrl)
+          : null,
+    );
     setSections(
       (cls?.sections || student.class?.sections || []).filter(
         (s: { name?: string }) => !isPlaceholderSectionName(s.name),
@@ -646,14 +677,14 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
     },
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
       if (response.data?._offline) {
         toast.success('Student saved on this device — will sync when you are online');
       } else {
         toast.success('Student record created successfully');
       }
+      await queryClient.invalidateQueries({ queryKey: ['students'] });
       closeEnrollModal();
-      queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: (err: any) => {
       toast.error(
@@ -677,10 +708,14 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       if (formData) return api.put(`/students/${id}`, formData);
       return api.put(`/students/${id}`, payload);
     },
-    onSuccess: () => {
-      toast.success('Student updated successfully');
+    onSuccess: async (response) => {
+      if (response.data?._offline) {
+        toast.success('Student update saved locally — will sync when online');
+      } else {
+        toast.success('Student updated successfully');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['students'] });
       closeEnrollModal();
-      queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: (err: any) => {
       if (err.response?.status === 413) {
@@ -697,9 +732,13 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     mutationFn: async ({ id, status }: { id: string, status: string }) => {
       return api.put(`/students/${id}/status`, { status });
     },
-    onSuccess: (_, variables) => {
-      toast.success(`Student status: ${variables.status}`);
-      queryClient.invalidateQueries({ queryKey: ['students'] });
+    onSuccess: async (response, variables) => {
+      if (response.data?._offline) {
+        toast.success(`Status change saved locally — will sync when online`);
+      } else {
+        toast.success(`Student status: ${variables.status}`);
+      }
+      await queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: () => {
       toast.error('Failed to update status');
@@ -830,10 +869,14 @@ export default function StudentsPage({ params }: NextClientPageProps) {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/students/${id}`),
-    onSuccess: () => {
-      toast.success('Student removed');
+    onSuccess: async (response) => {
+      if (response.data?._offline) {
+        toast.success('Student removal saved locally — will sync when online');
+      } else {
+        toast.success('Student removed');
+      }
       setViewStudent(null);
-      queryClient.invalidateQueries({ queryKey: ['students'] });
+      await queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Failed to remove student');
@@ -858,19 +901,22 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       toast.error('Choose a template under “Generate with template” first');
       return;
     }
-    setViewStudent(s);
     try {
-      const tpl = await fetchTemplateWithConfig<{
-        id: string;
-        name: string;
-        frontBgUrl?: string;
-        orientation: string;
-        frontConfig?: unknown;
-      }>(selectedTemplateId);
+      const [{ data: freshStudent }, tpl] = await Promise.all([
+        api.get(`/students/${s.id}`),
+        fetchTemplateWithConfig<{
+          id: string;
+          name: string;
+          frontBgUrl?: string;
+          orientation: string;
+          frontConfig?: unknown;
+        }>(selectedTemplateId),
+      ]);
+      setViewStudent(freshStudent);
       setPreviewTemplate(tpl);
       setCardPreviewOpen(true);
     } catch {
-      toast.error('Failed to load template for preview');
+      toast.error('Failed to load student or template for preview');
     }
   };
 
@@ -889,9 +935,20 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     setShowGenerateDialog(true);
   };
 
-  const handlePhotoSelected = (file: File | null, previewUrl: string | null) => {
+  const handlePhotoSelected = (
+    file: File | null,
+    previewUrl: string | null,
+    meta?: { originalFile?: File | null; originalPreviewUrl?: string | null; replacedOriginal?: boolean },
+  ) => {
     setPhoto(file);
     setPhotoPreview(previewUrl);
+    if (meta?.replacedOriginal) {
+      setOriginalPhoto(meta.originalFile ?? null);
+      setOriginalPhotoPreview(meta.originalPreviewUrl ?? null);
+    } else if (meta?.originalFile) {
+      setOriginalPhoto(meta.originalFile);
+      if (meta.originalPreviewUrl) setOriginalPhotoPreview(meta.originalPreviewUrl);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -923,6 +980,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     const aadharStored = form.aadharCard.trim()
       ? sanitizeAadharInput(aadharDigitsOnly(form.aadharCard))
       : '';
+    const photoToUpload = await resolveStudentPhotoFile(photo, photoPreview);
 
     if (editingStudentId) {
       const formData = new FormData();
@@ -948,13 +1006,16 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
       if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
 
-      if (photo) {
+      if (photoToUpload) {
         try {
-          const compressed = await compressImageForUpload(photo, STUDENT_PHOTO_UPLOAD_OPTS);
+          const compressed = await compressImageForUpload(photoToUpload, STUDENT_PHOTO_UPLOAD_OPTS);
           formData.append('photo', compressed);
         } catch {
-          formData.append('photo', photo);
+          formData.append('photo', photoToUpload);
         }
+      }
+      if (originalPhoto) {
+        formData.append('originalPhoto', originalPhoto);
       }
 
       updateMutation.mutate({ id: editingStudentId, formData });
@@ -983,13 +1044,16 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     if (dobIso) formData.append('dateOfBirth', dobIso);
     if (form.emergencyContact?.trim()) formData.append('emergencyContact', form.emergencyContact.trim());
     if (form.transportDetails?.trim()) formData.append('transportDetails', form.transportDetails.trim());
-    if (photo) {
+    if (photoToUpload) {
       try {
-        const compressed = await compressImageForUpload(photo, STUDENT_PHOTO_UPLOAD_OPTS);
+        const compressed = await compressImageForUpload(photoToUpload, STUDENT_PHOTO_UPLOAD_OPTS);
         formData.append('photo', compressed);
       } catch {
-        formData.append('photo', photo);
+        formData.append('photo', photoToUpload);
       }
+    }
+    if (originalPhoto) {
+      formData.append('originalPhoto', originalPhoto);
     }
     createMutation.mutate(formData);
   };
@@ -1815,8 +1879,9 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                 <div className="lg:col-span-4 space-y-6">
                   <StudentPhotoPicker
                     preview={photoPreview}
+                    originalPreview={originalPhotoPreview}
                     onPhotoChange={handlePhotoSelected}
-                    enablePhotoEditor={showCreate}
+                    enablePhotoEditor
                   />
                 </div>
 

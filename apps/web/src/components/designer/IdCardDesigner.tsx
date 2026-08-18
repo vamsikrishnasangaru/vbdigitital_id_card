@@ -61,6 +61,10 @@ import { DesignerRestrictedWatermark, useRestrictedPreviewGuards } from './Desig
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { isRestrictedIdCardPreviewRole } from '@/lib/role-preview-access';
+import {
+  downloadOriginalStudentPhoto,
+  hasOriginalStudentPhoto,
+} from '@/lib/download-student-photo';
 
 type TransformerBox = { x: number; y: number; width: number; height: number; rotation: number };
 
@@ -177,6 +181,9 @@ export function IdCardDesigner({
   const [previewMode, setPreviewMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cropElementId, setCropElementId] = useState<string | null>(null);
+  const [downloadingOriginalPhoto, setDownloadingOriginalPhoto] = useState(false);
+  const canDownloadOriginalPhoto =
+    user?.role === 'SUPER_ADMIN' && restrictedPreview && hasOriginalStudentPhoto(student);
 
   const activeBgUrl = activeSide === 'back' && backBgUrl ? backBgUrl : bgUrl;
   const parsedBg = parseBackground(activeBgUrl);
@@ -732,6 +739,25 @@ export function IdCardDesigner({
       });
   };
 
+  const handleDownloadOriginalPhoto = () => {
+    if (user?.role !== 'SUPER_ADMIN') {
+      toast.error('Only super admin can download the original photo.');
+      return;
+    }
+    if (!student || !hasOriginalStudentPhoto(student)) {
+      toast.error('This student has no original photo');
+      return;
+    }
+    if (downloadingOriginalPhoto) return;
+    setDownloadingOriginalPhoto(true);
+    void downloadOriginalStudentPhoto(student)
+      .then(() => toast.success('Downloaded original photo'))
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Could not download the original photo');
+      })
+      .finally(() => setDownloadingOriginalPhoto(false));
+  };
+
   useEffect(() => {
     if (!previewNavigation || isRenderMode) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1025,6 +1051,8 @@ export function IdCardDesigner({
         onSaveAs={onSaveAs}
         onExportPng={handleExportPng}
         onExportPdf={handleExportPdf}
+        onDownloadOriginalPhoto={canDownloadOriginalPhoto ? handleDownloadOriginalPhoto : undefined}
+        downloadingOriginalPhoto={downloadingOriginalPhoto}
         onTogglePreview={() => setPreviewMode((p) => !p)}
         onUndo={undo}
         onRedo={redo}
@@ -1115,6 +1143,8 @@ type DesignerEditorShellProps = {
   onSaveAs?: () => void;
   onExportPng: () => void;
   onExportPdf: () => void;
+  onDownloadOriginalPhoto?: () => void;
+  downloadingOriginalPhoto?: boolean;
   onTogglePreview: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -1211,6 +1241,8 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
         onSaveAs={p.onSaveAs}
         onExportPng={p.onExportPng}
         onExportPdf={p.onExportPdf}
+        onDownloadOriginalPhoto={p.onDownloadOriginalPhoto}
+        downloadingOriginalPhoto={p.downloadingOriginalPhoto}
         onTogglePreview={p.onTogglePreview}
         onUndo={p.onUndo}
         onRedo={p.onRedo}
@@ -1257,6 +1289,17 @@ function DesignerEditorShell(props: DesignerEditorShellProps) {
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-[10px] font-bold text-amber-200 uppercase tracking-wider">
               Preview — sample student data
             </div>
+          )}
+          {p.onDownloadOriginalPhoto && (
+            <button
+              type="button"
+              onClick={p.onDownloadOriginalPhoto}
+              disabled={p.downloadingOriginalPhoto}
+              className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/16 border border-white/20 text-[11px] font-bold text-white shadow-lg backdrop-blur-sm disabled:opacity-50"
+              title="Download original student photo"
+            >
+              {p.downloadingOriginalPhoto ? 'Downloading…' : 'Download Photo'}
+            </button>
           )}
           {showGrid && (
             <div className="absolute bottom-4 left-4 z-10 text-[10px] font-medium text-white/40 pointer-events-none max-w-xs">

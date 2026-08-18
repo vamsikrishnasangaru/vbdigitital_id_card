@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Save, Copy, FileDown, Image as ImageIcon, Eye, EyeOff, Undo2, Redo2,
+  Save, Copy, FileDown, Image as ImageIcon, ImageDown, Eye, EyeOff, Undo2, Redo2,
   ZoomIn, ZoomOut, Trash2, CopyPlus, FlipHorizontal, Grid3X3, Magnet, X, Loader2,
   ChevronLeft, ChevronRight, Pencil,
 } from 'lucide-react';
@@ -23,6 +23,8 @@ interface DesignerToolbarProps {
   onSaveAs?: () => void;
   onExportPng: () => void;
   onExportPdf: () => void;
+  onDownloadOriginalPhoto?: () => void;
+  downloadingOriginalPhoto?: boolean;
   onTogglePreview: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -99,6 +101,8 @@ export function DesignerToolbar({
   onSaveAs,
   onExportPng,
   onExportPdf,
+  onDownloadOriginalPhoto,
+  downloadingOriginalPhoto = false,
   onTogglePreview,
   onUndo,
   onRedo,
@@ -179,6 +183,22 @@ export function DesignerToolbar({
       {!restrictExport && (
         <>
           {readOnlyPreview && <Divider />}
+          {onDownloadOriginalPhoto && (
+            <ToolButton
+              onClick={onDownloadOriginalPhoto}
+              disabled={downloadingOriginalPhoto}
+              title="Download original student photo"
+            >
+              {downloadingOriginalPhoto ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ImageDown className="h-4 w-4" />
+              )}
+              {readOnlyPreview && (
+                <span className="hidden sm:inline text-[10px] font-bold ml-1">Original</span>
+              )}
+            </ToolButton>
+          )}
           <ToolButton onClick={onExportPng} title="Download PNG">
             <ImageIcon className="h-4 w-4" />
             {readOnlyPreview && (

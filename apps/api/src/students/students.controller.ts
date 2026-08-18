@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Request, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiQuery, ApiConsumes } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('Students')
 @Controller('students')
@@ -14,10 +14,23 @@ export class StudentsController {
   @Post()
   @ApiOperation({ summary: 'Create a student with optional photo' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: 15 * 1024 * 1024 } }))
-  create(@Body() body: any, @UploadedFile() file?: Express.Multer.File) {
-    // If file is provided, it will be handled by the service to save and get a URL
-    return this.studentsService.create(body, file);
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'photo', maxCount: 1 },
+        { name: 'originalPhoto', maxCount: 1 },
+      ],
+      { limits: { fileSize: 15 * 1024 * 1024 } },
+    ),
+  )
+  create(
+    @Body() body: any,
+    @UploadedFiles() files?: { photo?: Express.Multer.File[]; originalPhoto?: Express.Multer.File[] },
+  ) {
+    return this.studentsService.create(body, {
+      photo: files?.photo?.[0],
+      originalPhoto: files?.originalPhoto?.[0],
+    });
   }
 
   @Get()
@@ -61,14 +74,25 @@ export class StudentsController {
   @Put(':id')
   @ApiOperation({ summary: 'Update student with optional photo' })
   @ApiConsumes('multipart/form-data', 'application/json')
-  @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: 15 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'photo', maxCount: 1 },
+        { name: 'originalPhoto', maxCount: 1 },
+      ],
+      { limits: { fileSize: 15 * 1024 * 1024 } },
+    ),
+  )
   update(
     @Param('id') id: string,
     @Body() body: any,
-    @UploadedFile() file: Express.Multer.File | undefined,
+    @UploadedFiles() files: { photo?: Express.Multer.File[]; originalPhoto?: Express.Multer.File[] } | undefined,
     @Request() req: any,
   ) {
-    return this.studentsService.update(id, body, { role: req.user.role, userId: req.user.sub }, file);
+    return this.studentsService.update(id, body, { role: req.user.role, userId: req.user.sub }, {
+      photo: files?.photo?.[0],
+      originalPhoto: files?.originalPhoto?.[0],
+    });
   }
 
   @Put(':id/status')

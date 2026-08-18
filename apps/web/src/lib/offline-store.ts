@@ -299,6 +299,36 @@ export const offlineStore = {
       return student;
     }
 
+    if (method === 'put' && url.match(/\/students\/[^/]+$/) && !url.includes('/status')) {
+      const id = url.split('/students/')[1]?.split('?')[0];
+      if (id) {
+        const formData = config.data instanceof FormData ? config.data : null;
+        const patch: Partial<OfflineStudentRecord> = {};
+        if (formData) {
+          const firstName = formData.get('firstName');
+          const lastName = formData.get('lastName');
+          const rollNumber = formData.get('rollNumber');
+          const parentPhone = formData.get('parentPhone');
+          const classId = formData.get('classId');
+          const sectionId = formData.get('sectionId');
+          if (typeof firstName === 'string') patch.firstName = firstName.trim();
+          if (typeof lastName === 'string') patch.lastName = lastName.trim();
+          if (typeof rollNumber === 'string') patch.rollNumber = rollNumber.trim();
+          if (typeof parentPhone === 'string') patch.parentPhone = parentPhone.trim();
+          if (typeof classId === 'string') patch.classId = classId.trim();
+          if (typeof sectionId === 'string') patch.sectionId = sectionId.trim();
+          const photo = formData.get('photo');
+          if (photo instanceof Blob && photo.size > 0) {
+            patch.photoUrl = await blobToDataUrl(photo);
+          }
+        } else if (typeof config.data === 'object' && config.data) {
+          Object.assign(patch, config.data);
+        }
+        offlineStore.patchStudentLocal(id, patch);
+      }
+      return { _offline: true, id };
+    }
+
     if (method === 'put' && url.match(/\/students\/[^/]+\/status/)) {
       const id = url.split('/students/')[1]?.split('/')[0];
       const body =

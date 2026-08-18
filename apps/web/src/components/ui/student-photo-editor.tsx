@@ -6,18 +6,10 @@ import {
   RotateCcw,
   X,
   Crop,
+  Eraser,
+  Palette,
+  ImagePlus,
   SlidersHorizontal,
-  Sparkles,
-  Wand2,
-  Sun,
-  CircleDot,
-  Contrast,
-  SunDim,
-  Moon,
-  Pipette,
-  Thermometer,
-  Droplet,
-  Gem,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -32,46 +24,39 @@ import {
   renderEditedPhoto,
   type PhotoAdjustments,
   type PhotoCropState,
-  hasPhotoAdjustments,
 } from '@/lib/photo-editor-utils';
 import { compressImageForUpload, STUDENT_PHOTO_UPLOAD_OPTS } from '@/lib/compress-image';
 import {
-  PHOTO_FILTER_PRESETS,
-  blendPhotoAdjustments,
-  buildFilterThumbnails,
-  computeAutoEnhanceAdjustments,
-  DEFAULT_FILTER_INTENSITY,
-  type PhotoFilterId,
-} from '@/lib/photo-editor-filters';
+  applyStudentSolidBackground,
+  composeStudentBackgroundImage,
+  cutOutStudentPhoto,
+} from '@/lib/remove-student-photo-background';
 
 interface StudentPhotoEditorProps {
   open: boolean;
   source: string | File | null;
+  backupSource?: string | File | null;
   onClose: () => void;
   onSave: (file: File, previewUrl: string) => void;
 }
 
-type EditorTab = 'crop' | 'adjust' | 'filters';
+type EditorTab = 'bg' | 'crop' | 'color';
 type AdjustmentKey = keyof PhotoAdjustments;
-type ActiveFilter = PhotoFilterId | 'auto' | null;
 
 /** CSS display size of the crop canvas (internal canvas is PHOTO_EDITOR_VIEWPORT). */
-const PREVIEW_DISPLAY_PX = 152;
+const PREVIEW_DISPLAY_PX = 280;
 const PREVIEW_DRAG_SCALE = PHOTO_EDITOR_VIEWPORT / PREVIEW_DISPLAY_PX;
 
-const LIGHT_CONTROLS: { key: AdjustmentKey; label: string; icon: ReactNode }[] = [
-  { key: 'brightness', label: 'Brightness', icon: <Sun className="h-3.5 w-3.5" /> },
-  { key: 'exposure', label: 'Exposure', icon: <CircleDot className="h-3.5 w-3.5" /> },
-  { key: 'contrast', label: 'Contrast', icon: <Contrast className="h-3.5 w-3.5" /> },
-  { key: 'highlights', label: 'Highlights', icon: <SunDim className="h-3.5 w-3.5" /> },
-  { key: 'shadows', label: 'Shadows', icon: <Moon className="h-3.5 w-3.5" /> },
-];
+const SOLID_COLORS = ['#FFFFFF', '#F8FAFC', '#E2E8F0', '#DBEAFE', '#FEE2E2', '#DCFCE7', '#FEF3C7'];
 
-const COLOR_CONTROLS: { key: AdjustmentKey; label: string; icon: ReactNode }[] = [
-  { key: 'saturation', label: 'Saturation', icon: <Pipette className="h-3.5 w-3.5" /> },
-  { key: 'warmth', label: 'Warmth', icon: <Thermometer className="h-3.5 w-3.5" /> },
-  { key: 'tint', label: 'Tint', icon: <Droplet className="h-3.5 w-3.5" /> },
-  { key: 'sharpness', label: 'Sharpness', icon: <Gem className="h-3.5 w-3.5" /> },
+const ADJUST_CONTROLS: { key: AdjustmentKey; label: string; min?: number; max?: number }[] = [
+  { key: 'brightness', label: 'Brightness' },
+  { key: 'contrast', label: 'Contrast' },
+  { key: 'saturation', label: 'Saturation' },
+  { key: 'highlights', label: 'Highlights' },
+  { key: 'shadows', label: 'Shadows' },
+  { key: 'sharpness', label: 'Sharpen', min: 0, max: 100 },
+  { key: 'hue', label: 'Hue' },
 ];
 
 function AdjustmentSlider({
@@ -83,20 +68,22 @@ function AdjustmentSlider({
   onChange,
 }: {
   label: string;
-  icon: ReactNode;
+  icon?: ReactNode;
   value: number;
   min?: number;
   max?: number;
   onChange: (value: number) => void;
 }) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 text-foreground">
-          <span className="text-muted-foreground shrink-0">{icon}</span>
+          {icon ? <span className="text-muted-foreground shrink-0">{icon}</span> : null}
           <span className="text-[11px] font-medium truncate">{label}</span>
         </div>
-        <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">{value}</span>
+        <span className="min-w-9 px-1.5 py-0.5 rounded-md border border-border text-[11px] tabular-nums text-muted-foreground text-center shrink-0">
+          {value}
+        </span>
       </div>
       <input
         type="range"
@@ -110,110 +97,52 @@ function AdjustmentSlider({
   );
 }
 
-function AdjustmentSection({
-  title,
-  controls,
-  adjustments,
-  onChange,
-}: {
-  title: string;
-  controls: { key: AdjustmentKey; label: string; icon: ReactNode }[];
-  adjustments: PhotoAdjustments;
-  onChange: (key: AdjustmentKey, value: number) => void;
-}) {
-  return (
-    <div className="space-y-2.5">
-      <h5 className="text-[11px] font-semibold text-foreground">{title}</h5>
-      <div className="space-y-3">
-        {controls.map(({ key, label, icon }) => (
-          <AdjustmentSlider
-            key={key}
-            label={label}
-            icon={icon}
-            value={adjustments[key]}
-            onChange={(v) => onChange(key, v)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FilterThumbnail({
-  name,
-  previewUrl,
-  selected,
-  onClick,
-}: {
-  name: string;
-  previewUrl?: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex flex-col items-center gap-1 rounded-lg p-0.5 transition-all',
-        selected ? 'ring-2 ring-primary' : 'opacity-90 hover:opacity-100',
-      )}
-    >
-      <div className="relative w-full aspect-square rounded-md overflow-hidden border border-border/70 bg-muted">
-        {previewUrl ? (
-          <img src={previewUrl} alt="" className="w-full h-full object-cover" draggable={false} />
-        ) : (
-          <div className="w-full h-full animate-pulse bg-muted" />
-        )}
-      </div>
-      <span
-        className={cn(
-          'text-[9px] font-semibold text-center leading-tight px-0.5 truncate w-full',
-          selected ? 'text-foreground' : 'text-muted-foreground',
-        )}
-      >
-        {name}
-      </span>
-    </button>
-  );
-}
-
-function IntensitySlider({ value, onChange }: { value: number; onChange: (value: number) => void }) {
-  return (
-    <div className="space-y-1 pt-1">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium text-foreground">Intensity</span>
-        <span className="text-[11px] tabular-nums text-muted-foreground">{value}</span>
-      </div>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={value}
-        onInput={(e) => onChange(Number(e.currentTarget.value))}
-        className="w-full accent-primary h-1 cursor-pointer"
-      />
-    </div>
-  );
-}
-
-export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPhotoEditorProps) {
+export function StudentPhotoEditor({ open, source, backupSource = null, onClose, onSave }: StudentPhotoEditorProps) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [removingBg, setRemovingBg] = useState(false);
+  const [bgProgress, setBgProgress] = useState('');
+  const [applyingSolidBg, setApplyingSolidBg] = useState(false);
+  const [applyingImageBg, setApplyingImageBg] = useState(false);
+  const [bgRemoved, setBgRemoved] = useState(false);
+  const [selectedSolidColor, setSelectedSolidColor] = useState('#FFFFFF');
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<EditorTab>('crop');
+  const [activeTab, setActiveTab] = useState<EditorTab>('bg');
   const [crop, setCrop] = useState<PhotoCropState>(DEFAULT_PHOTO_CROP);
   const [adjustments, setAdjustments] = useState<PhotoAdjustments>(DEFAULT_PHOTO_ADJUSTMENTS);
-  const [activeFilter, setActiveFilter] = useState<ActiveFilter>(null);
-  const [filterIntensity, setFilterIntensity] = useState(DEFAULT_FILTER_INTENSITY);
-  const [filterBaseAdjustments, setFilterBaseAdjustments] = useState<PhotoAdjustments | null>(null);
-  const [filterThumbnails, setFilterThumbnails] = useState<Record<string, string>>({});
-  const [autoEnhancing, setAutoEnhancing] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [hasBackup, setHasBackup] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewRafRef = useRef<number>(0);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const cropRef = useRef<PhotoCropState>(DEFAULT_PHOTO_CROP);
+  const adjustmentsRef = useRef<PhotoAdjustments>(DEFAULT_PHOTO_ADJUSTMENTS);
+  const originalImageRef = useRef<HTMLImageElement | null>(null);
+  const backupImageRef = useRef<HTMLImageElement | null>(null);
+  const cutoutImageRef = useRef<HTMLImageElement | null>(null);
+  const backgroundUploadRef = useRef<HTMLInputElement>(null);
+
+  const commitImage = (img: HTMLImageElement | null) => {
+    imageRef.current = img;
+    setImage(img);
+  };
+
+  const commitCrop = (next: PhotoCropState) => {
+    cropRef.current = next;
+    setCrop(next);
+  };
+
+  const resetCrop = () => {
+    cropRef.current = DEFAULT_PHOTO_CROP;
+    setCrop(DEFAULT_PHOTO_CROP);
+  };
+
+  const resetAdjustments = () => {
+    adjustmentsRef.current = DEFAULT_PHOTO_ADJUSTMENTS;
+    setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
+  };
 
   const cropDisplaySize = getCropDisplaySize(PHOTO_EDITOR_VIEWPORT, PHOTO_EDITOR_CROP_INSET);
 
@@ -228,42 +157,68 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // Draw checkerboard behind the crop area when BG has been removed
+    if (bgRemoved) {
+      const CHECKER = 10;
+      const ox = PHOTO_EDITOR_CROP_INSET;
+      const oy = PHOTO_EDITOR_CROP_INSET;
+      for (let cy = 0; cy < cropDisplaySize; cy += CHECKER) {
+        for (let cx = 0; cx < cropDisplaySize; cx += CHECKER) {
+          const isLight = ((Math.floor(cx / CHECKER) + Math.floor(cy / CHECKER)) % 2) === 0;
+          ctx.fillStyle = isLight ? '#e0e0e0' : '#c0c0c0';
+          ctx.fillRect(
+            ox + cx, oy + cy,
+            Math.min(CHECKER, cropDisplaySize - cx),
+            Math.min(CHECKER, cropDisplaySize - cy),
+          );
+        }
+      }
+    }
+
     const edited = renderEditedPhoto(image, crop, adjustments, cropDisplaySize);
     ctx.drawImage(edited, PHOTO_EDITOR_CROP_INSET, PHOTO_EDITOR_CROP_INSET);
 
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
     ctx.lineWidth = 2;
     ctx.strokeRect(PHOTO_EDITOR_CROP_INSET, PHOTO_EDITOR_CROP_INSET, cropDisplaySize, cropDisplaySize);
-  }, [image, crop, adjustments, cropDisplaySize]);
+  }, [image, crop, adjustments, cropDisplaySize, bgRemoved]);
 
   useEffect(() => {
     if (!open || !source) {
-      setImage(null);
+      commitImage(null);
+      originalImageRef.current = null;
+      backupImageRef.current = null;
+      setHasBackup(false);
+      cutoutImageRef.current = null;
       setError(null);
-      setActiveTab('crop');
-      setCrop(DEFAULT_PHOTO_CROP);
-      setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
-      setActiveFilter(null);
-      setFilterIntensity(DEFAULT_FILTER_INTENSITY);
-      setFilterBaseAdjustments(null);
-      setFilterThumbnails({});
+      setActiveTab('bg');
+      resetCrop();
+      resetAdjustments();
+      setBgRemoved(false);
+      setBgProgress('');
+      setSelectedSolidColor('#FFFFFF');
       return;
     }
 
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void loadImageFromSource(source)
-      .then((img) => {
+    const loadBackup = backupSource
+      ? loadImageFromSource(backupSource).catch(() => null)
+      : Promise.resolve<HTMLImageElement | null>(null);
+    void Promise.all([loadImageFromSource(source), loadBackup])
+      .then(([img, backup]) => {
         if (cancelled) return;
-        setImage(img);
-        setActiveTab('crop');
-        setCrop(DEFAULT_PHOTO_CROP);
-        setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
-        setActiveFilter(null);
-        setFilterIntensity(DEFAULT_FILTER_INTENSITY);
-        setFilterBaseAdjustments(null);
-        setFilterThumbnails({});
+        originalImageRef.current = img;
+        backupImageRef.current = backup;
+        setHasBackup(Boolean(backup));
+        cutoutImageRef.current = null;
+        commitImage(img);
+        setActiveTab('bg');
+        resetCrop();
+        resetAdjustments();
+        setBgRemoved(false);
+        setSelectedSolidColor('#FFFFFF');
       })
       .catch(() => {
         if (!cancelled) setError('Could not load photo for editing');
@@ -275,7 +230,7 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
     return () => {
       cancelled = true;
     };
-  }, [open, source]);
+  }, [open, source, backupSource]);
 
   useEffect(() => {
     cancelAnimationFrame(previewRafRef.current);
@@ -285,33 +240,6 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
     return () => cancelAnimationFrame(previewRafRef.current);
   }, [drawPreview]);
 
-  useEffect(() => {
-    if (!image || !open) {
-      setFilterThumbnails({});
-      return;
-    }
-
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      requestAnimationFrame(() => {
-        if (cancelled || !image) return;
-        setFilterThumbnails(buildFilterThumbnails(image, crop));
-      });
-    }, 0);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [image, crop, open]);
-
-  const applyFilterAtIntensity = useCallback(
-    (base: PhotoAdjustments, intensity: number) => {
-      setAdjustments(blendPhotoAdjustments(DEFAULT_PHOTO_ADJUSTMENTS, base, intensity));
-    },
-    [],
-  );
-
   const onPointerDown = (e: React.PointerEvent) => {
     if (!image || activeTab !== 'crop') return;
     setDragging(true);
@@ -320,82 +248,147 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragging || !image) return;
+    const currentImage = imageRef.current;
+    if (!dragging || !currentImage) return;
     const dx = (e.clientX - dragStart.current.x) * PREVIEW_DRAG_SCALE;
     const dy = (e.clientY - dragStart.current.y) * PREVIEW_DRAG_SCALE;
     const next = {
       panX: dragStart.current.panX + dx,
       panY: dragStart.current.panY + dy,
-      zoom: crop.zoom,
+      zoom: cropRef.current.zoom,
     };
-    setCrop(clampPhotoCrop(image.naturalWidth, image.naturalHeight, next));
+    commitCrop(clampPhotoCrop(currentImage.naturalWidth, currentImage.naturalHeight, next));
   };
 
   const onZoomChange = (v: number) => {
-    if (!image) return;
-    const next = { ...crop, zoom: 1 + v / 100 };
-    setCrop(clampPhotoCrop(image.naturalWidth, image.naturalHeight, next));
+    const currentImage = imageRef.current;
+    if (!currentImage) return;
+    const next = { ...cropRef.current, zoom: 1 + v / 100 };
+    commitCrop(clampPhotoCrop(currentImage.naturalWidth, currentImage.naturalHeight, next));
   };
 
   const onPointerUp = () => setDragging(false);
 
   const resetAll = () => {
-    setCrop(DEFAULT_PHOTO_CROP);
-    setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
-    setActiveFilter(null);
-    setFilterIntensity(DEFAULT_FILTER_INTENSITY);
-    setFilterBaseAdjustments(null);
+    const original = originalImageRef.current;
+    if (original) commitImage(original);
+    cutoutImageRef.current = null;
+    setBgRemoved(false);
+    setSelectedSolidColor('#FFFFFF');
+    resetCrop();
+    resetAdjustments();
+    setError(null);
   };
 
-  const applyFilter = (filterId: PhotoFilterId) => {
-    const preset = PHOTO_FILTER_PRESETS.find((f) => f.id === filterId);
-    if (!preset) return;
-    const intensity = DEFAULT_FILTER_INTENSITY;
-    setFilterBaseAdjustments(preset.adjustments);
-    setFilterIntensity(intensity);
-    setActiveFilter(filterId);
-    applyFilterAtIntensity(preset.adjustments, intensity);
+  const restoreFromBackup = () => {
+    const backup = backupImageRef.current;
+    if (!backup) {
+      setError('Original backup is not available for this photo');
+      return;
+    }
+    commitImage(backup);
+    cutoutImageRef.current = null;
+    setBgRemoved(false);
+    setSelectedSolidColor('#FFFFFF');
+    resetCrop();
+    resetAdjustments();
+    setActiveTab('bg');
+    setError(null);
   };
 
-  const applyAutoEnhance = () => {
-    if (!image) return;
-    setAutoEnhancing(true);
-    requestAnimationFrame(() => {
-      const enhanced = computeAutoEnhanceAdjustments(image, crop);
-      setFilterBaseAdjustments(enhanced);
-      setFilterIntensity(100);
-      setActiveFilter('auto');
-      applyFilterAtIntensity(enhanced, 100);
-      setAutoEnhancing(false);
-    });
+  const ensureCutout = async (
+    onProgress?: (phase: string, pct: number) => void,
+  ): Promise<HTMLImageElement> => {
+    if (cutoutImageRef.current) return cutoutImageRef.current;
+    const sourceImage = originalImageRef.current || image;
+    if (!sourceImage) throw new Error('No photo loaded');
+    const cutout = await cutOutStudentPhoto(sourceImage, onProgress);
+    cutoutImageRef.current = cutout;
+    return cutout;
   };
 
-  const clearFilter = () => {
-    setAdjustments(DEFAULT_PHOTO_ADJUSTMENTS);
-    setActiveFilter(null);
-    setFilterBaseAdjustments(null);
-    setFilterIntensity(DEFAULT_FILTER_INTENSITY);
+  const handleRemoveBackground = async () => {
+    if (removingBg) return;
+    setRemovingBg(true);
+    setBgProgress('Starting…');
+    setError(null);
+    try {
+      const cutout = await ensureCutout((phase, pct) => {
+        setBgProgress(`${phase}… ${pct}%`);
+      });
+      const cleaned = await applyStudentSolidBackground(
+        originalImageRef.current || image!,
+        '#FFFFFF',
+        cutout,
+      );
+      commitImage(cleaned);
+      setBgRemoved(true);
+      setSelectedSolidColor('#FFFFFF');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Background removal failed');
+    } finally {
+      setRemovingBg(false);
+      setBgProgress('');
+    }
   };
 
-  const onFilterIntensityChange = (intensity: number) => {
-    if (!filterBaseAdjustments) return;
-    setFilterIntensity(intensity);
-    applyFilterAtIntensity(filterBaseAdjustments, intensity);
+  const handleApplySolidBackground = async (color: string) => {
+    if (applyingSolidBg) return;
+    setApplyingSolidBg(true);
+    setError(null);
+    setSelectedSolidColor(color);
+    try {
+      const cutout = await ensureCutout();
+      const colored = await applyStudentSolidBackground(
+        originalImageRef.current || image!,
+        color,
+        cutout,
+      );
+      commitImage(colored);
+      setBgRemoved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Applying solid background failed');
+    } finally {
+      setApplyingSolidBg(false);
+    }
+  };
+
+  const handleUploadBackground = async (file: File | undefined) => {
+    if (!file || applyingImageBg) return;
+    setApplyingImageBg(true);
+    setError(null);
+    try {
+      const cutout = await ensureCutout();
+      const composed = await composeStudentBackgroundImage(cutout, file);
+      commitImage(composed);
+      setBgRemoved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Applying image background failed');
+    } finally {
+      setApplyingImageBg(false);
+      if (backgroundUploadRef.current) backgroundUploadRef.current.value = '';
+    }
   };
 
   const setAdjustment = (key: AdjustmentKey, value: number) => {
-    setAdjustments((a) => ({ ...a, [key]: value }));
-    setActiveFilter(null);
-    setFilterBaseAdjustments(null);
-    setFilterIntensity(DEFAULT_FILTER_INTENSITY);
+    setAdjustments((a) => {
+      const next = { ...a, [key]: value };
+      adjustmentsRef.current = next;
+      return next;
+    });
   };
 
   const handleSave = async () => {
-    if (!image) return;
+    const currentImage = imageRef.current;
+    if (!currentImage) return;
     setSaving(true);
     setError(null);
     try {
-      const canvas = renderEditedPhoto(image, crop, adjustments);
+      const canvas = renderEditedPhoto(
+        currentImage,
+        cropRef.current,
+        adjustmentsRef.current,
+      );
       const rawFile = await canvasToFile(canvas, `student-photo-${Date.now()}.jpg`);
       const compressed = await compressImageForUpload(rawFile, STUDENT_PHOTO_UPLOAD_OPTS);
       const previewUrl = await new Promise<string>((resolve, reject) => {
@@ -416,12 +409,12 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[130] flex items-end sm:items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm">
       <div
-        className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-sm max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-xl max-h-[94vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
+        <div className="px-5 py-3.5 border-b border-border flex items-center justify-between shrink-0">
           <h4 className="font-black text-foreground">Edit photo</h4>
           <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-muted" aria-label="Close">
             <X className="h-5 w-5" />
@@ -433,12 +426,18 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-sm font-bold">Loading photo…</p>
           </div>
-        ) : error ? (
-          <div className="text-center py-12 text-red-600 text-sm font-medium flex-1">{error}</div>
+        ) : error && !image ? (
+          <div className="text-center py-12 text-red-600 text-sm font-medium flex-1 px-5">{error}</div>
         ) : image ? (
           <>
-            <div className="shrink-0 px-4 pt-2 pb-2 border-b border-border bg-card flex justify-center">
-              <div className="relative rounded-xl overflow-hidden border border-border bg-black shadow-inner w-[152px] h-[152px]">
+            {error ? (
+              <div className="px-5 pt-3 text-xs font-medium text-red-600">{error}</div>
+            ) : null}
+            <div className="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-card flex justify-center">
+              <div
+                className="relative rounded-xl overflow-hidden border border-border bg-black shadow-inner"
+                style={{ width: PREVIEW_DISPLAY_PX, height: PREVIEW_DISPLAY_PX }}
+              >
                 <canvas
                   ref={previewCanvasRef}
                   width={PHOTO_EDITOR_VIEWPORT}
@@ -455,8 +454,21 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
               </div>
             </div>
 
-            <div className="shrink-0 px-4 pt-2 pb-1">
+            <div className="shrink-0 px-5 pt-3 pb-1">
               <div className="flex p-0.5 rounded-lg bg-muted/60 border border-border">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('bg')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-[9px] font-black uppercase tracking-wider transition-all',
+                    activeTab === 'bg'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Eraser className="h-3.5 w-3.5 shrink-0" />
+                  BG remove
+                </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('crop')}
@@ -472,35 +484,100 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('adjust')}
+                  onClick={() => setActiveTab('color')}
                   className={cn(
                     'flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-[9px] font-black uppercase tracking-wider transition-all',
-                    activeTab === 'adjust'
+                    activeTab === 'color'
                       ? 'bg-card text-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
-                  Color
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('filters')}
-                  className={cn(
-                    'flex-1 flex items-center justify-center gap-1 py-2 rounded-md text-[9px] font-black uppercase tracking-wider transition-all',
-                    activeTab === 'filters'
-                      ? 'bg-card text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                  Filters
+                  <Palette className="h-3.5 w-3.5 shrink-0" />
+                  Adjust
                 </button>
               </div>
             </div>
 
-            <div className="shrink-0 px-4 py-2 max-h-[38vh] overflow-y-auto">
-              {activeTab === 'crop' ? (
+            <div className="shrink-0 px-5 py-3 max-h-[36vh] overflow-y-auto">
+              {activeTab === 'bg' ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Remove the background on this device. The original upload stays saved. First run may take a moment while the model loads.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleRemoveBackground()}
+                    disabled={removingBg || saving || applyingSolidBg || applyingImageBg}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 disabled:opacity-50"
+                  >
+                    {removingBg ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
+                    {removingBg ? (bgProgress || 'Processing…') : bgRemoved ? 'Run BG remove again' : 'Remove background'}
+                  </button>
+                  <div className="space-y-2 pt-1">
+                    <p className="text-[11px] text-muted-foreground font-medium">Solid background color</p>
+                    <div className="flex items-center gap-2">
+                      <div className="grid grid-cols-7 gap-2 flex-1">
+                        {SOLID_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => void handleApplySolidBackground(color)}
+                            disabled={applyingSolidBg || removingBg || saving}
+                            className={cn(
+                              'h-8 rounded-lg border transition-all',
+                              selectedSolidColor === color ? 'border-primary ring-2 ring-primary/30' : 'border-border',
+                            )}
+                            style={{ backgroundColor: color }}
+                            title={color}
+                          />
+                        ))}
+                      </div>
+                      <input
+                        type="color"
+                        value={selectedSolidColor}
+                        onChange={(e) => void handleApplySolidBackground(e.target.value)}
+                        disabled={applyingSolidBg || removingBg || saving}
+                        className="h-8 w-8 rounded-md border border-border bg-transparent p-0.5 cursor-pointer disabled:opacity-50"
+                        title="Custom color"
+                      />
+                    </div>
+                    {applyingSolidBg ? (
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Applying color...
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-muted-foreground font-medium">Upload custom background image</p>
+                    <input
+                      ref={backgroundUploadRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => void handleUploadBackground(e.target.files?.[0])}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => backgroundUploadRef.current?.click()}
+                      disabled={applyingImageBg || saving || removingBg || applyingSolidBg}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold border border-border hover:bg-muted disabled:opacity-50"
+                    >
+                      {applyingImageBg ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                      Upload background
+                    </button>
+                  </div>
+                  {bgRemoved && (
+                    <button
+                      type="button"
+                      onClick={resetAll}
+                      className="w-full py-2 rounded-xl text-xs font-bold border border-border hover:bg-muted"
+                    >
+                      Restore original
+                    </button>
+                  )}
+                </div>
+              ) : activeTab === 'crop' ? (
                 <AdjustmentSlider
                   label="Zoom"
                   icon={<Crop className="h-3.5 w-3.5" />}
@@ -509,70 +586,39 @@ export function StudentPhotoEditor({ open, source, onClose, onSave }: StudentPho
                   max={150}
                   onChange={onZoomChange}
                 />
-              ) : activeTab === 'adjust' ? (
-                <div className="space-y-5 pb-1">
-                  <AdjustmentSection
-                    title="Light"
-                    controls={LIGHT_CONTROLS}
-                    adjustments={adjustments}
-                    onChange={setAdjustment}
-                  />
-                  <AdjustmentSection
-                    title="Color"
-                    controls={COLOR_CONTROLS}
-                    adjustments={adjustments}
-                    onChange={setAdjustment}
-                  />
-                </div>
-              ) : (
-                <div className="space-y-3 pb-1">
-                  <button
-                    type="button"
-                    onClick={applyAutoEnhance}
-                    disabled={autoEnhancing}
-                    className={cn(
-                      'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border transition-all',
-                      activeFilter === 'auto'
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-muted/40 hover:bg-muted text-foreground',
-                    )}
-                  >
-                    {autoEnhancing ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Wand2 className="h-4 w-4" />
-                    )}
-                    Auto Enhance
-                  </button>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <FilterThumbnail
-                      name="Original"
-                      previewUrl={filterThumbnails.original}
-                      selected={activeFilter === null && !hasPhotoAdjustments(adjustments)}
-                      onClick={clearFilter}
-                    />
-                    {PHOTO_FILTER_PRESETS.map((filter) => (
-                      <FilterThumbnail
-                        key={filter.id}
-                        name={filter.name}
-                        previewUrl={filterThumbnails[filter.id]}
-                        selected={activeFilter === filter.id}
-                        onClick={() => applyFilter(filter.id)}
-                      />
-                    ))}
+              ) : activeTab === 'color' ? (
+                <div className="space-y-3.5 pb-1">
+                  <div className="flex items-center gap-2 text-foreground">
+                    <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
+                    <h5 className="text-[12px] font-semibold">Adjust</h5>
                   </div>
-
-                  {activeFilter !== null && filterBaseAdjustments ? (
-                    <IntensitySlider value={filterIntensity} onChange={onFilterIntensityChange} />
-                  ) : null}
+                  {ADJUST_CONTROLS.map(({ key, label, min, max }) => (
+                    <AdjustmentSlider
+                      key={key}
+                      label={label}
+                      value={adjustments[key]}
+                      min={min}
+                      max={max}
+                      onChange={(v) => setAdjustment(key, v)}
+                    />
+                  ))}
                 </div>
-              )}
+              ) : null}
             </div>
           </>
         ) : null}
 
-        <div className="px-4 py-3 border-t border-border flex flex-wrap gap-2 justify-end bg-muted/30 shrink-0">
+        <div className="px-5 py-4 border-t border-border flex flex-wrap gap-2 justify-end bg-muted/30 shrink-0">
+          {hasBackup ? (
+            <button
+              type="button"
+              onClick={restoreFromBackup}
+              disabled={loading || saving}
+              className="px-3 py-2 rounded-xl text-xs font-bold border border-border hover:bg-muted disabled:opacity-50"
+            >
+              Use original backup
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={resetAll}

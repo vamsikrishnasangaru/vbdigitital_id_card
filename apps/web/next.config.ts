@@ -41,6 +41,7 @@ const apiRewriteTarget = (
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  serverExternalPackages: ['@imgly/background-removal', 'onnxruntime-web'],
   /** Trace deps from pnpm monorepo root so standalone includes complete server manifests. */
   outputFileTracingRoot: monorepoRoot,
   experimental: {
