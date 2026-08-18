@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   LayoutDashboard, School, Users, GraduationCap, CreditCard,
   BarChart3, Bell, Settings,
-  LogOut, ChevronRight, BookOpen, Palette, X, Loader2
+  LogOut, ChevronRight, BookOpen, Palette, X, Loader2, Globe
 } from 'lucide-react';
 
 const allRoutes = [
@@ -20,6 +20,7 @@ const allRoutes = [
   { label: 'Generate Cards', icon: CreditCard, href: '/id-cards', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'], previewLabel: 'Preview Cards' },
   { label: 'Reports', icon: BarChart3, href: '/analytics', roles: ['SUPER_ADMIN'] },
   { label: 'Templates', icon: Palette, href: '/templates', roles: ['SUPER_ADMIN'] },
+  { label: 'Landing page', icon: Globe, href: '/site-content', roles: ['SUPER_ADMIN'] },
   { label: 'Alerts', icon: Bell, href: '/notifications', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
   { label: 'Settings', icon: Settings, href: '/settings', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'] },
 ];

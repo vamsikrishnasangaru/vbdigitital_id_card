@@ -339,6 +339,21 @@ model DriveFile {
   @@index([driveId])
 }
 
+/// Public landing / more-info copy and demo media. Single row, id = "default".
+model SiteContent {
+  id              String   @id @default("default")
+  heroTitle       String
+  heroSubtitle    String
+  stats           Json
+  howItWorks      Json
+  generationSteps Json
+  media           Json
+  ctaLabel        String
+  moreInfoTitle   String
+  moreInfoIntro   String
+  updatedAt       DateTime @updatedAt
+}
+
 enum UserRole {
   SUPER_ADMIN
   SCHOOL_ADMIN

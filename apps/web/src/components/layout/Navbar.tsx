@@ -19,6 +19,7 @@ const pageTitles: Record<string, string> = {
   '/notifications': 'Alerts',
   '/settings': 'Settings',
   '/templates': 'Card Templates',
+  '/site-content': 'Landing page',
 };
 
 export function Navbar() {

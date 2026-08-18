@@ -98,6 +98,11 @@ export async function resolveOfflineGet(
     }
   }
 
+  if (url === '/site-content' || url.startsWith('/site-content')) {
+    const { DEFAULT_SITE_CONTENT } = await import('./site-content');
+    return { data: DEFAULT_SITE_CONTENT, status: 200, config };
+  }
+
   if (url.includes('/id-cards/drive-status')) {
     const cached = offlineGetCache.get(url, params);
     if (cached) return { data: cached, status: 200, config };

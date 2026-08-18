@@ -18,6 +18,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { IdCardsModule } from './id-cards/id-cards.module';
 import { DriveModule } from './drive/drive.module';
+import { SiteContentModule } from './site-content/site-content.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { DriveModule } from './drive/drive.module';
     UploadsModule,
     IdCardsModule,
     DriveModule,
+    SiteContentModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/api/v1/uploads',

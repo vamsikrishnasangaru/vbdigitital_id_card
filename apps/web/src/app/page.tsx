@@ -1,143 +1,114 @@
 'use client';
 
-import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-import { useAuthStore } from '@/stores/auth-store';
-import api from '@/lib/api';
-import { Eye, EyeOff, CreditCard, Loader2 } from 'lucide-react';
-import { PwaInstallBanner } from '@/components/PwaInstallBanner';
+import Link from 'next/link';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import { PublicHeader } from '@/components/landing/PublicHeader';
+import { LoginDialog } from '@/components/auth/LoginDialog';
+import { IdCardGallery } from '@/components/landing/IdCardGallery';
+import { useSiteContent } from '@/hooks/use-site-content';
+import { DEFAULT_SITE_CONTENT } from '@/lib/site-content';
 
-export default function LoginPage({ params }: NextClientPageProps) {
-  useNextPageParams(params);
-  const router = useRouter();
-  const { login } = useAuthStore();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      const { data } = await api.post('/auth/login', { email, password });
-      login(data.user, data.accessToken, data.refreshToken);
-      toast.success('Welcome back!', { description: `Signed in as ${data.user.firstName}` });
-      router.push('/dashboard');
-    } catch (err: any) {
-      toast.error('Login failed', { description: err.response?.data?.message || 'Invalid credentials' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+export default function LandingPage() {
+  const [loginOpen, setLoginOpen] = useState(false);
+  const { data } = useSiteContent();
+  const content = data ?? DEFAULT_SITE_CONTENT;
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left — Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-[oklch(0.35_0.18_270)] via-[oklch(0.45_0.20_280)] to-[oklch(0.40_0.22_300)] items-center justify-center p-12">
-        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.4\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }} />
-        <div className="relative z-10 text-white max-w-md">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-              <CreditCard className="h-8 w-8" />
+    <div className="min-h-screen bg-background">
+      <PublicHeader onLogin={() => setLoginOpen(true)} />
+      <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
+
+      <section className="relative overflow-hidden bg-gradient-to-br from-[oklch(0.28_0.16_270)] via-[oklch(0.38_0.18_280)] to-[oklch(0.32_0.20_300)] text-white">
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")",
+          }}
+        />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24 grid lg:grid-cols-2 gap-12 items-center">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-white/70 mb-3">
+              VB Digital ID Cards
+            </p>
+            <h1 className="text-4xl sm:text-5xl font-black leading-tight">{content.heroTitle}</h1>
+            <p className="mt-4 text-lg text-white/80 leading-relaxed max-w-xl">{content.heroSubtitle}</p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setLoginOpen(true)}
+                className="px-5 py-2.5 rounded-xl bg-white text-[#111113] text-sm font-black hover:bg-white/90"
+              >
+                Login
+              </button>
+              <Link
+                href="/info"
+                className="px-5 py-2.5 rounded-xl border border-white/30 text-sm font-black hover:bg-white/10 inline-flex items-center gap-2"
+              >
+                {content.ctaLabel} <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">VB Digital</h1>
-              <p className="text-white/80 text-sm font-medium">ID Cards</p>
+            <div className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {content.stats.map((stat) => (
+                <div key={stat.label} className="bg-white/10 rounded-xl p-3">
+                  <div className="text-xl font-black">{stat.value}</div>
+                  <div className="text-white/60 text-[11px] font-medium">{stat.label}</div>
+                </div>
+              ))}
             </div>
           </div>
-          <h2 className="text-4xl font-bold leading-tight mb-4">
-            Smart School ID Card Management
-          </h2>
-          <p className="text-white/70 text-lg leading-relaxed">
-            Complete platform for managing student onboarding, ID card design, printing workflow, and delivery tracking — all in one place.
+          <div className="hidden lg:block">
+            <IdCardGallery media={[]} />
+          </div>
+        </div>
+      </section>
+
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+        <h2 className="text-2xl sm:text-3xl font-black mb-2">Demo ID cards</h2>
+        <p className="text-muted-foreground mb-8 max-w-2xl">
+          Sample layouts of school ID cards generated on the platform. Super admin can replace these with real school samples.
+        </p>
+        <IdCardGallery media={content.media} />
+      </section>
+
+      <section className="bg-muted/40 border-y border-border">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+          <h2 className="text-2xl sm:text-3xl font-black mb-2">How it works</h2>
+          <p className="text-muted-foreground mb-8 max-w-2xl">
+            Four steps from student enrollment to a print-ready card.
           </p>
-          <div className="mt-10 grid grid-cols-2 gap-4">
-            {[
-              { label: 'Schools Managed', value: '500+' },
-              { label: 'Cards Generated', value: '1M+' },
-              { label: 'Uptime', value: '99.9%' },
-              { label: 'Support', value: '24/7' },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <div className="text-white/60 text-sm">{stat.label}</div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {content.howItWorks.map((step, i) => (
+              <div key={step.title} className="bg-card border border-border rounded-2xl p-5">
+                <div className="text-xs font-black text-primary mb-2">0{i + 1}</div>
+                <h3 className="font-bold mb-2">{step.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{step.body}</p>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Right — Login Form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-background">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <CreditCard className="h-6 w-6 text-primary" />
-            </div>
-            <span className="text-xl font-bold">VB Digital ID Cards</span>
-          </div>
-
-          <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
-          <p className="text-muted-foreground mt-1 mb-6">Sign in to your account to continue</p>
-
-          <PwaInstallBanner />
-
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium">Email Address</label>
-              <input
-                id="email"
-                type="email"
-                placeholder="admin@vbdigital.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full px-4 py-2.5 bg-muted/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label htmlFor="password" className="text-sm font-medium">Password</label>
-                <button type="button" className="text-xs text-primary hover:underline">Forgot password?</button>
-              </div>
-              <div className="relative">
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full px-4 py-2.5 bg-muted/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Signing in...</> : 'Sign In'}
-            </button>
-          </form>
-
-          <p className="text-center text-xs text-muted-foreground mt-8">
-            © {new Date().getFullYear()} VB Digital ID Cards. All rights reserved.
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+        <div className="rounded-3xl border border-border bg-card p-8 sm:p-12 text-center">
+          <CheckCircle2 className="h-10 w-10 text-primary mx-auto mb-4" />
+          <h2 className="text-2xl sm:text-3xl font-black mb-3">Want the full walkthrough?</h2>
+          <p className="text-muted-foreground max-w-xl mx-auto mb-6">
+            See how ID cards are generated, how photos are used, and what happens after you click generate.
           </p>
+          <Link
+            href="/info"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-black hover:opacity-90"
+          >
+            {content.ctaLabel} <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
-      </div>
+      </section>
+
+      <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
+        © {new Date().getFullYear()} VB Digital ID Cards. All rights reserved.
+      </footer>
     </div>
   );
 }
