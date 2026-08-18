@@ -34,7 +34,7 @@ export function LoginDialog({ open, onClose }: { open: boolean; onClose: () => v
       <button type="button" className={MODAL_BACKDROP} aria-label="Close login" onClick={onClose} />
       <div
         className={cn(
-          'relative w-full max-w-md overflow-y-auto border border-border bg-card shadow-2xl',
+          'relative w-full max-w-md overflow-y-auto border border-border bg-card shadow-xl',
           'max-h-[min(100dvh,100%)] px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-8',
           'rounded-t-[2rem] sm:rounded-3xl',
           modalPanelClass(),

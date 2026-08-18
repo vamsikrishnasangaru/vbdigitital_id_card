@@ -3,21 +3,30 @@
 import Link from 'next/link';
 import { CreditCard } from 'lucide-react';
 import { LoginForm } from '@/components/auth/LoginForm';
+import { SchoolColorMenu } from '@/components/SchoolColorPicker';
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-dvh flex-col overflow-x-hidden bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md">
+    <div className="flex min-h-dvh flex-col bg-background">
+      <header className="public-nav-navy sticky top-0 z-50 border-b border-white/10 text-white backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:h-16 sm:px-6">
-          <Link href="/" className="flex min-w-0 items-center gap-2">
-            <div className="shrink-0 rounded-lg bg-primary/10 p-1.5">
-              <CreditCard className="h-5 w-5 text-primary" />
+          <Link href="/" className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <CreditCard className="h-4 w-4" />
             </div>
-            <span className="truncate text-sm font-black tracking-tight sm:text-base">VB Digital ID Cards</span>
+            <span className="truncate text-sm font-semibold tracking-tight sm:text-base">
+              VB Digital <span className="font-normal text-white/80">ID Cards</span>
+            </span>
           </Link>
-          <Link href="/" className="shrink-0 text-sm font-bold text-muted-foreground hover:text-foreground">
-            Back
-          </Link>
+          <div className="flex items-center gap-2">
+            <SchoolColorMenu dark />
+            <Link
+              href="/"
+              className="shrink-0 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              Back
+            </Link>
+          </div>
         </div>
       </header>
       <div className="flex flex-1 items-start justify-center px-4 py-8 sm:items-center sm:p-6">

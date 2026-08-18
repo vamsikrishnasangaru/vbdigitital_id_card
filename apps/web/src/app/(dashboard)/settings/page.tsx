@@ -24,12 +24,14 @@ import {
   Eye,
   EyeOff,
   Smartphone,
+  Palette,
 } from 'lucide-react';
 import { PwaInstallInstructions } from '@/components/pwa/PwaInstallInstructions';
 import { APP_REVISION } from '@/lib/app-revision';
 import { clearAllAppCaches } from '@/lib/clear-app-caches';
+import { SchoolColorGrid } from '@/components/SchoolColorPicker';
 
-type SettingsTab = 'profile' | 'password' | 'account';
+type SettingsTab = 'profile' | 'password' | 'appearance' | 'account';
 
 interface ProfileResponse {
   id: string;
@@ -170,6 +172,7 @@ export default function SettingsPage({ params }: NextClientPageProps) {
   const tabs: { id: SettingsTab; label: string; icon: typeof User }[] = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'password', label: 'Password', icon: Lock },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'account', label: 'Account', icon: Building2 },
   ];
 
@@ -185,7 +188,7 @@ export default function SettingsPage({ params }: NextClientPageProps) {
         </div>
         <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-foreground">Settings</h2>
         <p className="text-sm text-muted-foreground font-medium">
-          Manage your profile, password, and account details.
+          Manage your profile, password, appearance, and account details.
         </p>
       </div>
 
@@ -431,6 +434,16 @@ export default function SettingsPage({ params }: NextClientPageProps) {
                 {changePasswordMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 Update password
               </button>
+            </div>
+          ) : tab === 'appearance' ? (
+            <div className="space-y-6 max-w-2xl">
+              <div>
+                <h3 className="text-lg font-black text-foreground">School colors</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Pick an accent for buttons and the sidebar, then a paper color for the page. Use a preset or the color picker for a custom vibe. Saved on this device.
+                </p>
+              </div>
+              <SchoolColorGrid />
             </div>
           ) : (
             <div className="space-y-6">

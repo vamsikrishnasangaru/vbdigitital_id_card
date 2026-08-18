@@ -23,19 +23,24 @@ const glowColors: Record<StatCardColor, string> = {
   primary: 'bg-primary',
 };
 
+const cardTints: Record<StatCardColor, string> = {
+  indigo: 'bg-indigo-50 border-indigo-200/80 dark:bg-indigo-950/40 dark:border-indigo-800/60',
+  blue: 'bg-sky-50 border-sky-200/80 dark:bg-sky-950/40 dark:border-sky-800/60',
+  emerald: 'bg-emerald-50 border-emerald-200/80 dark:bg-emerald-950/40 dark:border-emerald-800/60',
+  amber: 'bg-amber-50 border-amber-200/80 dark:bg-amber-950/40 dark:border-amber-800/60',
+  rose: 'bg-rose-50 border-rose-200/80 dark:bg-rose-950/40 dark:border-rose-800/60',
+  violet: 'bg-violet-50 border-violet-200/80 dark:bg-violet-950/40 dark:border-violet-800/60',
+  primary: 'bg-sky-50 border-sky-200/80 dark:bg-sky-950/40 dark:border-sky-800/60',
+};
+
 const iconStyles: Record<StatCardColor, string> = {
-  indigo:
-    'bg-indigo-500/15 text-indigo-600 shadow-indigo-500/20 dark:bg-indigo-500/20 dark:text-indigo-400',
-  blue: 'bg-blue-500/15 text-blue-600 shadow-blue-500/20 dark:bg-blue-500/20 dark:text-blue-400',
-  emerald:
-    'bg-emerald-500/15 text-emerald-600 shadow-emerald-500/20 dark:bg-emerald-500/20 dark:text-emerald-400',
-  amber:
-    'bg-amber-500/15 text-amber-600 shadow-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400',
-  rose: 'bg-rose-500/15 text-rose-600 shadow-rose-500/20 dark:bg-rose-500/20 dark:text-rose-400',
-  violet:
-    'bg-violet-500/15 text-violet-600 shadow-violet-500/20 dark:bg-violet-500/20 dark:text-violet-400',
-  primary:
-    'bg-primary/15 text-primary shadow-primary/20 dark:bg-primary/20 dark:text-primary',
+  indigo: 'bg-indigo-500 text-white',
+  blue: 'bg-sky-500 text-white',
+  emerald: 'bg-emerald-500 text-white',
+  amber: 'bg-amber-400 text-amber-950',
+  rose: 'bg-rose-500 text-white',
+  violet: 'bg-violet-500 text-white',
+  primary: 'bg-primary text-primary-foreground',
 };
 
 export interface StatCardProps {
@@ -62,7 +67,8 @@ export function StatCard({
   const card = (
     <div
       className={cn(
-        'stat-card group h-full hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300',
+        'stat-card group h-full hover:shadow-md transition-all duration-200',
+        cardTints[color],
         href && 'cursor-pointer',
         className,
       )}
@@ -71,21 +77,21 @@ export function StatCard({
       <div className="relative z-10 flex flex-col min-h-[120px]">
         <div
           className={cn(
-            'h-11 w-11 rounded-xl flex items-center justify-center mb-5 shadow-lg transition-transform group-hover:scale-105',
+            'h-9 w-9 rounded-xl flex items-center justify-center mb-4 shadow-sm',
             iconStyles[color],
           )}
         >
-          <Icon className="h-5 w-5" />
+          <Icon className="h-4 w-4" />
         </div>
         <div className="mt-auto space-y-0.5">
-          <div className="text-3xl font-black tracking-tighter text-foreground">
+          <div className="text-2xl font-semibold tracking-tight text-foreground">
             {loading ? (
-              <div className="h-8 w-14 bg-muted animate-pulse rounded-lg" />
+              <div className="h-7 w-14 bg-muted animate-pulse rounded-md" />
             ) : (
               value
             )}
           </div>
-          <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+          <div className="text-xs font-medium text-muted-foreground">
             {label}
           </div>
           {sublabel ? (

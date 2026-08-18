@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 import { SwDevBootstrap } from "@/components/SwDevBootstrap";
 import { AppVersionBootstrap } from "@/components/AppVersionBootstrap";
+import { SchoolColorBootstrap } from "@/components/SchoolColorBootstrap";
 import { SyncIndicator } from "@/components/SyncIndicator";
 
 const inter = Inter({
@@ -49,6 +50,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <AppVersionBootstrap />
+        <SchoolColorBootstrap />
         <SwDevBootstrap />
       </head>
       <body className={`${inter.variable} font-sans min-h-screen antialiased`}>

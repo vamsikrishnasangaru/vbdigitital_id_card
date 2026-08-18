@@ -235,10 +235,10 @@ export default function DashboardPage({ params }: NextClientPageProps) {
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-black tracking-tight text-foreground">
-          Welcome back, {user?.firstName} 👋
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          Welcome back, {user?.firstName}
         </h1>
-        <p className="text-muted-foreground font-medium">
+        <p className="text-sm text-muted-foreground sm:text-base">
           {user?.role === 'TEACHER'
             ? 'Overview of your assigned classes and students.'
             : user?.role === 'SUPER_ADMIN'
@@ -266,8 +266,8 @@ export default function DashboardPage({ params }: NextClientPageProps) {
         <div className="lg:col-span-8 space-y-6">
           <div className="panel-xl overflow-hidden">
             <div className="p-6 sm:p-8 flex items-center justify-between border-b border-border">
-              <h3 className="text-lg font-black text-foreground">Recent Students</h3>
-              <Link href="/students" className="text-xs font-black text-primary hover:underline">
+              <h3 className="text-base font-semibold text-foreground">Recent Students</h3>
+              <Link href="/students" className="text-sm font-medium text-primary hover:underline">
                 View all
               </Link>
             </div>
@@ -292,10 +292,10 @@ export default function DashboardPage({ params }: NextClientPageProps) {
                           <Users className="h-5 w-5 text-primary" />
                         </div>
                         <div className="min-w-0">
-                          <div className="text-sm font-black text-foreground truncate">
+                          <div className="text-sm font-medium text-foreground truncate">
                             {formatStudentFullName(student.firstName, student.lastName)}
                           </div>
-                          <div className="text-[10px] text-muted-foreground font-bold uppercase truncate">
+                          <div className="text-xs text-muted-foreground truncate">
                             {formatStudentActivityMeta(student, showSchoolInActivity)}
                           </div>
                         </div>
@@ -317,8 +317,8 @@ export default function DashboardPage({ params }: NextClientPageProps) {
                           <School className="h-5 w-5 text-primary" />
                         </div>
                         <div>
-                          <div className="text-sm font-black text-foreground">{school.name}</div>
-                          <div className="text-[10px] text-muted-foreground font-bold uppercase">
+                          <div className="text-sm font-medium text-foreground">{school.name}</div>
+                          <div className="text-xs text-muted-foreground">
                             {school._count?.students ?? 0} students
                           </div>
                         </div>
@@ -340,8 +340,8 @@ export default function DashboardPage({ params }: NextClientPageProps) {
           {user?.role === 'SCHOOL_ADMIN' && classWise.length > 0 && (
             <div className="panel-xl overflow-hidden">
               <div className="p-6 sm:p-8 flex items-center justify-between border-b border-border">
-                <h3 className="text-lg font-black text-foreground">Students by Class</h3>
-                <Link href="/classes" className="text-xs font-black text-primary hover:underline">
+                <h3 className="text-base font-semibold text-foreground">Students by Class</h3>
+                <Link href="/classes" className="text-sm font-medium text-primary hover:underline">
                   Manage classes
                 </Link>
               </div>
@@ -356,9 +356,9 @@ export default function DashboardPage({ params }: NextClientPageProps) {
                       <div className="h-9 w-9 rounded-xl bg-indigo-500/10 flex items-center justify-center shrink-0">
                         <BookOpen className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                       </div>
-                      <span className="text-sm font-black text-foreground truncate">{cls.name}</span>
+                      <span className="text-sm font-medium text-foreground truncate">{cls.name}</span>
                     </div>
-                    <span className="text-sm font-black text-muted-foreground shrink-0 ml-3">
+                    <span className="ml-3 shrink-0 text-sm font-medium text-muted-foreground">
                       {cls._count?.students ?? 0}
                     </span>
                   </Link>
@@ -370,7 +370,7 @@ export default function DashboardPage({ params }: NextClientPageProps) {
           {user?.role === 'TEACHER' && assignments.length > 0 && (
             <div className="panel-xl overflow-hidden">
               <div className="p-6 sm:p-8 border-b border-border">
-                <h3 className="text-lg font-black text-foreground">My Classes</h3>
+                <h3 className="text-base font-semibold text-foreground">My Classes</h3>
               </div>
               <div className="p-4 space-y-2">
                 {assignments.map((row) => (
@@ -380,17 +380,17 @@ export default function DashboardPage({ params }: NextClientPageProps) {
                     className="flex items-center justify-between p-4 rounded-2xl border border-border hover:border-primary/30 hover:bg-muted/30 transition-all"
                   >
                     <div className="min-w-0">
-                      <div className="text-sm font-black text-foreground truncate">
+                      <div className="truncate text-sm font-medium text-foreground">
                         {row.className}
                         {formatSectionName(row.sectionName)
                           ? ` · ${formatSectionName(row.sectionName)}`
                           : ''}
                       </div>
-                      <div className="text-[10px] text-muted-foreground font-bold uppercase mt-0.5">
+                      <div className="mt-0.5 text-xs text-muted-foreground">
                         {row.complete} verified · {row.total} total
                       </div>
                     </div>
-                    <div className="text-sm font-black text-primary shrink-0 ml-3">
+                    <div className="ml-3 shrink-0 text-sm font-semibold text-primary">
                       {row.percentage}%
                     </div>
                   </Link>
@@ -403,7 +403,7 @@ export default function DashboardPage({ params }: NextClientPageProps) {
         <div className="lg:col-span-4 space-y-6">
           <div className="panel-xl overflow-hidden">
             <div className="p-6 sm:p-8 border-b border-border">
-              <h3 className="text-lg font-black text-foreground">Quick Actions</h3>
+              <h3 className="text-base font-semibold text-foreground">Quick Actions</h3>
             </div>
             <div className="p-4 space-y-1">
               {quickActions.map((action) => (
@@ -415,7 +415,7 @@ export default function DashboardPage({ params }: NextClientPageProps) {
                   <div className="h-10 w-10 rounded-xl bg-muted border border-border flex items-center justify-center group-hover:border-primary/50 transition-all">
                     <action.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary" />
                   </div>
-                  <span className="flex-1 text-sm font-black text-foreground">{action.label}</span>
+                  <span className="flex-1 text-sm font-medium text-foreground">{action.label}</span>
                   <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
                 </Link>
               ))}
@@ -424,20 +424,20 @@ export default function DashboardPage({ params }: NextClientPageProps) {
 
           {user?.role === 'SUPER_ADMIN' && !loading && (
             <div className="panel-xl p-6 sm:p-8 space-y-3">
-              <div className="text-sm font-black text-foreground">Platform extras</div>
+              <div className="text-sm font-semibold text-foreground">Platform extras</div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <Link
                   href="/templates"
                   className="p-3 rounded-xl bg-muted/40 border border-border hover:border-primary/30 transition-colors"
                 >
-                  <div className="font-black text-foreground">{statValue(dashboard, 'totalTemplates', false)}</div>
+                  <div className="font-semibold text-foreground">{statValue(dashboard, 'totalTemplates', false)}</div>
                   <div className="text-[10px] font-bold text-muted-foreground uppercase">Templates</div>
                 </Link>
                 <Link
                   href="/teachers"
                   className="p-3 rounded-xl bg-muted/40 border border-border hover:border-primary/30 transition-colors"
                 >
-                  <div className="font-black text-foreground">{statValue(dashboard, 'totalTeachers', false)}</div>
+                  <div className="font-semibold text-foreground">{statValue(dashboard, 'totalTeachers', false)}</div>
                   <div className="text-[10px] font-bold text-muted-foreground uppercase">Teachers</div>
                 </Link>
               </div>
@@ -446,20 +446,20 @@ export default function DashboardPage({ params }: NextClientPageProps) {
 
           {user?.role === 'SCHOOL_ADMIN' && !loading && (
             <div className="panel-xl p-6 sm:p-8 space-y-3">
-              <div className="text-sm font-black text-foreground">More</div>
+              <div className="text-sm font-semibold text-foreground">More</div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <Link
                   href="/id-cards"
                   className="p-3 rounded-xl bg-muted/40 border border-border hover:border-primary/30 transition-colors"
                 >
-                  <div className="font-black text-foreground">{statValue(dashboard, 'totalIdCards', false)}</div>
+                  <div className="font-semibold text-foreground">{statValue(dashboard, 'totalIdCards', false)}</div>
                   <div className="text-[10px] font-bold text-muted-foreground uppercase">Cards</div>
                 </Link>
                 <Link
                   href="/templates"
                   className="p-3 rounded-xl bg-muted/40 border border-border hover:border-primary/30 transition-colors"
                 >
-                  <div className="font-black text-foreground">{statValue(dashboard, 'totalTemplates', false)}</div>
+                  <div className="font-semibold text-foreground">{statValue(dashboard, 'totalTemplates', false)}</div>
                   <div className="text-[10px] font-bold text-muted-foreground uppercase">Templates</div>
                 </Link>
               </div>

@@ -3,6 +3,7 @@
 import { OfflineSyncProvider } from '@/components/OfflineSyncProvider';
 import { SerwistRegistration } from '@/components/SerwistRegistration';
 import { ThemeProvider } from 'next-themes';
+import { SchoolColorProvider } from '@/components/SchoolColorProvider';
 import { Toaster } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -64,6 +65,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+      <SchoolColorProvider>
       <SerwistRegistration>
       {mounted && persister ? (
         <PersistQueryClientProvider
@@ -90,6 +92,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       )}
       <Toaster position="top-right" richColors closeButton />
       </SerwistRegistration>
+      </SchoolColorProvider>
     </ThemeProvider>
   );
 }

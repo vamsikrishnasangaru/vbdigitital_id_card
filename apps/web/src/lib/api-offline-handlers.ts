@@ -35,7 +35,7 @@ export async function resolveOfflineGet(
     if (schoolId) {
       const hit = isPicker
         ? offlineClasses.getClassesPicker(schoolId)
-        : offlineClasses.getClassesForSchool(schoolId) ?? offlineStore.getClasses(schoolId);
+        : (offlineClasses.getClassesForSchool(schoolId) ?? offlineStore.getClasses(schoolId));
       if (hit) return { data: hit, status: 200, config };
     }
   }

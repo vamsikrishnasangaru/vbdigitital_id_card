@@ -17,42 +17,42 @@ export default function MoreInfoPage() {
   const galleryFallback = content.media.filter((m) => m.placement !== 'info');
 
   return (
-    <div className="min-h-dvh overflow-x-hidden bg-background">
+    <div className="min-h-dvh bg-background">
       <PublicHeader onLogin={() => setLoginOpen(true)} />
       <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-        <p className="text-xs font-black uppercase tracking-[0.2em] text-primary mb-3">More info</p>
-        <h1 className="text-3xl sm:text-4xl font-black leading-tight">{content.moreInfoTitle}</h1>
-        <p className="mt-4 text-muted-foreground text-lg leading-relaxed">{content.moreInfoIntro}</p>
+      <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+        <p className="mb-3 text-sm font-medium text-primary">Product</p>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{content.moreInfoTitle}</h1>
+        <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">{content.moreInfoIntro}</p>
 
         <section className="mt-12">
-          <h2 className="text-xl font-black mb-4">How it works</h2>
-          <ol className="space-y-4">
+          <h2 className="mb-4 text-lg font-semibold">How it works</h2>
+          <ol className="space-y-3">
             {content.howItWorks.map((step, i) => (
-              <li key={step.title} className="border border-border rounded-2xl p-5 bg-card">
-                <div className="text-xs font-black text-primary mb-1">Step {i + 1}</div>
-                <h3 className="font-bold">{step.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{step.body}</p>
+              <li key={step.title} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                <div className="mb-1 text-xs font-medium text-primary">Step {i + 1}</div>
+                <h3 className="text-sm font-semibold">{step.title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
               </li>
             ))}
           </ol>
         </section>
 
         <section className="mt-12">
-          <h2 className="text-xl font-black mb-4">How ID cards are generated</h2>
-          <ol className="space-y-4">
+          <h2 className="mb-4 text-lg font-semibold">How ID cards are generated</h2>
+          <ol className="space-y-3">
             {content.generationSteps.map((step) => (
-              <li key={step.title} className="border border-border rounded-2xl p-5 bg-card">
-                <h3 className="font-bold">{step.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{step.body}</p>
+              <li key={step.title} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                <h3 className="text-sm font-semibold">{step.title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
               </li>
             ))}
           </ol>
         </section>
 
         <section className="mt-12">
-          <h2 className="text-xl font-black mb-4">Samples</h2>
+          <h2 className="mb-4 text-lg font-semibold">Samples</h2>
           {infoMedia.length > 0 ? (
             <div className="space-y-4">
               {infoMedia.map((item) => (
@@ -86,11 +86,11 @@ export default function MoreInfoPage() {
           <button
             type="button"
             onClick={() => setLoginOpen(true)}
-            className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-black"
+            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
-            Login
+            Sign in
           </button>
-          <Link href="/" className="px-5 py-2.5 rounded-xl border border-border text-sm font-bold">
+          <Link href="/" className="rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium hover:bg-muted">
             Back to home
           </Link>
         </div>

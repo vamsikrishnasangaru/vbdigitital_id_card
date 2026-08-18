@@ -214,7 +214,7 @@ function CardCarousel({
               <Cr80Card
                 item={item}
                 shortSidePx={layout.shortSide}
-                className={`${cardClassName} ${isFront ? 'ring-2 ring-white/70' : ''}`}
+                className={`${cardClassName} ${isFront ? 'ring-2 ring-primary/20 shadow-lg' : ''}`}
               />
             </button>
           );
