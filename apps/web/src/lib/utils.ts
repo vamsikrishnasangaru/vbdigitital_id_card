@@ -54,6 +54,7 @@ export function resolveMediaUrl(url?: string | null): string {
   if (!trimmed) return '';
   if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
   if (trimmed.startsWith('color:') || trimmed.startsWith('gradient:')) return trimmed;
+  if (trimmed.startsWith('/demo/')) return trimmed;
 
   const proxied = proxiedUploadUrl(trimmed);
   if (proxied) return proxied;

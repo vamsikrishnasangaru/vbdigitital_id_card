@@ -8,6 +8,30 @@ export type SiteMedia = {
   placement: 'gallery' | 'info';
 };
 
+export const DEFAULT_DEMO_MEDIA: SiteMedia[] = [
+  {
+    id: 'demo-zph-palavalasa',
+    kind: 'image',
+    url: '/demo/zph-palavalasa.png',
+    caption: 'Z.P.H School, Palavalasa',
+    placement: 'gallery',
+  },
+  {
+    id: 'demo-mpp-lakkavaram',
+    kind: 'image',
+    url: '/demo/mpp-lakkavaram.png',
+    caption: 'M.P.P School, Lakkavaram',
+    placement: 'gallery',
+  },
+  {
+    id: 'demo-maharshi-vidyaniketan',
+    kind: 'image',
+    url: '/demo/maharshi-vidyaniketan.png',
+    caption: 'Maharshi Vidyaniketan, Sompeta',
+    placement: 'gallery',
+  },
+];
+
 export type SiteContentPayload = {
   id: string;
   heroTitle: string;
@@ -69,7 +93,7 @@ export const DEFAULT_SITE_CONTENT: SiteContentPayload = {
       body: 'Finished cards are zipped for download or uploaded to Drive. Failed cards can be retried without regenerating the whole batch.',
     },
   ],
-  media: [],
+  media: DEFAULT_DEMO_MEDIA,
   ctaLabel: 'More info',
   moreInfoTitle: 'How VB Digital ID Cards work',
   moreInfoIntro:

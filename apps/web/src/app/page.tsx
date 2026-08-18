@@ -58,8 +58,8 @@ export default function LandingPage() {
               ))}
             </div>
           </div>
-          <div className="hidden lg:block">
-            <IdCardGallery media={[]} />
+          <div className="mt-4 lg:mt-0">
+            <IdCardGallery media={content.media} variant="hero" />
           </div>
         </div>
       </section>
@@ -67,7 +67,7 @@ export default function LandingPage() {
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
         <h2 className="text-2xl sm:text-3xl font-black mb-2">Demo ID cards</h2>
         <p className="text-muted-foreground mb-8 max-w-2xl">
-          Sample layouts of school ID cards generated on the platform. Super admin can replace these with real school samples.
+          Sample school ID cards generated on the platform. Super admin can replace these from Landing page settings.
         </p>
         <IdCardGallery media={content.media} />
       </section>

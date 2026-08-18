@@ -51,38 +51,36 @@ export default function MoreInfoPage() {
           </ol>
         </section>
 
-        {(infoMedia.length > 0 || galleryFallback.length > 0) && (
-          <section className="mt-12">
-            <h2 className="text-xl font-black mb-4">Samples</h2>
-            {infoMedia.length > 0 ? (
-              <div className="space-y-4">
-                {infoMedia.map((item) => (
-                  <figure key={item.id} className="rounded-2xl overflow-hidden border border-border bg-card">
-                    {item.kind === 'video' ? (
-                      <video
-                        src={resolveMediaUrl(item.url)}
-                        controls
-                        playsInline
-                        className="w-full aspect-video object-cover bg-black"
-                      />
-                    ) : (
-                      <img
-                        src={resolveMediaUrl(item.url)}
-                        alt={item.caption || 'Demo'}
-                        className="w-full object-cover"
-                      />
-                    )}
-                    {item.caption ? (
-                      <figcaption className="px-3 py-2 text-xs text-muted-foreground">{item.caption}</figcaption>
-                    ) : null}
-                  </figure>
-                ))}
-              </div>
-            ) : (
-              <IdCardGallery media={galleryFallback} />
-            )}
-          </section>
-        )}
+        <section className="mt-12">
+          <h2 className="text-xl font-black mb-4">Samples</h2>
+          {infoMedia.length > 0 ? (
+            <div className="space-y-4">
+              {infoMedia.map((item) => (
+                <figure key={item.id} className="rounded-2xl overflow-hidden border border-border bg-card">
+                  {item.kind === 'video' ? (
+                    <video
+                      src={resolveMediaUrl(item.url)}
+                      controls
+                      playsInline
+                      className="w-full aspect-video object-cover bg-black"
+                    />
+                  ) : (
+                    <img
+                      src={resolveMediaUrl(item.url)}
+                      alt={item.caption || 'Demo'}
+                      className="w-full object-contain"
+                    />
+                  )}
+                  {item.caption ? (
+                    <figcaption className="px-3 py-2 text-xs text-muted-foreground">{item.caption}</figcaption>
+                  ) : null}
+                </figure>
+              ))}
+            </div>
+          ) : (
+            <IdCardGallery media={galleryFallback} />
+          )}
+        </section>
 
         <div className="mt-12 flex flex-wrap gap-3">
           <button

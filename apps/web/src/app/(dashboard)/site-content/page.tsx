@@ -262,7 +262,10 @@ export default function SiteContentAdminPage({ params }: NextClientPageProps) {
 
       <section className="space-y-3">
         <h3 className="font-black">Demo images & videos</h3>
-        <p className="text-xs text-muted-foreground">Max 15MB. Gallery shows on the home page; Info shows on the More info page.</p>
+        <p className="text-xs text-muted-foreground">
+          Max 15MB. Upload the full CR80 card (portrait or landscape), not a cropped screenshot. Gallery shows on
+          the home page; Info shows on the More info page.
+        </p>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             value={caption}
@@ -298,9 +301,9 @@ export default function SiteContentAdminPage({ params }: NextClientPageProps) {
           {form.media.map((item) => (
             <div key={item.id} className="border border-border rounded-xl overflow-hidden">
               {item.kind === 'video' ? (
-                <video src={resolveMediaUrl(item.url)} className="w-full h-32 object-cover bg-black" />
+                <video src={resolveMediaUrl(item.url)} className="w-full max-h-64 object-contain bg-black" />
               ) : (
-                <img src={resolveMediaUrl(item.url)} alt="" className="w-full h-32 object-cover" />
+                <img src={resolveMediaUrl(item.url)} alt="" className="w-full max-h-72 object-contain bg-muted" />
               )}
               <div className="p-2 flex items-center justify-between gap-2">
                 <span className="text-[11px] text-muted-foreground truncate">
