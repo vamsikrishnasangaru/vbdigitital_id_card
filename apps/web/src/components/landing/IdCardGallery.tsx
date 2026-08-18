@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { resolveMediaUrl } from '@/lib/utils';
 import { CR80_LONG_IN, CR80_SHORT_IN } from '@/lib/card-sizes';
@@ -23,19 +23,42 @@ function wrappedOffset(index: number, active: number, count: number) {
   return delta;
 }
 
-function carouselSlot(offset: number, compact: boolean) {
-  const spread = compact ? 78 : 118;
+function layoutForWidth(width: number, compact: boolean) {
+  const w = width > 0 ? width : compact ? 320 : 400;
+  const budget = Math.max(200, w - 4);
+  const maxCard = compact ? 196 : 248;
+  const minCard = compact ? 112 : 128;
+  let spread = Math.min(compact ? 72 : 118, Math.round(budget * 0.2));
+  let shortSide = Math.min(maxCard, Math.round(budget - 2 * spread));
+  if (shortSide < minCard) {
+    shortSide = Math.min(maxCard, Math.max(minCard, Math.round(budget * 0.48)));
+    spread = Math.max(16, Math.floor((budget - shortSide) / 2));
+  }
+  const rotate = budget < 360 ? 7 : compact ? 10 : 12;
+  const sideScale = budget < 360 ? 0.82 : compact ? 0.86 : 0.88;
+  const portraitHeight = shortSide * (CR80_LONG_IN / CR80_SHORT_IN);
+  const extra = Math.sin((rotate * Math.PI) / 180) * shortSide + 16;
+  const stageHeight = Math.ceil(portraitHeight + extra);
+  return { shortSide, spread, rotate, sideScale, stageHeight };
+}
+
+function carouselSlot(
+  offset: number,
+  spread: number,
+  rotate: number,
+  sideScale: number,
+) {
   if (offset === 0) {
     return { x: 0, rotate: 2, scale: 1, z: 30, opacity: 1 };
   }
   if (offset === -1) {
-    return { x: -spread, rotate: -12, scale: compact ? 0.86 : 0.88, z: 20, opacity: 1 };
+    return { x: -spread, rotate: -rotate, scale: sideScale, z: 20, opacity: 1 };
   }
   if (offset === 1) {
-    return { x: spread, rotate: 12, scale: compact ? 0.86 : 0.88, z: 19, opacity: 1 };
+    return { x: spread, rotate, scale: sideScale, z: 19, opacity: 1 };
   }
-  const hiddenX = offset < 0 ? -spread * 1.35 : spread * 1.35;
-  return { x: hiddenX, rotate: offset < 0 ? -16 : 16, scale: 0.72, z: 1, opacity: 0 };
+  const hiddenX = offset < 0 ? -spread * 1.25 : spread * 1.25;
+  return { x: hiddenX, rotate: offset < 0 ? -rotate - 4 : rotate + 4, scale: 0.7, z: 1, opacity: 0 };
 }
 
 function DemoCardMedia({
@@ -95,6 +118,7 @@ function Cr80Card({
       className={className}
       style={{
         width,
+        maxWidth: '100%',
         aspectRatio: ratio,
       }}
     >
@@ -118,10 +142,22 @@ function CardCarousel({
   showControls?: boolean;
   cardClassName: string;
 }) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
   const count = items.length;
-  const shortSidePx = compact ? 176 : 236;
+  const layout = layoutForWidth(width, Boolean(compact));
+
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (count < 2 || paused) return;
@@ -139,13 +175,26 @@ function CardCarousel({
 
   return (
     <div
-      className="w-full"
+      className="w-full max-w-full"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
+      onTouchStart={() => setPaused(true)}
+      onTouchEnd={() => {
+        window.setTimeout(() => setPaused(false), 2500);
+      }}
     >
-      <div className={`relative flex items-center justify-center ${compact ? 'h-[380px] sm:h-[430px]' : 'h-[440px] sm:h-[520px]'}`}>
+      <div
+        ref={stageRef}
+        className="relative mx-auto flex w-full max-w-full items-center justify-center overflow-hidden"
+        style={{ height: layout.stageHeight }}
+      >
         {items.map((item, index) => {
-          const slot = carouselSlot(wrappedOffset(index, active, count), Boolean(compact));
+          const slot = carouselSlot(
+            wrappedOffset(index, active, count),
+            layout.spread,
+            layout.rotate,
+            layout.sideScale,
+          );
           const isFront = index === active;
           return (
             <button
@@ -164,7 +213,7 @@ function CardCarousel({
             >
               <Cr80Card
                 item={item}
-                shortSidePx={shortSidePx}
+                shortSidePx={layout.shortSide}
                 className={`${cardClassName} ${isFront ? 'ring-2 ring-white/70' : ''}`}
               />
             </button>
@@ -173,12 +222,12 @@ function CardCarousel({
       </div>
 
       {showControls && count > 1 ? (
-        <div className="mt-2 flex items-center justify-center gap-4">
+        <div className="mt-3 flex items-center justify-center gap-3 sm:gap-4">
           <button
             type="button"
             aria-label="Previous ID card"
             onClick={() => setActive((current) => (current - 1 + count) % count)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card hover:bg-muted"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card hover:bg-muted"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -199,7 +248,7 @@ function CardCarousel({
             type="button"
             aria-label="Next ID card"
             onClick={() => setActive((current) => (current + 1) % count)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card hover:bg-muted"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card hover:bg-muted"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -207,7 +256,7 @@ function CardCarousel({
       ) : null}
 
       {showControls && front?.caption ? (
-        <p className="mt-3 text-center text-sm font-medium text-muted-foreground">{front.caption}</p>
+        <p className="mt-3 px-2 text-center text-sm font-medium text-muted-foreground">{front.caption}</p>
       ) : null}
     </div>
   );

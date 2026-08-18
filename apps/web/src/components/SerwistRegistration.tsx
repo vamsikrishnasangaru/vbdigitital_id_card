@@ -164,18 +164,16 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
 
       if (cancelled) return;
 
-      if (!isDev) {
+      if (!isDev && navigator.onLine) {
         try {
           const probe = await fetch(swUrl, { cache: 'no-store', credentials: 'same-origin' });
-          if (!probe.ok) {
+          if (!probe.ok && probe.status !== 503 && probe.status !== 504) {
             console.warn(`[PWA] ${swUrl} returned ${probe.status} — clearing stale service worker.`);
             await clearAllServiceWorkers();
             return;
           }
         } catch {
-          console.warn('[PWA] Service worker script probe failed — clearing stale service worker.');
-          await clearAllServiceWorkers();
-          return;
+          // Offline or transient network error — keep the existing worker so cached pages still load.
         }
       }
 

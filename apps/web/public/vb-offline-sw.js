@@ -9,6 +9,7 @@ const OFFLINE_PAGE = "/~offline";
 const WARM_URLS = [
   "/",
   OFFLINE_PAGE,
+  "/info",
   "/dashboard",
   "/students",
   "/classes",

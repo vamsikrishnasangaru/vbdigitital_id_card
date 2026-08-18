@@ -29,6 +29,8 @@ const withSerwist = withSerwistInit({
           "1";
         return [
           { url: "/~offline", revision },
+          { url: "/", revision },
+          { url: "/info", revision },
         ];
       })(),
 });

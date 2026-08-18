@@ -30,12 +30,32 @@ const serwist = new Serwist({
   },
 });
 
+async function matchPrecachedOfflinePage(): Promise<Response | undefined> {
+  const keys = await caches.keys();
+  for (const key of keys) {
+    const cache = await caches.open(key);
+    const requests = await cache.keys();
+    const offlineReq = requests.find((cached) => {
+      try {
+        return new URL(cached.url).pathname === "/~offline";
+      } catch {
+        return false;
+      }
+    });
+    if (offlineReq) {
+      const hit = await cache.match(offlineReq);
+      if (hit) return hit;
+    }
+  }
+  return caches.match("/~offline", { ignoreSearch: true });
+}
+
 /** Handle App Router flights before Serwist (avoids `no-response` on 502 / offline). */
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (!shouldBypassServiceWorker(request, url)) return;
-  event.respondWith(passthroughFetch(request));
+  event.respondWith(passthroughFetch(request, matchPrecachedOfflinePage));
 });
 
 serwist.addEventListeners();

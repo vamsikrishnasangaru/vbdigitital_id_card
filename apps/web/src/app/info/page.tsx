@@ -17,7 +17,7 @@ export default function MoreInfoPage() {
   const galleryFallback = content.media.filter((m) => m.placement !== 'info');
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh overflow-x-hidden bg-background">
       <PublicHeader onLogin={() => setLoginOpen(true)} />
       <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
 

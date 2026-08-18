@@ -37,9 +37,9 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
   };
 
   return (
-    <div className="w-full max-w-md">
-      <h2 className="text-2xl font-bold tracking-tight">Welcome back</h2>
-      <p className="text-muted-foreground mt-1 mb-6">Sign in to your account to continue</p>
+    <div className="w-full max-w-md min-w-0">
+      <h2 className="pr-10 text-xl font-bold tracking-tight sm:text-2xl">Welcome back</h2>
+      <p className="mb-6 mt-1 text-sm text-muted-foreground sm:text-base">Sign in to your account to continue</p>
 
       <PwaInstallBanner />
 
@@ -55,7 +55,7 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full px-4 py-2.5 bg-muted/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+            className="min-h-11 w-full rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
 
@@ -76,7 +76,7 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-4 py-2.5 bg-muted/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all pr-10"
+              className="min-h-11 w-full rounded-lg border border-border bg-muted/50 px-4 py-2.5 pr-10 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             <button
               type="button"
@@ -91,7 +91,7 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90 disabled:opacity-50"
         >
           {isLoading ? (
             <>

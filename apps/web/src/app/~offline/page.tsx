@@ -10,8 +10,8 @@ export default function OfflinePage() {
       <div className="space-y-2 max-w-md">
         <h1 className="text-2xl font-semibold tracking-tight">You are offline</h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          This page is not cached yet. Open the app while online and visit the sections you need
-          (Students, Classes, Teachers). After that, they will load here without a connection.
+          This page is not cached yet. Open the app while online and visit Home, More info, Students,
+          Classes, or Teachers. After that, those screens load without a connection.
         </p>
       </div>
       <Link

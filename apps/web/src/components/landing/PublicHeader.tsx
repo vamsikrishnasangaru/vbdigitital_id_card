@@ -29,17 +29,17 @@ export function PublicHeader({
           : 'border-border bg-background/90 backdrop-blur-md',
       )}
     >
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-3">
-        <Link href="/" className="flex items-center gap-2 min-w-0">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:h-16 sm:gap-3 sm:px-6">
+        <Link href="/" className="flex min-w-0 items-center gap-2">
           <div
             className={cn(
-              'p-1.5 rounded-lg shrink-0',
+              'shrink-0 rounded-lg p-1.5',
               overlay ? 'bg-white/15' : 'bg-primary/10',
             )}
           >
             <CreditCard className={cn('h-5 w-5', overlay ? 'text-white' : 'text-primary')} />
           </div>
-          <span className="font-black tracking-tight truncate">
+          <span className="truncate text-sm font-black tracking-tight sm:text-base">
             VB Digital <span className={overlay ? 'text-white/70' : 'text-muted-foreground'}>ID Cards</span>
           </span>
         </Link>
@@ -48,7 +48,7 @@ export function PublicHeader({
           <Link
             href="/dashboard"
             className={cn(
-              'shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all',
+              'shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition-all sm:px-4',
               overlay
                 ? 'bg-white text-[#111113] hover:bg-white/90'
                 : 'bg-primary text-primary-foreground hover:opacity-90',
@@ -61,7 +61,7 @@ export function PublicHeader({
             type="button"
             onClick={onLogin}
             className={cn(
-              'shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all',
+              'shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition-all sm:px-4',
               overlay
                 ? 'bg-white text-[#111113] hover:bg-white/90'
                 : 'bg-primary text-primary-foreground hover:opacity-90',
@@ -73,7 +73,7 @@ export function PublicHeader({
           <Link
             href="/login"
             className={cn(
-              'shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all',
+              'shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition-all sm:px-4',
               overlay
                 ? 'bg-white text-[#111113] hover:bg-white/90'
                 : 'bg-primary text-primary-foreground hover:opacity-90',
