@@ -12,6 +12,11 @@ const withSerwist = withSerwistInit({
   swDest: "public/sw.js",
   /** Dev uses public/vb-offline-sw.js; do not rebuild or serve Serwist during next dev. */
   disable: isDevelopment || swDisabled,
+  /**
+   * ONNX Runtime WASM (~24MB) is loaded on demand for background removal.
+   * Do not precache it — it would bloat the service worker install.
+   */
+  exclude: [/ort-wasm/i, /\.wasm$/i],
   /** Stable revision per deploy — avoids invalidating the entire SW cache on every build. */
   additionalPrecacheEntries: isDevelopment
     ? []
