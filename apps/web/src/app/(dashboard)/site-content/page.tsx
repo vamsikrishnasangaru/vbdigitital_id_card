@@ -113,28 +113,56 @@ export default function SiteContentAdminPage({ params }: NextClientPageProps) {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+      if (!isVideo && !isImage) {
+        throw new Error('Upload an image or video file');
+      }
+
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('caption', caption);
-      fd.append('placement', placement);
-      const { data: saved } = await api.post('/site-content/media', fd);
-      return saved as SiteContentPayload;
+      const { data: uploaded } = await api.post<{ url: string }>('/uploads?dir=landing', fd);
+
+      const nextMedia = [
+        ...form.media,
+        {
+          id: crypto.randomUUID(),
+          kind: (isVideo ? 'video' : 'image') as 'image' | 'video',
+          url: uploaded.url,
+          caption: caption.trim(),
+          placement,
+        },
+      ];
+
+      const { id: _id, updatedAt: _updatedAt, ...payload } = form;
+      try {
+        const { data: saved } = await api.put('/site-content', { ...payload, media: nextMedia });
+        return saved as SiteContentPayload;
+      } catch {
+        return { ...form, media: nextMedia };
+      }
     },
     onSuccess: (saved) => {
       setForm(saved);
       queryClient.setQueryData(['site-content'], saved);
       setCaption('');
-      toast.success('Media added');
+      toast.success('Media added — click Save landing page if it is not live yet');
     },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast.error(err.response?.data?.message || 'Upload failed');
+    onError: (err: { response?: { data?: { message?: string } }; message?: string }) => {
+      toast.error(err.response?.data?.message || err.message || 'Upload failed');
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data: saved } = await api.delete(`/site-content/media/${id}`);
-      return saved as SiteContentPayload;
+      const nextMedia = form.media.filter((m) => m.id !== id);
+      const { id: _id, updatedAt: _updatedAt, ...payload } = form;
+      try {
+        const { data: saved } = await api.put('/site-content', { ...payload, media: nextMedia });
+        return saved as SiteContentPayload;
+      } catch {
+        return { ...form, media: nextMedia };
+      }
     },
     onSuccess: (saved) => {
       setForm(saved);
