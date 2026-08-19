@@ -26,12 +26,51 @@ export default function MoreInfoPage() {
       <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
 
       <main className="mx-auto max-w-3xl flex-1 px-4 py-12 sm:px-6 sm:py-16">
+        <section className="mb-12">
+          <p className="text-sm font-semibold text-sky-600 dark:text-sky-400">Campus samples</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Demo ID cards</h2>
+          <p className="mt-2 mb-6 text-sm text-muted-foreground sm:text-base">
+            Sample school ID cards generated on the platform.
+          </p>
+          {infoMedia.length > 0 ? (
+            <div className="space-y-4">
+              {infoMedia.map((item) => (
+                <figure key={item.id} className="overflow-hidden rounded-2xl border border-border bg-card">
+                  {item.kind === 'video' ? (
+                    <video
+                      src={resolveMediaUrl(item.url)}
+                      controls
+                      playsInline
+                      className="aspect-video w-full bg-black object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={resolveMediaUrl(item.url)}
+                      alt={item.caption || 'Demo'}
+                      className="w-full object-contain"
+                    />
+                  )}
+                  {item.caption ? (
+                    <figcaption className="px-3 py-2 text-xs text-muted-foreground">{item.caption}</figcaption>
+                  ) : null}
+                </figure>
+              ))}
+            </div>
+          ) : (
+            <IdCardGallery media={galleryFallback} />
+          )}
+        </section>
+
         <p className="mb-3 text-sm font-medium text-primary">Product</p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{content.moreInfoTitle}</h1>
         <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">{content.moreInfoIntro}</p>
 
         <section className="mt-12">
-          <h2 className="mb-4 text-lg font-semibold">How it works</h2>
+          <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">Classroom workflow</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">How it works</h2>
+          <p className="mt-2 mb-6 text-sm text-muted-foreground sm:text-base">
+            Four steps from student enrollment to a print-ready card.
+          </p>
           <ol className="space-y-3">
             {content.howItWorks.map((step, i) => (
               <li key={step.title} className="rounded-xl border border-border bg-card p-5 shadow-sm">
@@ -53,37 +92,6 @@ export default function MoreInfoPage() {
               </li>
             ))}
           </ol>
-        </section>
-
-        <section className="mt-12">
-          <h2 className="mb-4 text-lg font-semibold">Samples</h2>
-          {infoMedia.length > 0 ? (
-            <div className="space-y-4">
-              {infoMedia.map((item) => (
-                <figure key={item.id} className="rounded-2xl overflow-hidden border border-border bg-card">
-                  {item.kind === 'video' ? (
-                    <video
-                      src={resolveMediaUrl(item.url)}
-                      controls
-                      playsInline
-                      className="w-full aspect-video object-cover bg-black"
-                    />
-                  ) : (
-                    <img
-                      src={resolveMediaUrl(item.url)}
-                      alt={item.caption || 'Demo'}
-                      className="w-full object-contain"
-                    />
-                  )}
-                  {item.caption ? (
-                    <figcaption className="px-3 py-2 text-xs text-muted-foreground">{item.caption}</figcaption>
-                  ) : null}
-                </figure>
-              ))}
-            </div>
-          ) : (
-            <IdCardGallery media={galleryFallback} />
-          )}
         </section>
 
         <div className="mt-12 flex flex-wrap gap-3">

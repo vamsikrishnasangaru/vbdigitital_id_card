@@ -51,7 +51,6 @@ export function PublicHeader({
 
         <div className="flex items-center gap-1 sm:gap-2">
           <SchoolColorMenu dark={dark} />
-          <ContactTrigger dark={dark} />
           <Link
             href="/info"
             className={cn(
@@ -61,6 +60,7 @@ export function PublicHeader({
           >
             Product
           </Link>
+          <ContactTrigger dark={dark} />
           {isAuthenticated ? (
             <Link href="/dashboard" className={ctaClass}>
               Dashboard
