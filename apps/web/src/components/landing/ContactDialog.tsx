@@ -56,14 +56,19 @@ export function ContactDialog({ open, onClose }: { open: boolean; onClose: () =>
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.post('/contact', {
+      const hadEmail = Boolean(form.email.trim());
+      const { data } = await api.post<{ thankYouSent?: boolean }>('/contact', {
         schoolName: form.schoolName.trim(),
         mobile: form.mobile.trim(),
         email: form.email.trim() || undefined,
         message: form.message.trim() || undefined,
       });
       toast.success('Message sent', {
-        description: 'We will get back to your school shortly.',
+        description: hadEmail
+          ? data.thankYouSent
+            ? 'A confirmation email has been sent to your inbox.'
+            : 'We received your inquiry and will contact you shortly.'
+          : 'We will call you on your mobile number shortly.',
       });
       onClose();
     } catch (err: unknown) {

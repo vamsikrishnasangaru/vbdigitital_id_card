@@ -1,14 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
+import {
+  buildContactInquiryAdminEmail,
+  buildContactThankYouEmail,
+  type ContactInquiryPayload,
+} from './contact-email.templates';
 
-export type ContactInquiryEmail = {
-  schoolName: string;
-  mobile: string;
-  email?: string | null;
-  message?: string | null;
-  inquiryId: string;
-};
+export type ContactInquiryEmail = ContactInquiryPayload;
 
 @Injectable()
 export class MailService {
@@ -36,46 +35,27 @@ export class MailService {
     return this.config.get<string>('CONTACT_NOTIFY_EMAIL')?.trim() || 'vbdigitalworld1@gmail.com';
   }
 
+  private fromAddress(): string {
+    return (
+      this.config.get<string>('SMTP_FROM')?.trim() ||
+      this.config.get<string>('SMTP_USER')?.trim() ||
+      this.notifyEmail()
+    );
+  }
+
   async sendContactInquiry(data: ContactInquiryEmail): Promise<boolean> {
     if (!this.transporter) return false;
 
-    const to = this.notifyEmail();
-    const from =
-      this.config.get<string>('SMTP_FROM')?.trim() ||
-      this.config.get<string>('SMTP_USER')?.trim() ||
-      to;
-
-    const lines = [
-      'New school contact inquiry',
-      '',
-      `School: ${data.schoolName}`,
-      `Mobile: ${data.mobile}`,
-      `Email: ${data.email || '—'}`,
-      '',
-      'Message:',
-      data.message?.trim() || '—',
-      '',
-      `Inquiry ID: ${data.inquiryId}`,
-      `Submitted: ${new Date().toISOString()}`,
-    ];
+    const { subject, text, html } = buildContactInquiryAdminEmail(data);
 
     try {
       await this.transporter.sendMail({
-        from: `"VB Digital ID Cards" <${from}>`,
-        to,
+        from: `"VB Digital ID Cards" <${this.fromAddress()}>`,
+        to: this.notifyEmail(),
         replyTo: data.email?.trim() || undefined,
-        subject: `School contact: ${data.schoolName}`,
-        text: lines.join('\n'),
-        html: `
-          <h2>New school contact inquiry</h2>
-          <p><strong>School:</strong> ${escapeHtml(data.schoolName)}</p>
-          <p><strong>Mobile:</strong> ${escapeHtml(data.mobile)}</p>
-          <p><strong>Email:</strong> ${escapeHtml(data.email || '—')}</p>
-          <p><strong>Message:</strong></p>
-          <p>${escapeHtml(data.message?.trim() || '—').replace(/\n/g, '<br>')}</p>
-          <hr>
-          <p style="color:#666;font-size:12px">Inquiry ID: ${escapeHtml(data.inquiryId)}</p>
-        `,
+        subject,
+        text,
+        html,
       });
       return true;
     } catch (err) {
@@ -83,12 +63,26 @@ export class MailService {
       return false;
     }
   }
-}
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  async sendContactThankYou(data: ContactInquiryEmail): Promise<boolean> {
+    const to = data.email?.trim();
+    if (!this.transporter || !to) return false;
+
+    const { subject, text, html } = buildContactThankYouEmail(data);
+
+    try {
+      await this.transporter.sendMail({
+        from: `"VB Digital ID Cards" <${this.fromAddress()}>`,
+        to,
+        replyTo: this.notifyEmail(),
+        subject,
+        text,
+        html,
+      });
+      return true;
+    } catch (err) {
+      this.logger.error('Failed to send contact thank-you email', err instanceof Error ? err.stack : err);
+      return false;
+    }
+  }
 }

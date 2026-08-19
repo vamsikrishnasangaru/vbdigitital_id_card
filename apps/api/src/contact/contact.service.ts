@@ -30,7 +30,20 @@ export class ContactService {
       inquiryId: inquiry.id,
     });
     if (!emailSent) {
-      this.logger.warn(`Contact inquiry ${inquiry.id} saved but email was not sent (check SMTP env).`);
+      this.logger.warn(`Contact inquiry ${inquiry.id} saved but admin email was not sent (check SMTP env).`);
+    }
+
+    const thankYouSent = email
+      ? await this.mail.sendContactThankYou({
+          schoolName,
+          mobile,
+          email,
+          message,
+          inquiryId: inquiry.id,
+        })
+      : false;
+    if (email && !thankYouSent) {
+      this.logger.warn(`Contact inquiry ${inquiry.id} saved but thank-you email was not sent to ${email}.`);
     }
 
     const admins = await this.prisma.user.findMany({
@@ -51,6 +64,6 @@ export class ContactService {
       });
     }
 
-    return { ok: true, id: inquiry.id, emailSent };
+    return { ok: true, id: inquiry.id, emailSent, thankYouSent };
   }
 }
