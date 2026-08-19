@@ -219,6 +219,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
   const [originalPhoto, setOriginalPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [originalPhotoPreview, setOriginalPhotoPreview] = useState<string | null>(null);
+  const [photoEditedInSession, setPhotoEditedInSession] = useState(false);
   const [viewStudent, setViewStudent] = useState<any | null>(null);
   const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<{
@@ -527,6 +528,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     setOriginalPhoto(null);
     setPhotoPreview(null);
     setOriginalPhotoPreview(null);
+    setPhotoEditedInSession(false);
     setForm(emptyStudentForm(effectiveSchoolId || ''));
     setSections([]);
   };
@@ -632,6 +634,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         (s: { name?: string }) => !isPlaceholderSectionName(s.name),
       ),
     );
+    setPhotoEditedInSession(false);
     setViewStudent(null);
     setShowCreate(true);
   };
@@ -708,14 +711,43 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       if (formData) return api.put(`/students/${id}`, formData);
       return api.put(`/students/${id}`, payload);
     },
-    onSuccess: async (response) => {
+    onSuccess: async (response, variables) => {
       if (response.data?._offline) {
         toast.success('Student update saved locally — will sync when online');
       } else {
         toast.success('Student updated successfully');
       }
       await queryClient.invalidateQueries({ queryKey: ['students'] });
+      if (!photoEditedInSession) {
+        closeEnrollModal();
+        return;
+      }
+
+      const previewTemplateId = selectedTemplateId;
       closeEnrollModal();
+
+      if (!previewTemplateId) {
+        toast.info('Photo saved. Select a template, then click Preview ID card.');
+        return;
+      }
+
+      try {
+        const [{ data: freshStudent }, tpl] = await Promise.all([
+          api.get(`/students/${variables.id}`),
+          fetchTemplateWithConfig<{
+            id: string;
+            name: string;
+            frontBgUrl?: string;
+            orientation: string;
+            frontConfig?: unknown;
+          }>(previewTemplateId),
+        ]);
+        setViewStudent(freshStudent);
+        setPreviewTemplate(tpl);
+        setCardPreviewOpen(true);
+      } catch {
+        toast.error('Photo saved, but failed to open ID card preview');
+      }
     },
     onError: (err: any) => {
       if (err.response?.status === 413) {
@@ -940,6 +972,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     previewUrl: string | null,
     meta?: { originalFile?: File | null; originalPreviewUrl?: string | null; replacedOriginal?: boolean },
   ) => {
+    setPhotoEditedInSession(true);
     setPhoto(file);
     setPhotoPreview(previewUrl);
     if (meta?.replacedOriginal) {
