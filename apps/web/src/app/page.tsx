@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { PublicHeader } from '@/components/landing/PublicHeader';
 import { LoginDialog } from '@/components/auth/LoginDialog';
+import { ContactProvider } from '@/components/landing/ContactProvider';
+import { PublicFooter } from '@/components/landing/PublicFooter';
 import { IdCardGallery } from '@/components/landing/IdCardGallery';
 import { useSiteContent } from '@/hooks/use-site-content';
 import { DEFAULT_SITE_CONTENT } from '@/lib/site-content';
@@ -29,6 +31,7 @@ export default function LandingPage() {
   const content = data ?? DEFAULT_SITE_CONTENT;
 
   return (
+    <ContactProvider>
     <div className="min-h-dvh bg-background">
       <div className="sticky top-0 z-50">
         <div className="h-1.5 w-full bg-[linear-gradient(90deg,#0ea5e9,#fbbf24,#22c55e,#f43f5e,#8b5cf6)]" />
@@ -139,9 +142,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-border bg-secondary/40 px-4 py-6 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} VB Digital ID Cards
-      </footer>
+      <PublicFooter />
     </div>
+    </ContactProvider>
   );
 }

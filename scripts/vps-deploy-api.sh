@@ -31,6 +31,11 @@ if [[ -z "${GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN:-}" ]] && [[ -z "${GOOGLE_DRIVE_CRE
   echo "WARN: Google Drive not configured — add GOOGLE_DRIVE_OAUTH_* (Gmail) to .env"
 fi
 
+if [[ -z "${SMTP_HOST:-}" ]] || [[ -z "${SMTP_USER:-}" ]] || [[ -z "${SMTP_PASS:-}" ]]; then
+  echo "WARN: SMTP not configured — contact form emails will not reach vbdigitalworld1@gmail.com"
+  echo "      Add SMTP_HOST, SMTP_USER, SMTP_PASS (Gmail app password) to $API_DIR/.env"
+fi
+
 echo "Applying database migrations..."
 pnpm --filter @repo/db exec prisma migrate deploy
 

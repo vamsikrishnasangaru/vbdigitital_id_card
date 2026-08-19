@@ -6,6 +6,7 @@ import { CreditCard } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { SchoolColorMenu } from '@/components/SchoolColorPicker';
+import { ContactTrigger } from '@/components/landing/ContactTrigger';
 
 export function PublicHeader({
   onLogin,
@@ -50,6 +51,7 @@ export function PublicHeader({
 
         <div className="flex items-center gap-1 sm:gap-2">
           <SchoolColorMenu dark={dark} />
+          <ContactTrigger dark={dark} />
           <Link
             href="/info"
             className={cn(

@@ -354,6 +354,17 @@ model SiteContent {
   updatedAt       DateTime @updatedAt
 }
 
+model ContactInquiry {
+  id         String   @id @default(uuid())
+  schoolName String
+  mobile     String
+  email      String?
+  message    String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 enum UserRole {
   SUPER_ADMIN
   SCHOOL_ADMIN

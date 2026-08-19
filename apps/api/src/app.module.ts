@@ -19,6 +19,8 @@ import { UploadsModule } from './uploads/uploads.module';
 import { IdCardsModule } from './id-cards/id-cards.module';
 import { DriveModule } from './drive/drive.module';
 import { SiteContentModule } from './site-content/site-content.module';
+import { ContactModule } from './contact/contact.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -43,6 +45,8 @@ import { SiteContentModule } from './site-content/site-content.module';
     IdCardsModule,
     DriveModule,
     SiteContentModule,
+    MailModule,
+    ContactModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/api/v1/uploads',

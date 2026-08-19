@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { PublicHeader } from '@/components/landing/PublicHeader';
 import { LoginDialog } from '@/components/auth/LoginDialog';
+import { ContactProvider } from '@/components/landing/ContactProvider';
+import { PublicFooter } from '@/components/landing/PublicFooter';
 import { IdCardGallery } from '@/components/landing/IdCardGallery';
 import { useSiteContent } from '@/hooks/use-site-content';
 import { DEFAULT_SITE_CONTENT } from '@/lib/site-content';
@@ -17,11 +19,12 @@ export default function MoreInfoPage() {
   const galleryFallback = content.media.filter((m) => m.placement !== 'info');
 
   return (
-    <div className="min-h-dvh bg-background">
+    <ContactProvider>
+    <div className="min-h-dvh bg-background flex flex-col">
       <PublicHeader onLogin={() => setLoginOpen(true)} />
       <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
 
-      <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+      <main className="mx-auto max-w-3xl flex-1 px-4 py-12 sm:px-6 sm:py-16">
         <p className="mb-3 text-sm font-medium text-primary">Product</p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{content.moreInfoTitle}</h1>
         <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">{content.moreInfoIntro}</p>
@@ -95,6 +98,8 @@ export default function MoreInfoPage() {
           </Link>
         </div>
       </main>
+      <PublicFooter />
     </div>
+    </ContactProvider>
   );
 }
