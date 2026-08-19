@@ -7,6 +7,7 @@ import { SchoolColorMenu } from '@/components/SchoolColorPicker';
 import { ContactProvider } from '@/components/landing/ContactProvider';
 import { ContactTrigger } from '@/components/landing/ContactTrigger';
 import { PublicFooter } from '@/components/landing/PublicFooter';
+import { WhatsAppFloatButton } from '@/components/landing/WhatsAppFloatButton';
 
 export default function LoginPage() {
   return (
@@ -40,6 +41,7 @@ export default function LoginPage() {
           </div>
         </div>
         <PublicFooter />
+        <WhatsAppFloatButton />
       </div>
     </ContactProvider>
   );

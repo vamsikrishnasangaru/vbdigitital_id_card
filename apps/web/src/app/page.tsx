@@ -7,6 +7,7 @@ import { PublicHeader } from '@/components/landing/PublicHeader';
 import { LoginDialog } from '@/components/auth/LoginDialog';
 import { ContactProvider } from '@/components/landing/ContactProvider';
 import { PublicFooter } from '@/components/landing/PublicFooter';
+import { WhatsAppFloatButton } from '@/components/landing/WhatsAppFloatButton';
 import { IdCardGallery } from '@/components/landing/IdCardGallery';
 import { useSiteContent } from '@/hooks/use-site-content';
 import { DEFAULT_SITE_CONTENT } from '@/lib/site-content';
@@ -143,6 +144,7 @@ export default function LandingPage() {
       </section>
 
       <PublicFooter />
+      <WhatsAppFloatButton />
     </div>
     </ContactProvider>
   );

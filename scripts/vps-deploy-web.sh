@@ -25,6 +25,7 @@ export API_REWRITE_TARGET="${API_REWRITE_TARGET:-http://127.0.0.1:4000/api/v1}"
   echo "API_REWRITE_TARGET=$API_REWRITE_TARGET"
   echo "NEXT_PUBLIC_APP_REVISION=$NEXT_PUBLIC_APP_REVISION"
   echo "RELEASE_REVISION=$RELEASE_REVISION"
+  echo "NEXT_PUBLIC_WHATSAPP_NUMBER=${NEXT_PUBLIC_WHATSAPP_NUMBER:-919441115952}"
 } > .env.production
 
 # Dev .env.local often contains localhost and breaks live auth if baked into the client bundle.
