@@ -14,26 +14,27 @@ if [[ ! -f "$API_DIR/.env" ]]; then
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "$API_DIR/.env"
-set +a
+# Read DATABASE_URL only — do not `source` the whole .env (SMTP_PASS etc. may contain spaces).
+DATABASE_URL="$(grep -E '^DATABASE_URL=' "$API_DIR/.env" | head -n1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
 
-if [[ -z "${DATABASE_URL:-}" ]] || [[ "$DATABASE_URL" == *'USER'* ]] || [[ "$DATABASE_URL" == *'PASSWORD'* ]]; then
+if [[ -z "$DATABASE_URL" ]] || [[ "$DATABASE_URL" == *'USER'* ]] || [[ "$DATABASE_URL" == *'PASSWORD'* ]]; then
   echo "ERROR: DATABASE_URL in $API_DIR/.env looks like a placeholder — set the real Postgres URL."
   exit 1
 fi
 
 export DATABASE_URL
 
-if [[ -z "${GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN:-}" ]] && [[ -z "${GOOGLE_DRIVE_CREDENTIALS:-}" ]] \
+if ! grep -qE '^GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN=.+' "$API_DIR/.env" 2>/dev/null \
+  && ! grep -qE '^GOOGLE_DRIVE_CREDENTIALS=.+' "$API_DIR/.env" 2>/dev/null \
   && [[ ! -f "$API_DIR/secure/google-drive-service-account.json" ]]; then
   echo "WARN: Google Drive not configured — add GOOGLE_DRIVE_OAUTH_* (Gmail) to .env"
 fi
 
-if [[ -z "${SMTP_HOST:-}" ]] || [[ -z "${SMTP_USER:-}" ]] || [[ -z "${SMTP_PASS:-}" ]]; then
+if ! grep -qE '^SMTP_HOST=.+' "$API_DIR/.env" 2>/dev/null \
+  || ! grep -qE '^SMTP_USER=.+' "$API_DIR/.env" 2>/dev/null \
+  || ! grep -qE '^SMTP_PASS=.+' "$API_DIR/.env" 2>/dev/null; then
   echo "WARN: SMTP not configured — contact form emails will not reach vbdigitalworld1@gmail.com"
-  echo "      Add SMTP_HOST, SMTP_USER, SMTP_PASS (Gmail app password) to $API_DIR/.env"
+  echo "      Add SMTP_HOST, SMTP_USER, SMTP_PASS=\"your app password\" to $API_DIR/.env"
 fi
 
 echo "Applying database migrations..."
