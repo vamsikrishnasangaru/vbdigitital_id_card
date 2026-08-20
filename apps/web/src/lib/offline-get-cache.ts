@@ -5,11 +5,11 @@
 
 const CACHE_KEY = 'vb_offline_get_cache';
 /** Fewer entries — large student/template lists fill quota quickly. */
-const MAX_ENTRIES = 48;
-/** Skip caching single responses larger than ~80KB. */
-const MAX_ENTRY_BYTES = 80_000;
-/** Hard cap for the whole cache (~1MB). */
-const MAX_STORE_BYTES = 1_000_000;
+const MAX_ENTRIES = 64;
+/** Skip caching single responses larger than ~400KB (student lists need room). */
+const MAX_ENTRY_BYTES = 400_000;
+/** Hard cap for the whole cache (~3MB). */
+const MAX_STORE_BYTES = 3_000_000;
 
 type CacheEntry = {
   data: unknown;
@@ -143,9 +143,6 @@ export const offlineGetCache = {
   set(url: string, params: unknown, data: unknown) {
     const bytes = estimateBytes(data);
     if (bytes > MAX_ENTRY_BYTES) return;
-
-    const path = normalizeApiPath(url);
-    if (path.includes('/students') && bytes > 40_000) return;
 
     const key = buildGetCacheKey(url, params);
     const store = readStore();

@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Navbar } from '@/components/layout/Navbar';
 import { OfflineAppBanner } from '@/components/OfflineAppBanner';
 import { PwaInstallBanner } from '@/components/PwaInstallBanner';
+import { OfflineRouteGuard } from '@/components/OfflineRouteGuard';
 
 /** Routes only Super Admin may open (school admin & teacher are redirected). */
 const SUPER_ADMIN_ONLY_PATHS = ['/analytics'];
@@ -57,6 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full min-w-0">
             <PwaInstallBanner />
             <OfflineAppBanner />
+            <OfflineRouteGuard role={user?.role} />
             {children}
           </div>
         </div>

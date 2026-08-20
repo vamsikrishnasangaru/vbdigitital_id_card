@@ -256,6 +256,25 @@ export const offlineStore = {
     );
   },
 
+  /** Resolve one student from pending creates, local patches, or a previously cached list. */
+  getStudentById(id: string): unknown | null {
+    if (!id) return null;
+    const deleted = new Set(listDeletedIds());
+    if (deleted.has(id)) return null;
+
+    const pending = listOfflineStudents().find((s) => s.id === id);
+    if (pending) return offlineStore.applyLocalPatches(pending);
+
+    const patches = readLocal<Record<string, Partial<OfflineStudentRecord>>>(
+      OFFLINE_STORAGE_KEYS.studentPatches,
+      {},
+    );
+    const patch = patches[id];
+    if (patch) return { id, ...patch, _offline: true };
+
+    return null;
+  },
+
   applyLocalPatches<T extends { id: string }>(student: T): T {
     const patches = readLocal<Record<string, Partial<OfflineStudentRecord>>>(
       OFFLINE_STORAGE_KEYS.studentPatches,

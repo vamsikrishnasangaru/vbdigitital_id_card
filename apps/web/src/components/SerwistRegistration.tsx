@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import { clearAllAppCaches } from '@/lib/clear-app-caches';
+import { clearDeployCaches } from '@/lib/clear-app-caches';
 
 const swDisabled = process.env.NEXT_PUBLIC_DISABLE_SW === 'true';
 const isDev = process.env.NODE_ENV === 'development';
-const SW_MIGRATION_KEY = 'vb-sw-migration-v5';
+const SW_MIGRATION_KEY = 'vb-sw-migration-v6';
 const APP_UPGRADE_FLAG = 'vb-app-upgrade-pending';
 const SW_RELOAD_FLAG = 'vb-sw-reloading';
 const SERWIST_SW_PATH = '/sw.js';
@@ -100,7 +100,7 @@ async function purgeDevSerwistWorkers(controllerPath: string): Promise<'reload' 
 async function finishDeployUpgrade(): Promise<'reload' | 'continue'> {
   if (!sessionStorage.getItem(APP_UPGRADE_FLAG)) return 'continue';
   sessionStorage.removeItem(APP_UPGRADE_FLAG);
-  await clearAllAppCaches();
+  await clearDeployCaches();
   if (sessionStorage.getItem(SW_RELOAD_FLAG)) return 'continue';
   sessionStorage.setItem(SW_RELOAD_FLAG, '1');
   window.location.reload();
@@ -209,8 +209,8 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
       };
       document.addEventListener('visibilitychange', onVisible);
 
-      // Dev-only: warming every navigation duplicates requests and slows the app.
-      if (isDev) {
+      // Warm HTML into the SW page cache so dashboard routes open offline after one online visit.
+      if (navigator.onLine) {
         let warmTimer: ReturnType<typeof setTimeout> | null = null;
         warmPath = () => {
           if (!navigator.onLine) return;
@@ -221,7 +221,7 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
               credentials: 'include',
               headers: { Accept: 'text/html,application/xhtml+xml' },
             }).catch(() => undefined);
-          }, 800);
+          }, isDev ? 800 : 400);
         };
 
         warmPath();

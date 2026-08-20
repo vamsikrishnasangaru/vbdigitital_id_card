@@ -21,6 +21,10 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { StatCard, type StatCardColor } from '@/components/ui/stat-card';
 import { formatClassSectionLabel, formatStudentFullName, formatSectionName } from '@/lib/utils';
+import { useOfflineSync } from '@/hooks/use-offline-sync';
+import { isOfflineAllowedPath } from '@/lib/offline-routes';
+import { OfflineNetworkRequiredDialog } from '@/components/OfflineNetworkRequiredDialog';
+import { useState } from 'react';
 
 type RecentStudent = {
   id: string;
@@ -195,6 +199,9 @@ const QUICK_ACTIONS: QuickAction[] = [
 export default function DashboardPage({ params }: NextClientPageProps) {
   useNextPageParams(params);
   const { user } = useAuthStore();
+  const { isOffline, serverUnavailable } = useOfflineSync();
+  const workingOffline = isOffline || serverUnavailable;
+  const [networkPrompt, setNetworkPrompt] = useState(false);
 
   const { data, isLoading: loading } = useQuery({
     queryKey: ['dashboard', user?.role, user?.schoolId],
@@ -234,6 +241,7 @@ export default function DashboardPage({ params }: NextClientPageProps) {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
+      <OfflineNetworkRequiredDialog open={networkPrompt} onClose={() => setNetworkPrompt(false)} />
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           Welcome back, {user?.firstName}
@@ -410,6 +418,11 @@ export default function DashboardPage({ params }: NextClientPageProps) {
                 <Link
                   key={action.label}
                   href={action.href}
+                  onClick={(e) => {
+                    if (!workingOffline || isOfflineAllowedPath(user?.role, action.href)) return;
+                    e.preventDefault();
+                    setNetworkPrompt(true);
+                  }}
                   className="flex items-center gap-4 p-4 rounded-2xl hover:bg-primary/5 transition-all group"
                 >
                   <div className="h-10 w-10 rounded-xl bg-muted border border-border flex items-center justify-center group-hover:border-primary/50 transition-all">

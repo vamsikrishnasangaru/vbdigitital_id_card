@@ -2,8 +2,8 @@
  * Dev offline shell: caches navigations + Next.js static assets after you visit them online.
  * Production uses Serwist (/sw.js).
  */
-const PAGE_CACHE = "vb-offline-pages-v3";
-const ASSET_CACHE = "vb-offline-assets-v3";
+const PAGE_CACHE = "vb-offline-pages-v4";
+const ASSET_CACHE = "vb-offline-assets-v4";
 const OFFLINE_PAGE = "/~offline";
 
 const WARM_URLS = [
@@ -16,6 +16,9 @@ const WARM_URLS = [
   "/teachers",
   "/id-cards",
   "/schools",
+  "/icon.svg",
+  "/apple-icon.svg",
+  "/manifest.json",
 ];
 
 function sameOrigin(url) {
@@ -42,56 +45,143 @@ function isStaticAsset(url) {
     pathname.startsWith("/_next/image") ||
     pathname === "/manifest.json" ||
     pathname === "/favicon.ico" ||
-    /\.(?:woff2?|ttf|otf|eot)$/i.test(pathname)
+    pathname === "/icon.svg" ||
+    pathname === "/apple-icon.svg" ||
+    /\.(?:woff2?|ttf|otf|eot|svg|png|webmanifest)$/i.test(pathname)
+  );
+}
+
+function isRscRequest(request) {
+  const url = new URL(request.url);
+  return (
+    url.searchParams.has("_rsc") ||
+    request.headers.get("RSC") === "1" ||
+    request.headers.get("Next-Router-Prefetch") === "1" ||
+    Boolean(request.headers.get("Next-Router-State-Tree")) ||
+    Boolean(request.headers.get("Accept")?.includes("text/x-component"))
+  );
+}
+
+function fetchWithTimeout(request, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(request, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
+async function matchPage(cache, request) {
+  return (
+    (await cache.match(request.url)) ||
+    (await cache.match(request, { ignoreSearch: true })) ||
+    (await cache.match("/dashboard")) ||
+    (await cache.match("/")) ||
+    (await cache.match(OFFLINE_PAGE)) ||
+    null
   );
 }
 
 async function handleNavigate(request) {
   const cache = await caches.open(PAGE_CACHE);
+  if (self.navigator && self.navigator.onLine === false) {
+    const cached = await matchPage(cache, request);
+    if (cached) return cached;
+    return new Response(
+      "<!DOCTYPE html><html><body><h1>Offline</h1><p>Open this page once while online, then try again.</p></body></html>",
+      { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
+    );
+  }
   try {
-    const response = await fetch(request);
+    const response = await fetchWithTimeout(request, 5000);
     if (response.ok) {
-      await cache.put(request.url, response.clone());
+      try {
+        await putCacheable(cache, request.url, response);
+      } catch {
+        /* ignore */
+      }
     }
     return response;
   } catch {
-    const cached = await cache.match(request.url);
+    const cached = await matchPage(cache, request);
     if (cached) return cached;
-
-    const offline = await cache.match(OFFLINE_PAGE);
-    if (offline) return offline;
-
-    const home = await cache.match("/");
-    if (home) return home;
-
     return new Response(
       "<!DOCTYPE html><html><body><h1>Offline</h1><p>Visit this app while online first, then try again.</p></body></html>",
-      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } },
+      { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
     );
   }
 }
 
-/** Cache JS/CSS/chunks on success; serve cache when offline. */
+/** Cache JS/CSS/chunks on success; serve cache when offline. Never return fake 503 JS. */
 async function handleStaticAsset(request) {
   const cache = await caches.open(ASSET_CACHE);
+  if (self.navigator && self.navigator.onLine === false) {
+    return (
+      (await cache.match(request)) ||
+      (await cache.match(request, { ignoreSearch: true })) ||
+      fetch(request)
+    );
+  }
   try {
-    const response = await fetch(request);
+    const response = await fetchWithTimeout(request, 5000);
     if (response.ok) {
-      await cache.put(request, response.clone());
+      try {
+        await putCacheable(cache, request, response);
+      } catch {
+        /* ignore */
+      }
     }
     return response;
   } catch {
-    const cached = await cache.match(request);
+    const cached = (await cache.match(request)) || (await cache.match(request, { ignoreSearch: true }));
     if (cached) return cached;
-
-    const { pathname } = new URL(request.url);
-    const css = pathname.endsWith(".css") || request.headers.get("accept")?.includes("text/css");
-    return new Response(css ? "/* offline */" : "/* offline */", {
-      status: 503,
-      statusText: "Offline",
-      headers: { "Content-Type": css ? "text/css; charset=utf-8" : "application/javascript; charset=utf-8" },
-    });
+    throw new Error("offline-miss");
   }
+}
+
+async function handleRsc(request) {
+  const cache = await caches.open("vb-offline-rsc-v1");
+  if (self.navigator && self.navigator.onLine === false) {
+    return (
+      (await cache.match(request)) ||
+      (await cache.match(request, { ignoreSearch: true })) ||
+      new Response(null, { status: 503, statusText: "Offline" })
+    );
+  }
+  try {
+    const response = await fetchWithTimeout(request, 5000);
+    if (response.ok) {
+      try {
+        await putCacheable(cache, request, response);
+      } catch {
+        /* ignore */
+      }
+    }
+    return response;
+  } catch {
+    return (
+      (await cache.match(request)) ||
+      (await cache.match(request, { ignoreSearch: true })) ||
+      new Response(null, { status: 503, statusText: "Offline" })
+    );
+  }
+}
+
+/** Documents send no-store; strip it so Cache Storage accepts the entry. */
+async function putCacheable(cache, request, response) {
+  const body = await response.clone().arrayBuffer();
+  const headers = new Headers(response.headers);
+  headers.delete("set-cookie");
+  headers.delete("Set-Cookie");
+  headers.delete("Expires");
+  headers.delete("Pragma");
+  headers.set("Cache-Control", "public, max-age=604800");
+  const key = typeof request === "string" ? request : request.url || request;
+  await cache.put(
+    key,
+    new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    }),
+  );
 }
 
 self.addEventListener("install", (event) => {
@@ -132,6 +222,11 @@ self.addEventListener("fetch", (event) => {
 
   if (isNavigateRequest(event.request)) {
     event.respondWith(handleNavigate(event.request));
+    return;
+  }
+
+  if (isRscRequest(event.request)) {
+    event.respondWith(handleRsc(event.request));
     return;
   }
 

@@ -11,8 +11,14 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 import { useState, useEffect } from 'react';
 import { APP_REVISION } from '@/lib/app-revision';
 function isNetworkError(error: unknown): boolean {
-  const err = error as { response?: unknown; code?: string };
-  return !err.response || err.code === 'ERR_NETWORK';
+  const err = error as { response?: { status?: number }; code?: string };
+  if (!err.response || err.code === 'ERR_NETWORK' || err.code === 'ECONNABORTED') return true;
+  const status = err.response.status;
+  return status === 502 || status === 503 || status === 504;
+}
+
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && !navigator.onLine;
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -28,16 +34,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
             refetchOnReconnect: true,
             refetchOnMount: true,
             retry: (failureCount, error) => {
-              if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
+              if (isOffline()) return false;
               if (isNetworkError(error)) return failureCount < 1;
               return failureCount < 2;
             },
-            /** Keep showing last good data when offline instead of error screens. */
-            throwOnError: (error, query) => {
-              if (query.state.data !== undefined && isNetworkError(error)) return false;
-              if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
-              return true;
-            },
+            /** Never blow up the page for a connectivity problem — show cached/empty data. */
+            throwOnError: (error) => !isOffline() && !isNetworkError(error),
           },
           mutations: {
             networkMode: 'offlineFirst',

@@ -3,8 +3,21 @@
  * Serwist NetworkOnly throws `no-response` when the network fails (502 / down).
  */
 
-const PAGE_CACHE = 'vb-html-pages-v1';
-const RSC_CACHE = 'vb-rsc-flights-v1';
+const PAGE_CACHE = 'vb-html-pages-v2';
+const RSC_CACHE = 'vb-rsc-flights-v2';
+const STATIC_CACHE = 'vb-static-shell-v1';
+
+/** Minimal manifest so Chrome does not log a fetch failure while offline. */
+const OFFLINE_MANIFEST = JSON.stringify({
+  name: 'VB Digital ID Cards',
+  short_name: 'VB Digital',
+  start_url: '/',
+  scope: '/',
+  display: 'standalone',
+  theme_color: '#4f46e5',
+  background_color: '#ffffff',
+  icons: [{ src: '/icon.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any' }],
+});
 
 const OFFLINE_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -39,6 +52,7 @@ export function shouldBypassServiceWorker(request: Request, url: URL): boolean {
   if (request.method !== 'GET') return false;
 
   if (url.pathname === '/manifest.json' || url.pathname === '/sw.js') return true;
+  if (url.pathname === '/icon.svg' || url.pathname === '/apple-icon.svg') return true;
 
   /** Documents and RSC: we handle cache + offline fallback ourselves (Serwist would 503). */
   if (request.mode === 'navigate' || request.destination === 'document') return true;
@@ -75,6 +89,28 @@ async function matchInCache(cacheName: string, request: Request): Promise<Respon
   );
 }
 
+/**
+ * Next.js documents send Cache-Control: no-store. Chromium rejects cache.put for those.
+ * Store a clone with cacheable headers so navigations work offline after the first online visit.
+ */
+async function putCacheable(cache: Cache, request: Request, response: Response): Promise<void> {
+  const body = await response.clone().arrayBuffer();
+  const headers = new Headers(response.headers);
+  headers.delete('set-cookie');
+  headers.delete('Set-Cookie');
+  headers.delete('Expires');
+  headers.delete('Pragma');
+  headers.set('Cache-Control', 'public, max-age=604800');
+  await cache.put(
+    request,
+    new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    }),
+  );
+}
+
 async function matchOfflineDocument(
   fallbackDocument?: () => Promise<Response | undefined>,
 ): Promise<Response> {
@@ -90,6 +126,34 @@ async function matchOfflineDocument(
   });
 }
 
+function isShellAsset(url: URL): boolean {
+  return (
+    url.pathname === '/manifest.json' ||
+    url.pathname === '/icon.svg' ||
+    url.pathname === '/apple-icon.svg'
+  );
+}
+
+/** manifest/icons must never surface as 503 — Chrome logs those loudly. */
+async function shellAssetFallback(request: Request, url: URL): Promise<Response> {
+  const cached =
+    (await matchInCache(STATIC_CACHE, request)) ??
+    (await caches.match(request, { ignoreSearch: true }));
+  if (cached) return cached;
+
+  if (url.pathname === '/manifest.json') {
+    return new Response(OFFLINE_MANIFEST, {
+      status: 200,
+      headers: { 'Content-Type': 'application/manifest+json' },
+    });
+  }
+
+  return new Response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>', {
+    status: 200,
+    headers: { 'Content-Type': 'image/svg+xml' },
+  });
+}
+
 export async function passthroughFetch(
   request: Request,
   fallbackDocument?: () => Promise<Response | undefined>,
@@ -97,16 +161,42 @@ export async function passthroughFetch(
   const url = new URL(request.url);
   const documentRequest = isDocumentRequest(request);
   const rscRequest = isRscRequest(request, url);
-  const cacheName = documentRequest ? PAGE_CACHE : rscRequest ? RSC_CACHE : null;
+  const shellAsset = isShellAsset(url);
+  const cacheName = documentRequest
+    ? PAGE_CACHE
+    : rscRequest
+      ? RSC_CACHE
+      : shellAsset
+        ? STATIC_CACHE
+        : null;
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+
+  if (offline) {
+    if (documentRequest) {
+      const cached = await matchInCache(PAGE_CACHE, request);
+      if (cached) return cached;
+      for (const path of ['/dashboard', '/students', '/schools', '/', '/info']) {
+        const shell = await caches.match(path, { ignoreSearch: true });
+        if (shell) return shell;
+      }
+      return matchOfflineDocument(fallbackDocument);
+    }
+    if (rscRequest) {
+      const cached = await matchInCache(RSC_CACHE, request);
+      if (cached) return cached;
+    }
+    if (shellAsset) return shellAssetFallback(request, url);
+    return new Response(null, { status: 503, statusText: 'Network Unavailable' });
+  }
 
   try {
     const response = await fetch(request);
     if (cacheName && response.ok) {
       try {
         const cache = await caches.open(cacheName);
-        await cache.put(request, response.clone());
+        await putCacheable(cache, request, response);
       } catch {
-        /* quota / uncacheable response */
+        /* quota / opaque / private mode */
       }
     }
     if (documentRequest && !response.ok && response.status >= 500) {
@@ -123,12 +213,18 @@ export async function passthroughFetch(
     if (documentRequest) {
       const cached = await matchInCache(PAGE_CACHE, request);
       if (cached) return cached;
+      /** Prefer a previously visited app shell over the bare offline tip page. */
+      for (const path of ['/dashboard', '/students', '/', '/info']) {
+        const shell = await caches.match(path, { ignoreSearch: true });
+        if (shell) return shell;
+      }
       return matchOfflineDocument(fallbackDocument);
     }
     if (rscRequest) {
       const cached = await matchInCache(RSC_CACHE, request);
       if (cached) return cached;
     }
+    if (shellAsset) return shellAssetFallback(request, url);
     /** API + other bypassed requests: axios treats 503 as offline and uses local data. */
     return new Response(null, { status: 503, statusText: 'Network Unavailable' });
   }

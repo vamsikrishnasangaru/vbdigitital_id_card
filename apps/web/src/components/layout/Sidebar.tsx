@@ -5,6 +5,9 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
+import { useOfflineSync } from '@/hooks/use-offline-sync';
+import { isOfflineAllowedPath } from '@/lib/offline-routes';
+import { OfflineNetworkRequiredDialog } from '@/components/OfflineNetworkRequiredDialog';
 import {
   LayoutDashboard, School, Users, GraduationCap, CreditCard,
   BarChart3, Bell, Settings,
@@ -34,7 +37,10 @@ interface SidebarProps {
 export function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
+  const { isOffline, serverUnavailable } = useOfflineSync();
+  const workingOffline = isOffline || serverUnavailable;
   const [loggingOut, setLoggingOut] = useState(false);
+  const [networkPrompt, setNetworkPrompt] = useState(false);
   const routes = allRoutes.filter(r => user && r.roles.includes(user.role));
   const groups = GROUP_ORDER.filter((group) => routes.some((r) => r.group === group));
 
@@ -90,16 +96,24 @@ export function Sidebar({ onClose }: SidebarProps) {
                     'previewLabel' in route && route.previewLabel && user?.role !== 'SUPER_ADMIN'
                       ? route.previewLabel
                       : route.label;
+                  const offlineBlocked = workingOffline && !isOfflineAllowedPath(user?.role, route.href);
                   return (
                     <Link
                       key={route.href}
                       href={route.href}
+                      onClick={(e) => {
+                        if (!offlineBlocked) return;
+                        e.preventDefault();
+                        setNetworkPrompt(true);
+                      }}
                       className={cn(
                         'flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors',
                         isActive
                           ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground shadow-sm'
                           : 'text-sidebar-foreground/70 hover:bg-white/10 hover:text-sidebar-foreground',
+                        offlineBlocked && 'opacity-45',
                       )}
+                      title={offlineBlocked ? 'Connect to the internet to open this page' : undefined}
                     >
                       <route.icon className={cn('h-4 w-4', isActive ? 'text-sidebar-primary' : 'text-sidebar-foreground/55')} />
                       {label}
@@ -136,6 +150,7 @@ export function Sidebar({ onClose }: SidebarProps) {
           </button>
         </div>
       </div>
+      <OfflineNetworkRequiredDialog open={networkPrompt} onClose={() => setNetworkPrompt(false)} />
     </div>
   );
 }

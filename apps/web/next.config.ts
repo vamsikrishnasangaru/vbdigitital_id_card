@@ -31,6 +31,15 @@ const withSerwist = withSerwistInit({
           { url: "/~offline", revision },
           { url: "/", revision },
           { url: "/info", revision },
+          { url: "/dashboard", revision },
+          { url: "/students", revision },
+          { url: "/classes", revision },
+          { url: "/teachers", revision },
+          { url: "/id-cards", revision },
+          { url: "/schools", revision },
+          { url: "/demo/zph-palavalasa.png", revision },
+          { url: "/demo/mpp-lakkavaram.png", revision },
+          { url: "/demo/maharshi-vidyaniketan.png", revision },
         ];
       })(),
 });

@@ -20,17 +20,42 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const { data } = await api.post('/auth/login', { email, password });
+      const { data } = await api.post(
+        '/auth/login',
+        { email, password },
+        { _skipOfflineQueue: true },
+      );
+      if (!data?.user || !data?.accessToken) {
+        toast.error('Login failed', {
+          description: 'Server is unavailable. Start the API (port 4000) and try again.',
+        });
+        return;
+      }
       login(data.user, data.accessToken, data.refreshToken);
       toast.success('Welcome back!', { description: `Signed in as ${data.user.firstName}` });
       onSuccess?.();
       router.push('/dashboard');
     } catch (err: unknown) {
-      const message =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-          : undefined;
-      toast.error('Login failed', { description: message || 'Invalid credentials' });
+      const ax = err as {
+        code?: string;
+        message?: string;
+        response?: { status?: number; data?: { message?: string } };
+      };
+      const offlineLike =
+        typeof navigator !== 'undefined' && !navigator.onLine
+          ? true
+          : !ax.response ||
+            ax.code === 'ERR_NETWORK' ||
+            ax.code === 'ECONNABORTED' ||
+            ax.response.status === 502 ||
+            ax.response.status === 503 ||
+            ax.response.status === 504;
+      const message = ax.response?.data?.message;
+      toast.error('Login failed', {
+        description: offlineLike
+          ? 'Cannot reach the API. Make sure it is running on port 4000.'
+          : message || 'Invalid credentials',
+      });
     } finally {
       setIsLoading(false);
     }

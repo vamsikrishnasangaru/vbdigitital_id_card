@@ -129,6 +129,11 @@ export const syncEngine = {
   }): Promise<string> {
     const queue: SyncOperation[] = (await get(SYNC_QUEUE_KEY)) || [];
 
+    const url = (config.url || '').split('?')[0];
+    if (url.toLowerCase().includes('/auth/')) {
+      return `auth-skip-${Date.now()}`;
+    }
+
     const op: SyncOperation = {
       id: crypto.randomUUID(),
       url: config.url || '',
@@ -163,7 +168,15 @@ export const syncEngine = {
    * Flush all operations in the queue.
    */
   async flushQueue() {
-    const queue: SyncOperation[] = (await get(SYNC_QUEUE_KEY)) || [];
+    let queue: SyncOperation[] = (await get(SYNC_QUEUE_KEY)) || [];
+    const withoutAuth = queue.filter((op) => !op.url.toLowerCase().includes('/auth/'));
+    if (withoutAuth.length !== queue.length) {
+      await set(SYNC_QUEUE_KEY, withoutAuth);
+      window.dispatchEvent(
+        new CustomEvent('vb-sync-queue-changed', { detail: { length: withoutAuth.length } }),
+      );
+      queue = withoutAuth;
+    }
     if (queue.length === 0) return;
 
     // Without a token every request 401s and the interceptor bounces to the login

@@ -59,7 +59,7 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
   };
 
   // Queries
-  const { data: schoolsData, isLoading } = useQuery({
+  const { data: schoolsData, isLoading, isPending } = useQuery({
     queryKey: queryKeys.schools.adminList(deferredSearch),
     queryFn: async () => {
       const { data } = await api.get('/schools', { params: { search: deferredSearch || undefined, limit: 50 } });
@@ -67,7 +67,12 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
       offlineStore.cacheSchools(list);
       return list;
     },
+    placeholderData: () => {
+      const cached = offlineStore.getSchools();
+      return Array.isArray(cached) && cached.length > 0 ? (cached as School[]) : undefined;
+    },
   });
+  const showSchoolsSpinner = (isLoading || isPending) && !schoolsData;
 
   // Mutations
   type SchoolFormPayload = {
@@ -238,7 +243,7 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
         </div>
         {deferredSearch && (
           <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-            {isLoading ? 'Searching…' : `${schools.length} result${schools.length === 1 ? '' : 's'}`}
+            {showSchoolsSpinner ? 'Searching…' : `${schools.length} result${schools.length === 1 ? '' : 's'}`}
           </span>
         )}
         <div className="flex items-center gap-2 w-full md:w-auto">
@@ -250,7 +255,7 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
 
       <ResponsiveDataView
         mobile={
-          isLoading ? (
+          showSchoolsSpinner ? (
             <ListLoading message="Loading institutions..." />
           ) : schools.length === 0 ? (
             <ListEmpty
@@ -338,7 +343,7 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
-              {isLoading ? (
+              {showSchoolsSpinner ? (
                 <tr>
                   <td colSpan={6} className="p-20 text-center">
                     <Loader2 className="h-8 w-8 animate-spin text-primary/60 mx-auto" />
