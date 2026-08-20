@@ -426,6 +426,28 @@ export const syncEngine = {
     return flushInFlight;
   },
 
+  /** After offline create syncs, rewrite queued PUT/DELETE URLs that still use the temp id. */
+  async remapStudentIdInQueue(tempId: string, serverId: string) {
+    if (!tempId || !serverId || tempId === serverId) return;
+    const queue = normalizeQueue(await getSyncQueueFromIndexedDb<SyncOperation>());
+    let changed = false;
+    const next = queue.map((op) => {
+      if (!op.url.includes(`/students/${tempId}`)) return op;
+      changed = true;
+      return {
+        ...op,
+        url: op.url.replace(`/students/${tempId}`, `/students/${serverId}`),
+        updatedAt: Date.now(),
+      };
+    });
+    if (!changed) return;
+    const compacted = compactQueue(next);
+    await setSyncQueueInIndexedDb(compacted);
+    window.dispatchEvent(
+      new CustomEvent('vb-sync-queue-changed', { detail: { length: compacted.length } }),
+    );
+  },
+
   init() {
     if (typeof window === 'undefined') return;
 

@@ -2,9 +2,9 @@ export type AppRole = 'SUPER_ADMIN' | 'SCHOOL_ADMIN' | 'TEACHER';
 
 /** Pages that stay usable without a network connection. */
 const OFFLINE_ALLOWED: Record<AppRole, readonly string[]> = {
-  SUPER_ADMIN: ['/dashboard', '/schools', '/students'],
-  SCHOOL_ADMIN: ['/dashboard', '/teachers', '/students'],
-  TEACHER: ['/dashboard', '/students'],
+  SUPER_ADMIN: ['/dashboard', '/schools', '/students', '/id-cards', '/templates', '/classes', '/teachers'],
+  SCHOOL_ADMIN: ['/dashboard', '/teachers', '/students', '/id-cards', '/templates', '/classes'],
+  TEACHER: ['/dashboard', '/students', '/id-cards'],
 };
 
 export function isOfflineAllowedPath(role: string | undefined, pathname: string): boolean {

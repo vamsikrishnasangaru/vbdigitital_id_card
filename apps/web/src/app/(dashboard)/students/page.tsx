@@ -952,13 +952,26 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     deleteMutation.mutate(s.id);
   };
 
-  const openCardPreview = async (s: { id: string; firstName?: string }) => {
+  const openCardPreview = async (s: {
+    id: string;
+    firstName?: string;
+    [key: string]: unknown;
+  }) => {
     if (!selectedTemplateId) {
       toast.error('Choose a template under “Generate with template” first');
       return;
     }
     try {
-      const [{ data: freshStudent }, tpl] = await Promise.all([
+      let freshStudent: Record<string, unknown> = { ...s };
+      let tpl: {
+        id: string;
+        name: string;
+        frontBgUrl?: string;
+        orientation: string;
+        frontConfig?: unknown;
+      } | null = null;
+
+      const [studentRes, templateRes] = await Promise.allSettled([
         api.get(`/students/${s.id}`),
         fetchTemplateWithConfig<{
           id: string;
@@ -968,6 +981,19 @@ export default function StudentsPage({ params }: NextClientPageProps) {
           frontConfig?: unknown;
         }>(selectedTemplateId),
       ]);
+
+      if (studentRes.status === 'fulfilled' && studentRes.value?.data) {
+        freshStudent = studentRes.value.data as Record<string, unknown>;
+      }
+      if (templateRes.status === 'fulfilled' && templateRes.value) {
+        tpl = templateRes.value;
+      }
+
+      if (!tpl?.frontConfig && !tpl?.frontBgUrl) {
+        toast.error('Template layout is not cached offline yet. Open this template once while online.');
+        return;
+      }
+
       setViewStudent(freshStudent);
       setPreviewTemplate(tpl);
       setCardPreviewOpen(true);

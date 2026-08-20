@@ -206,10 +206,11 @@ api.interceptors.response.use(
       }
 
       // Keep templates by school for Super Admin offline switching.
-      const isTemplates =
-        path.includes('/templates') &&
-        !/\/templates\/[^/]+/.test(path.replace(/\/api\/v\d+/, ''));
-      if (isTemplates && schoolId && response.data) {
+      const normalizedPath = path.replace(/^\/api\/v\d+/, '');
+      const isTemplatesList =
+        (normalizedPath === '/templates' || normalizedPath.endsWith('/templates')) &&
+        !/\/templates\/[^/]+$/.test(normalizedPath);
+      if (isTemplatesList && schoolId && response.data) {
         void import('./offline-store').then(({ offlineStore }) => {
           const list = Array.isArray(response.data)
             ? response.data
@@ -217,6 +218,13 @@ api.interceptors.response.use(
               ? response.data.data
               : null;
           if (list) offlineStore.cacheTemplates(schoolId, list);
+        });
+      }
+
+      const templateDetail = normalizedPath.match(/^\/templates\/([^/]+)$/);
+      if (templateDetail && response.data && typeof response.data === 'object') {
+        void import('./offline-template-details').then(({ cacheTemplateDetail }) => {
+          cacheTemplateDetail(response.data as Record<string, unknown> & { id: string });
         });
       }
     }

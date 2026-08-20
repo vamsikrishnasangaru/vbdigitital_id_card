@@ -412,18 +412,48 @@ export const offlineStore = {
         const formData = config.data instanceof FormData ? config.data : null;
         const patch: Partial<OfflineStudentRecord> = {};
         if (formData) {
-          const firstName = formData.get('firstName');
-          const lastName = formData.get('lastName');
-          const rollNumber = formData.get('rollNumber');
-          const parentPhone = formData.get('parentPhone');
-          const classId = formData.get('classId');
-          const sectionId = formData.get('sectionId');
-          if (typeof firstName === 'string') patch.firstName = firstName.trim();
-          if (typeof lastName === 'string') patch.lastName = lastName.trim();
-          if (typeof rollNumber === 'string') patch.rollNumber = rollNumber.trim();
-          if (typeof parentPhone === 'string') patch.parentPhone = parentPhone.trim();
-          if (typeof classId === 'string') patch.classId = classId.trim();
-          if (typeof sectionId === 'string') patch.sectionId = sectionId.trim();
+          const stringFields = [
+            'firstName',
+            'lastName',
+            'rollNumber',
+            'parentPhone',
+            'parentName',
+            'classId',
+            'sectionId',
+            'address',
+            'bloodGroup',
+            'aadharCard',
+            'penId',
+            'apaarId',
+            'childId',
+            'fatherName',
+            'motherName',
+            'dateOfBirth',
+            'emergencyContact',
+            'transportDetails',
+            'schoolId',
+          ] as const;
+          for (const field of stringFields) {
+            const value = formData.get(field);
+            if (typeof value === 'string') {
+              (patch as Record<string, string>)[field] = value.trim();
+            }
+          }
+          if (typeof patch.classId === 'string' || typeof patch.sectionId === 'string') {
+            const schoolId = String(
+              patch.schoolId ||
+                formData.get('schoolId') ||
+                (offlineStore.getStudentById(id) as { schoolId?: string } | null)?.schoolId ||
+                '',
+            );
+            const classId = String(patch.classId || formData.get('classId') || '');
+            const sectionId = String(patch.sectionId || formData.get('sectionId') || '');
+            if (schoolId && classId) {
+              const resolved = resolveClassSection(schoolId, classId, sectionId);
+              if (resolved.class) patch.class = resolved.class;
+              if (resolved.section) patch.section = resolved.section;
+            }
+          }
           const photo = formData.get('photo');
           if (photo instanceof Blob && photo.size > 0) {
             patch.photoUrl = await blobToDataUrl(photo);
@@ -432,6 +462,27 @@ export const offlineStore = {
           Object.assign(patch, config.data);
         }
         offlineStore.patchStudentLocal(id, patch);
+        try {
+          const {
+            listCachedStudentSchoolIds,
+            getCachedStudentsForSchool,
+            cacheStudentsForSchool,
+          } = await import('./offline-students-cache');
+          for (const schoolId of listCachedStudentSchoolIds()) {
+            const durable = getCachedStudentsForSchool(schoolId);
+            if (!durable?.data?.length) continue;
+            const idx = durable.data.findIndex(
+              (row) => row && typeof row === 'object' && (row as { id?: string }).id === id,
+            );
+            if (idx < 0) continue;
+            const next = [...durable.data];
+            next[idx] = { ...(next[idx] as object), ...patch, id };
+            cacheStudentsForSchool(schoolId, { data: next, total: durable.total });
+            break;
+          }
+        } catch {
+          // ignore
+        }
       }
       return { _offline: true, id };
     }
@@ -512,9 +563,19 @@ export const offlineStore = {
     if (method === 'post' && url.includes('/students') && responseData && typeof responseData === 'object') {
       const list = listOfflineStudents();
       const matchIdx = list.findIndex((s) => s.syncOpId === op.id);
+      const tempId = matchIdx >= 0 ? list[matchIdx].id : null;
       if (matchIdx >= 0) {
         list.splice(matchIdx, 1);
         saveOfflineStudents(list);
+      }
+      const serverId =
+        typeof (responseData as { id?: string }).id === 'string'
+          ? (responseData as { id: string }).id
+          : null;
+      if (tempId && serverId && tempId !== serverId) {
+        void import('./sync-engine').then(({ syncEngine }) =>
+          syncEngine.remapStudentIdInQueue(tempId, serverId),
+        );
       }
       return;
     }

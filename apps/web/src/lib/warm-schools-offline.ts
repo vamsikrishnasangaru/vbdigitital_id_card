@@ -4,6 +4,10 @@ import { fetchClassesPicker } from '@/lib/classes-query';
 import { fetchAllStudents } from '@/lib/students-query';
 import { warmOfflineMediaFromClient } from '@/lib/offline-ready-verify';
 import { collectPhotoUrlsFromStudentCaches } from '@/lib/offline-students-cache';
+import {
+  cacheTemplateDetail,
+  collectTemplateMediaUrls,
+} from '@/lib/offline-template-details';
 import { resolveMediaUrl } from '@/lib/utils';
 
 type SchoolRow = { id: string; name?: string; code?: string };
@@ -34,9 +38,36 @@ function postWarmToServiceWorker(urls: string[]) {
     .catch(() => undefined);
 }
 
+async function warmTemplateDetails(
+  templates: Array<{ id?: string }>,
+  mediaSink: Set<string>,
+): Promise<void> {
+  const ids = templates.map((t) => t.id).filter((id): id is string => Boolean(id));
+  const queue = [...ids];
+  const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (!id) return;
+      try {
+        const { data } = await api.get(`/templates/${id}`);
+        if (data && typeof data === 'object') {
+          cacheTemplateDetail(data as Record<string, unknown> & { id: string });
+          collectTemplateMediaUrls(data as Record<string, unknown>).forEach((u) => {
+            const resolved = resolveMediaUrl(u);
+            if (resolved) mediaSink.add(resolved);
+          });
+        }
+      } catch {
+        // keep going
+      }
+    }
+  });
+  await Promise.all(workers);
+}
+
 /**
- * Prefetch students + templates + classes + student photos for every known school
- * so Super Admin can switch schools offline with faces visible.
+ * Prefetch students + template details + classes + media for every known school
+ * so Super Admin can preview/edit offline.
  */
 export async function warmAllSchoolsDirectoryData(): Promise<number> {
   if (typeof window === 'undefined' || !navigator.onLine) return 0;
@@ -56,7 +87,7 @@ export async function warmAllSchoolsDirectoryData(): Promise<number> {
   }
 
   let warmed = 0;
-  const allPhotoUrls = new Set<string>();
+  const allMediaUrls = new Set<string>();
   const queue = [...schools];
   const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
     while (queue.length > 0) {
@@ -69,14 +100,17 @@ export async function warmAllSchoolsDirectoryData(): Promise<number> {
         ]);
 
         const students = Array.isArray(studentsRes?.data) ? studentsRes.data : [];
-        photoUrlsFromStudents(students).forEach((u) => allPhotoUrls.add(u));
+        photoUrlsFromStudents(students).forEach((u) => allMediaUrls.add(u));
 
         const templates = Array.isArray(templatesRes)
           ? templatesRes
           : Array.isArray(templatesRes?.data)
             ? templatesRes.data
             : [];
-        if (templates.length) offlineStore.cacheTemplates(school.id, templates);
+        if (templates.length) {
+          offlineStore.cacheTemplates(school.id, templates);
+          await warmTemplateDetails(templates as Array<{ id?: string }>, allMediaUrls);
+        }
 
         await fetchClassesPicker(school.id).catch(() => undefined);
         warmed += 1;
@@ -90,11 +124,11 @@ export async function warmAllSchoolsDirectoryData(): Promise<number> {
 
   collectPhotoUrlsFromStudentCaches().forEach((u) => {
     const resolved = resolveMediaUrl(u);
-    if (resolved) allPhotoUrls.add(resolved);
+    if (resolved) allMediaUrls.add(resolved);
   });
 
-  const photoList = [...allPhotoUrls];
-  postWarmToServiceWorker(photoList);
-  await warmOfflineMediaFromClient(photoList).catch(() => 0);
+  const mediaList = [...allMediaUrls];
+  postWarmToServiceWorker(mediaList);
+  await warmOfflineMediaFromClient(mediaList).catch(() => 0);
   return warmed;
 }

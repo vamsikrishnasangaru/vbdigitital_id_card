@@ -102,6 +102,19 @@ export async function resolveOfflineGet(
   }
 
   if (url.includes('/templates')) {
+    const detailMatch = url.match(/^\/templates\/([^/?]+)$/);
+    if (detailMatch) {
+      const id = detailMatch[1];
+      const { getCachedTemplateDetail, getCachedTemplateDetailAsync } = await import(
+        './offline-template-details'
+      );
+      const detail =
+        getCachedTemplateDetail(id) || (await getCachedTemplateDetailAsync(id));
+      if (detail) return { data: { ...detail, _offline: true }, status: 200, config };
+      // Do not fall through to list cache — that has no frontConfig.
+      return null;
+    }
+
     const schoolId = params?.schoolId as string | undefined;
     const fromEntity = schoolId ? offlineStore.getTemplates(schoolId) : null;
     const fromGeneric = offlineGetCache.getTemplatesList(schoolId ?? undefined);
@@ -154,6 +167,22 @@ export async function resolveOfflineGet(
     if (fromCache) return { data: fromCache, status: 200, config };
     const local = offlineStore.getStudentById(id);
     if (local) return { data: local, status: 200, config };
+
+    const { listCachedStudentSchoolIds, getCachedStudentsForSchool, getCachedStudentsForSchoolAsync } =
+      await import('./offline-students-cache');
+    const schoolIds = listCachedStudentSchoolIds();
+    for (const schoolId of schoolIds) {
+      const durable =
+        getCachedStudentsForSchool(schoolId) ||
+        (await getCachedStudentsForSchoolAsync(schoolId));
+      const hit = durable?.data?.find(
+        (row) => row && typeof row === 'object' && (row as { id?: string }).id === id,
+      );
+      if (hit) {
+        const patched = offlineStore.applyLocalPatches(hit as { id: string });
+        return { data: { ...patched, _offline: true }, status: 200, config };
+      }
+    }
   }
 
   if (url === '/site-content' || url.startsWith('/site-content')) {
