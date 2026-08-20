@@ -4,6 +4,10 @@
 
 import type { InternalAxiosRequestConfig } from 'axios';
 import { offlineGetCache } from './offline-get-cache';
+import {
+  getCachedStudentsForSchool,
+  getCachedStudentsForSchoolAsync,
+} from './offline-students-cache';
 
 function apiPath(url: string): string {
   let path = url || '';
@@ -30,6 +34,66 @@ export async function resolveOfflineGet(
   const url = apiPath(config.url || '');
   const params = config.params as Record<string, string | number | undefined> | undefined;
 
+  const { offlineStore } = await import('./offline-store');
+  const { offlineClasses } = await import('./offline-classes');
+  const { offlineTeachers } = await import('./offline-teachers');
+
+  // Students: prefer durable per-school cache before generic GET cache (which evicts easily).
+  if (url === '/students' || (url.startsWith('/students') && !url.match(/\/students\/[^/]+/))) {
+    const pending = offlineStore.getPendingStudents(params);
+    const schoolId = typeof params?.schoolId === 'string' ? params.schoolId : '';
+
+    let cachedList =
+      (offlineGetCache.get('/students', params) as { data?: unknown[]; total?: number } | null) ??
+      null;
+
+    if (!cachedList && schoolId) {
+      cachedList =
+        (offlineGetCache.get('/students', {
+          schoolId,
+          limit: params?.limit ?? 100,
+        }) as { data?: unknown[]; total?: number } | null) ??
+        (offlineGetCache.get('/students', { schoolId }) as {
+          data?: unknown[];
+          total?: number;
+        } | null);
+    }
+
+    if ((!cachedList || !Array.isArray(cachedList.data) || cachedList.data.length === 0) && schoolId) {
+      const durable =
+        getCachedStudentsForSchool(schoolId) ||
+        (await getCachedStudentsForSchoolAsync(schoolId));
+      if (durable) {
+        cachedList = { data: durable.data, total: durable.total };
+      }
+    }
+
+    const serverList = Array.isArray(cachedList?.data) ? cachedList!.data : [];
+    const merged = offlineStore.mergeStudentsIntoList(
+      serverList as { id: string }[],
+      params,
+    );
+    if (merged.length > 0 || cachedList) {
+      return {
+        data: {
+          data: merged,
+          total: cachedList?.total ?? merged.length,
+          _offline: true,
+        },
+        status: 200,
+        config,
+      };
+    }
+    if (pending.length > 0) {
+      return {
+        data: { data: pending, total: pending.length, _offline: true },
+        status: 200,
+        config,
+      };
+    }
+    return ok(config, { data: [], total: 0, _offline: true });
+  }
+
   const cached =
     offlineGetCache.get(url, params) ??
     offlineGetCache.get(config.url || '', params);
@@ -37,16 +101,16 @@ export async function resolveOfflineGet(
     return ok(config, cached);
   }
 
-  const { offlineStore } = await import('./offline-store');
-  const { offlineClasses } = await import('./offline-classes');
-  const { offlineTeachers } = await import('./offline-teachers');
-
   if (url.includes('/templates')) {
     const schoolId = params?.schoolId as string | undefined;
     const fromEntity = schoolId ? offlineStore.getTemplates(schoolId) : null;
     const fromGeneric = offlineGetCache.getTemplatesList(schoolId ?? undefined);
     const hit = fromEntity ?? fromGeneric;
-    if (hit) return { data: hit, status: 200, config };
+    if (hit) {
+      // Entity cache stores raw arrays; API shape is often { data: [] }.
+      if (Array.isArray(hit)) return { data: { data: hit, _offline: true }, status: 200, config };
+      return { data: hit, status: 200, config };
+    }
   }
 
   if (url.includes('/classes/school/')) {
@@ -81,51 +145,6 @@ export async function resolveOfflineGet(
   if (url === '/schools' || url.startsWith('/schools')) {
     const hit = offlineStore.getSchools() ?? [];
     return ok(config, { data: hit, meta: { total: hit.length }, _offline: true });
-  }
-
-  if (url === '/students' || (url.startsWith('/students') && !url.match(/\/students\/[^/]+/))) {
-    const pending = offlineStore.getPendingStudents(params);
-    let cachedList =
-      (offlineGetCache.get('/students', params) as { data?: unknown[]; total?: number } | null) ??
-      null;
-
-    /** Exact query-key miss — still try a school-scoped list so filters work offline. */
-    if (!cachedList && params?.schoolId) {
-      cachedList =
-        (offlineGetCache.get('/students', {
-          schoolId: params.schoolId,
-          limit: params.limit ?? 100,
-        }) as { data?: unknown[]; total?: number } | null) ??
-        (offlineGetCache.get('/students', { schoolId: params.schoolId }) as {
-          data?: unknown[];
-          total?: number;
-        } | null);
-    }
-
-    const serverList = Array.isArray(cachedList?.data) ? cachedList!.data : [];
-    const merged = offlineStore.mergeStudentsIntoList(
-      serverList as { id: string }[],
-      params,
-    );
-    if (merged.length > 0 || cachedList) {
-      return {
-        data: {
-          data: merged,
-          total: cachedList?.total ?? merged.length,
-          _offline: true,
-        },
-        status: 200,
-        config,
-      };
-    }
-    if (pending.length > 0) {
-      return {
-        data: { data: pending, total: pending.length, _offline: true },
-        status: 200,
-        config,
-      };
-    }
-    return ok(config, { data: [], total: 0, _offline: true });
   }
 
   const studentById = url.match(/^\/students\/([^/?]+)$/);

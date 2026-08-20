@@ -104,6 +104,14 @@ function useOfflineSyncInternal(): OfflineSyncState {
 
     const interval = window.setInterval(refreshCounts, REFRESH_INTERVAL_MS);
 
+    // Prefetch every school's directory data once per tab while online.
+    if (navigator.onLine && !sessionStorage.getItem('vb-schools-dir-warmed')) {
+      sessionStorage.setItem('vb-schools-dir-warmed', '1');
+      void import('@/lib/warm-schools-offline')
+        .then(({ warmAllSchoolsDirectoryData }) => warmAllSchoolsDirectoryData())
+        .catch(() => undefined);
+    }
+
     return () => {
       window.removeEventListener('online', syncOnline);
       window.removeEventListener('offline', syncOnline);

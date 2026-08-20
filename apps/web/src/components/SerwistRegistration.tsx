@@ -8,6 +8,7 @@ import {
   setOfflineReadyProgress,
 } from '@/lib/offline-ready';
 import { verifyOfflineCacheReady, warmOfflineCachesFromClient, warmOfflineMediaFromClient, collectOfflineMediaUrls } from '@/lib/offline-ready-verify';
+import { warmAllSchoolsDirectoryData } from '@/lib/warm-schools-offline';
 
 const swDisabled = process.env.NEXT_PUBLIC_DISABLE_SW === 'true';
 const isDev = process.env.NODE_ENV === 'development';
@@ -398,6 +399,10 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
 
             await warmOfflineCachesFromClient(CRITICAL_OFFLINE_ROUTES);
             await warmAssets();
+            if (!isWarmActive()) return;
+
+            // Super Admin: cache every school's students/templates while online.
+            await warmAllSchoolsDirectoryData().catch(() => 0);
             if (!isWarmActive()) return;
 
             for (let attempt = 0; attempt < 8 && isWarmActive(); attempt += 1) {

@@ -1,3 +1,4 @@
+import { getCachedStudentsForSchool } from './offline-students-cache';
 import { offlineGetCache } from './offline-get-cache';
 import { offlineStore } from './offline-store';
 
@@ -10,11 +11,23 @@ export type StudentsListResponse = {
 };
 
 function pickCachedStudents(params: StudentsListParams): StudentsListResponse | undefined {
+  const schoolId = typeof params.schoolId === 'string' ? params.schoolId : '';
+
+  if (schoolId) {
+    const durable = getCachedStudentsForSchool(schoolId);
+    if (durable?.data?.length) {
+      const merged = offlineStore.mergeStudentsIntoList(
+        durable.data as { id: string }[],
+        params,
+      );
+      return { data: merged, total: durable.total, _offline: true };
+    }
+  }
+
   const cached =
     (offlineGetCache.get('/students', params) as StudentsListResponse | null) ?? null;
   if (cached && (Array.isArray(cached.data) || cached.total != null)) return cached;
 
-  const schoolId = params.schoolId;
   if (schoolId) {
     const scoped =
       (offlineGetCache.get('/students', {

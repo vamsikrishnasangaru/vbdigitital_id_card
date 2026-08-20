@@ -5,11 +5,11 @@
 
 const CACHE_KEY = 'vb_offline_get_cache';
 /** Fewer entries — large student/template lists fill quota quickly. */
-const MAX_ENTRIES = 64;
-/** Skip caching single responses larger than ~400KB (student lists need room). */
-const MAX_ENTRY_BYTES = 400_000;
-/** Hard cap for the whole cache (~3MB). */
-const MAX_STORE_BYTES = 3_000_000;
+const MAX_ENTRIES = 120;
+/** Skip caching single responses larger than ~1.2MB (student lists need room). */
+const MAX_ENTRY_BYTES = 1_200_000;
+/** Hard cap for the whole cache (~5MB). */
+const MAX_STORE_BYTES = 5_000_000;
 
 type CacheEntry = {
   data: unknown;

@@ -191,6 +191,34 @@ api.interceptors.response.use(
     emitServerStatus(false);
     if (config.method?.toLowerCase() === 'get' && response.data !== undefined) {
       offlineGetCache.set(config.url || '', config.params, response.data);
+
+      // Durable per-school student lists (survives generic GET cache eviction).
+      const path = (config.url || '').split('?')[0] || '';
+      const isStudentsList =
+        path === '/students' ||
+        path.endsWith('/students') ||
+        /\/api\/v\d+\/students\/?$/.test(path);
+      const schoolId = (config.params as { schoolId?: string } | undefined)?.schoolId;
+      if (isStudentsList && schoolId) {
+        void import('./offline-students-cache').then(({ cacheStudentsForSchool }) => {
+          cacheStudentsForSchool(schoolId, response.data);
+        });
+      }
+
+      // Keep templates by school for Super Admin offline switching.
+      const isTemplates =
+        path.includes('/templates') &&
+        !/\/templates\/[^/]+/.test(path.replace(/\/api\/v\d+/, ''));
+      if (isTemplates && schoolId && response.data) {
+        void import('./offline-store').then(({ offlineStore }) => {
+          const list = Array.isArray(response.data)
+            ? response.data
+            : Array.isArray(response.data?.data)
+              ? response.data.data
+              : null;
+          if (list) offlineStore.cacheTemplates(schoolId, list);
+        });
+      }
     }
     return response;
   },
