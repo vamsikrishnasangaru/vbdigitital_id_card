@@ -40,7 +40,7 @@ import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
 import { isStudentIncomplete, type StudentCompletionFields } from '@/lib/student-completion';
 import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
-import { getCachedStudentsList } from '@/lib/students-query';
+import { getCachedStudentsList, fetchAllStudents } from '@/lib/students-query';
 import {
   classesQueryKey,
   classesQueryStaleTime,
@@ -329,7 +329,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
   // Queries
   const studentsQueryParams = useMemo(
     () => {
-      const params: Record<string, string | number> = { limit: viewAllSchools ? 500 : 100 };
+      const params: Record<string, string | number> = {};
       if (!viewAllSchools && effectiveSchoolId) params.schoolId = effectiveSchoolId;
       if (deferredSearch) params.search = deferredSearch;
       if (!viewAllSchools && statusFilter === 'COMPLETE') params.completion = 'COMPLETE';
@@ -365,8 +365,14 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       },
     ],
     queryFn: async () => {
-      const { data } = await api.get('/students', { params: studentsQueryParams });
-      return data;
+      if (viewAllSchools) {
+        // Cross-school browse stays capped; school-scoped lists fetch every page.
+        const { data } = await api.get('/students', {
+          params: { ...studentsQueryParams, limit: 500 },
+        });
+        return data;
+      }
+      return fetchAllStudents(studentsQueryParams);
     },
     enabled: isSuperAdmin ? viewAllSchools || !!effectiveSchoolId : !!effectiveSchoolId,
     placeholderData: () => getCachedStudentsList(studentsQueryParams),

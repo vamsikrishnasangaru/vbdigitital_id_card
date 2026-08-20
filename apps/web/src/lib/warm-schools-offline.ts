@@ -1,7 +1,7 @@
 import api from '@/lib/api';
 import { offlineStore } from '@/lib/offline-store';
 import { fetchClassesPicker } from '@/lib/classes-query';
-import { cacheStudentsForSchool } from '@/lib/offline-students-cache';
+import { fetchAllStudents } from '@/lib/students-query';
 import { warmOfflineMediaFromClient } from '@/lib/offline-ready-verify';
 
 type SchoolRow = { id: string; name?: string; code?: string };
@@ -34,12 +34,10 @@ export async function warmAllSchoolsDirectoryData(): Promise<number> {
       const school = queue.shift();
       if (!school?.id) continue;
       try {
-        const [{ data: studentsRes }, { data: templatesRes }] = await Promise.all([
-          api.get('/students', { params: { schoolId: school.id, limit: 500 } }),
+        const [, { data: templatesRes }] = await Promise.all([
+          fetchAllStudents({ schoolId: school.id }),
           api.get('/templates', { params: { schoolId: school.id } }),
         ]);
-
-        if (studentsRes) cacheStudentsForSchool(school.id, studentsRes);
 
         const templates = Array.isArray(templatesRes)
           ? templatesRes
