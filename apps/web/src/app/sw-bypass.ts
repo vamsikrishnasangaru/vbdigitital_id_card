@@ -3,9 +3,44 @@
  * Serwist NetworkOnly throws `no-response` when the network fails (502 / down).
  */
 
-const PAGE_CACHE = 'vb-html-pages-v2';
-const RSC_CACHE = 'vb-rsc-flights-v2';
-const STATIC_CACHE = 'vb-static-shell-v1';
+const UPLOAD_CACHE = 'api-upload-assets';
+const DEV_ASSET_CACHE = 'vb-offline-assets-v7';
+const STATIC_IMAGE_CACHE = 'static-image-assets';
+
+const TRANSPARENT_PNG = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
+  (c) => c.charCodeAt(0),
+);
+
+function isUploadAsset(url: URL): boolean {
+  return /^\/api\/v\d+\/uploads\//i.test(url.pathname);
+}
+
+async function matchUploadAsset(request: Request, url: URL): Promise<Response | undefined> {
+  const names = [UPLOAD_CACHE, DEV_ASSET_CACHE, STATIC_IMAGE_CACHE];
+  for (const name of names) {
+    const cache = await caches.open(name);
+    const hit =
+      (await cache.match(request)) ||
+      (await cache.match(request, { ignoreSearch: true })) ||
+      (await cache.match(url.href)) ||
+      (await cache.match(url.pathname));
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+async function cacheUploadAsset(request: Request, url: URL, response: Response): Promise<void> {
+  if (!response.ok) return;
+  const cache = await caches.open(UPLOAD_CACHE);
+  await putCacheable(cache, request, response);
+  try {
+    await putCacheable(cache, new Request(url.href), response);
+    if (url.pathname) await putCacheable(cache, new Request(url.pathname), response);
+  } catch {
+    /* ignore */
+  }
+}
 
 /** Minimal manifest so Chrome does not log a fetch failure while offline. */
 const OFFLINE_MANIFEST = JSON.stringify({
@@ -46,9 +81,8 @@ export function shouldBypassServiceWorker(request: Request, url: URL): boolean {
     url.hostname === self.location.hostname && /^\/api\/v\d+\//i.test(url.pathname);
   if (!sameOrigin && !sameHostApi) return false;
 
-  /** All API traffic — including POST login — must not go through Serwist (avoids no-response when server is down). */
+  /** API (including upload images) — handled in passthroughFetch, not Serwist. */
   if (url.pathname.startsWith('/api/')) {
-    if (request.method === 'GET' && /^\/api\/v\d+\/uploads\//i.test(url.pathname)) return false;
     return true;
   }
 
@@ -195,6 +229,32 @@ export async function passthroughFetch(
         ? STATIC_CACHE
         : null;
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const uploadAsset = isUploadAsset(url);
+
+  if (uploadAsset) {
+    const cached = await matchUploadAsset(request, url);
+    if (cached) return cached;
+    if (offline) {
+      return new Response(TRANSPARENT_PNG, {
+        status: 404,
+        statusText: 'Offline',
+        headers: { 'Content-Type': 'image/png' },
+      });
+    }
+    try {
+      const response = await fetch(request);
+      if (response.ok) await cacheUploadAsset(request, url, response);
+      return response;
+    } catch {
+      const again = await matchUploadAsset(request, url);
+      if (again) return again;
+      return new Response(TRANSPARENT_PNG, {
+        status: 404,
+        statusText: 'Offline',
+        headers: { 'Content-Type': 'image/png' },
+      });
+    }
+  }
 
   if (offline) {
     if (apiRequest) {

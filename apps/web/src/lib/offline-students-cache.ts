@@ -141,3 +141,37 @@ export function cacheStudentsForSchool(
 
   void mirrorOfflineKeyToIndexedDb(key, entry);
 }
+
+/** All school ids that have a durable students cache. */
+export function listCachedStudentSchoolIds(): string[] {
+  return listMeta();
+}
+
+/** Collect photo / media URLs from durable per-school student lists. */
+export function collectPhotoUrlsFromStudentCaches(): string[] {
+  if (typeof window === 'undefined') return [];
+  const urls = new Set<string>();
+  const ids = listMeta();
+  // Also scan keys in case meta is incomplete.
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith(KEY_PREFIX)) continue;
+    const schoolId = key.slice(KEY_PREFIX.length);
+    if (schoolId && !ids.includes(schoolId)) ids.push(schoolId);
+  }
+
+  for (const schoolId of ids) {
+    const cached = getCachedStudentsForSchool(schoolId);
+    if (!cached?.data?.length) continue;
+    for (const row of cached.data) {
+      if (!row || typeof row !== 'object') continue;
+      const s = row as Record<string, unknown>;
+      for (const field of ['photoUrl', 'originalPhotoUrl', 'logoUrl'] as const) {
+        const raw = s[field];
+        if (typeof raw !== 'string' || !raw || raw.startsWith('data:')) continue;
+        urls.add(raw);
+      }
+    }
+  }
+  return [...urls];
+}

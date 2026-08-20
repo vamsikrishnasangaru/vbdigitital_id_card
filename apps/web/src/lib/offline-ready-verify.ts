@@ -1,5 +1,6 @@
 import { resolveMediaUrl } from '@/lib/utils';
 import { OFFLINE_STORAGE_KEYS } from '@/lib/offline-store-keys';
+import { collectPhotoUrlsFromStudentCaches } from '@/lib/offline-students-cache';
 
 const CRITICAL_ROUTES = ['/dashboard', '/students', '/schools', '/teachers', '/classes'];
 /** Must match apps/web/public/vb-offline-sw.js cache names so SW can serve them offline. */
@@ -92,6 +93,12 @@ export function collectOfflineMediaUrls(): string[] {
     });
   });
 
+  // Durable Super Admin student lists (main photo source while offline).
+  collectPhotoUrlsFromStudentCaches().forEach((raw) => {
+    const href = normalizeMediaCandidate(raw);
+    if (href) urls.add(href);
+  });
+
   const storageKeys = new Set<string>(Object.values(OFFLINE_STORAGE_KEYS));
   for (let i = 0; i < localStorage.length; i += 1) {
     const key = localStorage.key(i);
@@ -99,7 +106,8 @@ export function collectOfflineMediaUrls(): string[] {
     if (
       !storageKeys.has(key as (typeof OFFLINE_STORAGE_KEYS)[keyof typeof OFFLINE_STORAGE_KEYS]) &&
       !key.includes('vb-id-cards-query-cache') &&
-      !key.includes('vb_offline')
+      !key.includes('vb_offline') &&
+      !key.startsWith('vb_school_students::')
     ) {
       continue;
     }
@@ -170,9 +178,9 @@ export async function warmOfflineMediaFromClient(extraUrls: string[] = []): Prom
   ]);
 
   let cached = 0;
-  // Limit concurrency so we don't flood the API during warm.
+  // Higher concurrency for photo warm — faces are the offline UX bottleneck.
   const queue = [...urls];
-  const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
+  const workers = Array.from({ length: Math.min(10, queue.length) }, async () => {
     while (queue.length > 0) {
       const url = queue.shift();
       if (!url) return;
@@ -184,6 +192,17 @@ export async function warmOfflineMediaFromClient(extraUrls: string[] = []): Prom
     }
   });
   await Promise.all(workers);
+
+  // Ask the controlling SW to mirror into its runtime caches too.
+  try {
+    const worker = navigator.serviceWorker?.controller;
+    if (worker && urls.length > 0) {
+      worker.postMessage({ type: 'WARM_ASSETS', urls });
+    }
+  } catch {
+    // ignore
+  }
+
   return cached;
 }
 
