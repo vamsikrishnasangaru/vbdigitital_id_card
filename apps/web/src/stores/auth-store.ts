@@ -28,33 +28,10 @@ function clearSession() {
   localStorage.removeItem('loginTimestamp');
 }
 
-function loadSession(): { user: User | null; isAuthenticated: boolean; isLoading: boolean } {
-  if (typeof window === 'undefined') {
-    return { user: null, isAuthenticated: false, isLoading: true };
-  }
-  const userStr = localStorage.getItem('user');
-  const token = localStorage.getItem('accessToken');
-  if (!userStr || !token) {
-    return { user: null, isAuthenticated: false, isLoading: false };
-  }
-  try {
-    const user = JSON.parse(userStr) as User;
-    if (user.role !== 'SUPER_ADMIN') {
-      const loginTs = Number(localStorage.getItem('loginTimestamp') || '0');
-      const SESSION_MAX_MS = 7 * 24 * 60 * 60 * 1000;
-      if (loginTs > 0 && Date.now() - loginTs > SESSION_MAX_MS) {
-        clearSession();
-        return { user: null, isAuthenticated: false, isLoading: false };
-      }
-    }
-    return { user, isAuthenticated: true, isLoading: false };
-  } catch {
-    return { user: null, isAuthenticated: false, isLoading: false };
-  }
-}
-
 export const useAuthStore = create<AuthState>((set) => ({
-  ...loadSession(),
+  user: null,
+  isAuthenticated: false,
+  isLoading: true,
 
   login: (user, accessToken, refreshToken) => {
     localStorage.setItem('accessToken', accessToken);
