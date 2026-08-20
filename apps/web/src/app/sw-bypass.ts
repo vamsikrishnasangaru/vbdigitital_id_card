@@ -3,6 +3,9 @@
  * Serwist NetworkOnly throws `no-response` when the network fails (502 / down).
  */
 
+const PAGE_CACHE = 'vb-html-pages-v2';
+const RSC_CACHE = 'vb-rsc-flights-v2';
+const STATIC_CACHE = 'vb-static-shell-v1';
 const UPLOAD_CACHE = 'api-upload-assets';
 const DEV_ASSET_CACHE = 'vb-offline-assets-v7';
 const STATIC_IMAGE_CACHE = 'static-image-assets';
