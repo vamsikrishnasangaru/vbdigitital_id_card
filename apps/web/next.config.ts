@@ -16,7 +16,21 @@ const withSerwist = withSerwistInit({
    * ONNX Runtime WASM (~24MB) is loaded on demand for background removal.
    * Do not precache it — it would bloat the service worker install.
    */
-  exclude: [/ort-wasm/i, /\.wasm$/i],
+  exclude: [
+    /ort-wasm/i,
+    /\.wasm$/i,
+    /\/_next\/static\/.*\/_buildManifest\.js$/i,
+    /\/_next\/static\/.*\/_ssgManifest\.js$/i,
+  ],
+  manifestTransforms: [
+    async (entries) => {
+      const manifest = entries.filter((entry) => {
+        const url = typeof entry === 'string' ? entry : entry.url;
+        return !/_next\/static\/[^/]+\/_(?:build|ssg)Manifest\.js$/i.test(url);
+      });
+      return { manifest, warnings: [] };
+    },
+  ],
   /** Stable revision per deploy — avoids invalidating the entire SW cache on every build. */
   additionalPrecacheEntries: isDevelopment
     ? []

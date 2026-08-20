@@ -2,9 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-import { SwDevBootstrap } from "@/components/SwDevBootstrap";
-import { AppVersionBootstrap } from "@/components/AppVersionBootstrap";
-import { SchoolColorBootstrap } from "@/components/SchoolColorBootstrap";
+import { OfflineBootFallback } from "@/components/OfflineBootFallback";
 import { SyncIndicator } from "@/components/SyncIndicator";
 
 const inter = Inter({
@@ -48,12 +46,8 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <AppVersionBootstrap />
-        <SchoolColorBootstrap />
-        <SwDevBootstrap />
-      </head>
       <body className={`${inter.variable} font-sans min-h-screen antialiased`}>
+        <OfflineBootFallback />
         <Providers>
           {children}
           <SyncIndicator />

@@ -11,6 +11,9 @@ import {
   type RuntimeCaching,
 } from "serwist";
 
+export const UPLOAD_CACHE_NAME = "api-upload-assets";
+export const STATIC_IMAGE_CACHE_NAME = "static-image-assets";
+
 export const runtimeCaching: RuntimeCaching[] = [
   {
     matcher: /^https:\/\/fonts\.(?:gstatic)\.com\/.*/i,
@@ -51,13 +54,31 @@ export const runtimeCaching: RuntimeCaching[] = [
       ],
     }),
   },
+  /** Uploaded photos / logos — MUST be before the generic image-extension rule. */
   {
-    matcher: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
-    handler: new StaleWhileRevalidate({
-      cacheName: "static-image-assets",
+    matcher: ({ sameOrigin, url: { pathname } }) =>
+      sameOrigin && /^\/api\/v\d+\/uploads\//i.test(pathname),
+    handler: new CacheFirst({
+      cacheName: UPLOAD_CACHE_NAME,
       plugins: [
         new ExpirationPlugin({
-          maxEntries: 64,
+          maxEntries: 512,
+          maxAgeSeconds: 30 * 24 * 60 * 60,
+          maxAgeFrom: "last-used",
+        }),
+      ],
+    }),
+  },
+  {
+    matcher: ({ url: { pathname } }) => {
+      if (/^\/api\/v\d+\/uploads\//i.test(pathname)) return false;
+      return /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i.test(pathname);
+    },
+    handler: new StaleWhileRevalidate({
+      cacheName: STATIC_IMAGE_CACHE_NAME,
+      plugins: [
+        new ExpirationPlugin({
+          maxEntries: 128,
           maxAgeSeconds: 720 * 60 * 60,
           maxAgeFrom: "last-used",
         }),
@@ -166,21 +187,6 @@ export const runtimeCaching: RuntimeCaching[] = [
         new ExpirationPlugin({
           maxEntries: 32,
           maxAgeSeconds: 1440 * 60,
-          maxAgeFrom: "last-used",
-        }),
-      ],
-    }),
-  },
-  /** Uploaded photos / template backgrounds — cache for offline card preview. */
-  {
-    matcher: ({ sameOrigin, url: { pathname } }) =>
-      sameOrigin && /^\/api\/v\d+\/uploads\//.test(pathname),
-    handler: new CacheFirst({
-      cacheName: "api-upload-assets",
-      plugins: [
-        new ExpirationPlugin({
-          maxEntries: 256,
-          maxAgeSeconds: 30 * 24 * 60 * 60,
           maxAgeFrom: "last-used",
         }),
       ],

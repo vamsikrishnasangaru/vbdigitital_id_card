@@ -6,6 +6,7 @@
 import { OFFLINE_STORAGE_KEYS } from './offline-store-keys';
 import { offlineClasses } from './offline-classes';
 import { offlineTeachers } from './offline-teachers';
+import { mirrorOfflineKeyToIndexedDb } from './offline-indexeddb';
 
 export { OFFLINE_STORAGE_KEYS };
 
@@ -66,6 +67,7 @@ function writeLocal(key: string, value: unknown, options?: { notify?: boolean })
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    void mirrorOfflineKeyToIndexedDb(key, value);
     if (options?.notify !== false) {
       window.dispatchEvent(new CustomEvent('vb-offline-data-changed'));
     }
@@ -76,6 +78,92 @@ function writeLocal(key: string, value: unknown, options?: { notify?: boolean })
 
 export function isBrowserOnline(): boolean {
   return typeof navigator !== 'undefined' ? navigator.onLine : true;
+}
+
+/** Chrome DevTools "Offline" often leaves navigator.onLine === true. */
+let forcedOffline = false;
+let probeInFlight: Promise<void> | null = null;
+let lastProbeAt = 0;
+
+function readForcedOfflineFlag(): boolean {
+  if (typeof sessionStorage === 'undefined') return false;
+  try {
+    return sessionStorage.getItem('vb-forced-offline') === '1';
+  } catch {
+    return false;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  forcedOffline = readForcedOfflineFlag();
+  window.addEventListener('vb-connectivity-changed', (e) => {
+    const online = (e as CustomEvent<{ online?: boolean }>).detail?.online;
+    forcedOffline = online === false;
+  });
+  window.addEventListener('offline', () => {
+    forcedOffline = true;
+  });
+  window.addEventListener('online', () => {
+    clearForcedOffline();
+  });
+}
+
+/** Clear sticky DevTools/HMR offline flag when the browser reports online. */
+export function clearForcedOfflineFlag(): void {
+  clearForcedOffline();
+}
+
+function clearForcedOffline() {
+  forcedOffline = false;
+  if (typeof sessionStorage !== 'undefined') {
+    try {
+      sessionStorage.removeItem('vb-forced-offline');
+    } catch {
+      // ignore
+    }
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('vb-connectivity-changed', { detail: { online: true } }));
+  }
+}
+
+function maybeProbeConnectivity(): void {
+  if (typeof window === 'undefined') return;
+  if (!navigator.onLine) return;
+  const now = Date.now();
+  if (probeInFlight) return;
+  if (now - lastProbeAt < 4000) return;
+  lastProbeAt = now;
+  probeInFlight = fetch(`/__vb-hmr-probe?t=${now}`, {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  })
+    .then((res) => {
+      // Any non-5xx response means the app server is reachable again.
+      if (res.status < 500) clearForcedOffline();
+    })
+    .catch(() => {
+      // keep forced-offline until next successful probe
+    })
+    .finally(() => {
+      probeInFlight = null;
+    });
+}
+
+/** True when the app should use offline caches/adapters (includes DevTools offline). */
+export function isEffectivelyOffline(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  if (!navigator.onLine) return true;
+  if (forcedOffline) {
+    maybeProbeConnectivity();
+    return true;
+  }
+  if (readForcedOfflineFlag()) {
+    forcedOffline = true;
+    maybeProbeConnectivity();
+    return true;
+  }
+  return false;
 }
 
 export function createOfflineStudentId(): string {

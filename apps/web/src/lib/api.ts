@@ -1,5 +1,5 @@
 import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios';
-import { isBrowserOnline } from './offline-store';
+import { isEffectivelyOffline } from './offline-store';
 import { offlineGetCache } from './offline-get-cache';
 import { resolveOfflineGet } from './api-offline-handlers';
 
@@ -24,7 +24,7 @@ export const api = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
   /** Dead Wi‑Fi / hung Chrome-offline sockets must fail fast into local data. */
-  timeout: 8_000,
+  timeout: 4_000,
 });
 
 let offlineMutationToastShown = false;
@@ -89,7 +89,7 @@ const networkAdapter = axios.getAdapter(['xhr', 'http']);
 api.defaults.adapter = async (config) => {
   const cfg = config as VbAxiosConfig;
   const skip = cfg._skipOfflineQueue;
-  if (typeof window !== 'undefined' && !skip && !isBrowserOnline()) {
+  if (typeof window !== 'undefined' && !skip && isEffectivelyOffline()) {
     emitServerStatus(true);
     const method = (cfg.method || 'get').toLowerCase();
     const url = (cfg.url || '').toLowerCase();
@@ -174,7 +174,7 @@ function isOfflineLikeFailure(error: unknown): boolean {
     return false;
   }
 
-  if (!isBrowserOnline()) return true;
+  if (isEffectivelyOffline()) return true;
 
   const status = ax.response?.status;
   if (status === 502 || status === 503 || status === 504) return true;

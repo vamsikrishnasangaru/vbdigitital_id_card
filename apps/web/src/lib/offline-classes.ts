@@ -3,6 +3,7 @@
  */
 
 import { OFFLINE_STORAGE_KEYS } from './offline-store-keys';
+import { mirrorOfflineKeyToIndexedDb } from './offline-indexeddb';
 
 const KEYS = OFFLINE_STORAGE_KEYS;
 
@@ -66,6 +67,7 @@ function writeLocal(key: string, value: unknown, options?: { notify?: boolean })
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    void mirrorOfflineKeyToIndexedDb(key, value);
     if (options?.notify !== false) {
       window.dispatchEvent(new CustomEvent('vb-offline-data-changed'));
     }

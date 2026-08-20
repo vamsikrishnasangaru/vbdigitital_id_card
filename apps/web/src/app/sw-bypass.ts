@@ -41,7 +41,10 @@ const OFFLINE_HTML = `<!DOCTYPE html>
 </html>`;
 
 export function shouldBypassServiceWorker(request: Request, url: URL): boolean {
-  if (url.origin !== self.location.origin) return false;
+  const sameOrigin = url.origin === self.location.origin;
+  const sameHostApi =
+    url.hostname === self.location.hostname && /^\/api\/v\d+\//i.test(url.pathname);
+  if (!sameOrigin && !sameHostApi) return false;
 
   /** All API traffic — including POST login — must not go through Serwist (avoids no-response when server is down). */
   if (url.pathname.startsWith('/api/')) {
@@ -50,6 +53,10 @@ export function shouldBypassServiceWorker(request: Request, url: URL): boolean {
   }
 
   if (request.method !== 'GET') return false;
+
+  /** Dev-only HMR probe — let it hit the network so Chrome Offline fails the fetch. */
+  if (url.pathname.startsWith('/vb-hmr-probe')) return false;
+  if (url.pathname.startsWith('/__vb-hmr-probe')) return false;
 
   if (url.pathname === '/manifest.json' || url.pathname === '/sw.js') return true;
   if (url.pathname === '/icon.svg' || url.pathname === '/apple-icon.svg') return true;
@@ -78,6 +85,11 @@ function isRscRequest(request: Request, url: URL): boolean {
     Boolean(request.headers.get('Next-Router-State-Tree')) ||
     Boolean(request.headers.get('Accept')?.includes('text/x-component'))
   );
+}
+
+function navigationFallbackCandidates(pathname: string): string[] {
+  /** Never serve another route shell (e.g. dashboard for /schools). */
+  return [pathname];
 }
 
 async function matchInCache(cacheName: string, request: Request): Promise<Response | undefined> {
@@ -109,6 +121,18 @@ async function putCacheable(cache: Cache, request: Request, response: Response):
       headers,
     }),
   );
+}
+
+async function cacheDocumentAliases(cache: Cache, request: Request, response: Response): Promise<void> {
+  await putCacheable(cache, request, response);
+  try {
+    const path = new URL(request.url).pathname;
+    if (path && path !== '/') {
+      await putCacheable(cache, new Request(path), response);
+    }
+  } catch {
+    /* ignore malformed URL */
+  }
 }
 
 async function matchOfflineDocument(
@@ -159,6 +183,7 @@ export async function passthroughFetch(
   fallbackDocument?: () => Promise<Response | undefined>,
 ): Promise<Response> {
   const url = new URL(request.url);
+  const apiRequest = /^\/api\/v\d+\//i.test(url.pathname);
   const documentRequest = isDocumentRequest(request);
   const rscRequest = isRscRequest(request, url);
   const shellAsset = isShellAsset(url);
@@ -172,10 +197,13 @@ export async function passthroughFetch(
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
 
   if (offline) {
+    if (apiRequest) {
+      return new Response(null, { status: 503, statusText: 'Network Unavailable' });
+    }
     if (documentRequest) {
       const cached = await matchInCache(PAGE_CACHE, request);
       if (cached) return cached;
-      for (const path of ['/dashboard', '/students', '/schools', '/', '/info']) {
+      for (const path of navigationFallbackCandidates(url.pathname)) {
         const shell = await caches.match(path, { ignoreSearch: true });
         if (shell) return shell;
       }
@@ -186,6 +214,12 @@ export async function passthroughFetch(
       if (cached) return cached;
     }
     if (shellAsset) return shellAssetFallback(request, url);
+    if (url.pathname === '/sw.js') {
+      return new Response('// offline', {
+        status: 200,
+        headers: { 'Content-Type': 'application/javascript; charset=utf-8' },
+      });
+    }
     return new Response(null, { status: 503, statusText: 'Network Unavailable' });
   }
 
@@ -194,7 +228,8 @@ export async function passthroughFetch(
     if (cacheName && response.ok) {
       try {
         const cache = await caches.open(cacheName);
-        await putCacheable(cache, request, response);
+        if (documentRequest) await cacheDocumentAliases(cache, request, response);
+        else await putCacheable(cache, request, response);
       } catch {
         /* quota / opaque / private mode */
       }
@@ -210,11 +245,14 @@ export async function passthroughFetch(
     }
     return response;
   } catch {
+    if (apiRequest) {
+      return new Response(null, { status: 503, statusText: 'Network Unavailable' });
+    }
     if (documentRequest) {
       const cached = await matchInCache(PAGE_CACHE, request);
       if (cached) return cached;
       /** Prefer a previously visited app shell over the bare offline tip page. */
-      for (const path of ['/dashboard', '/students', '/', '/info']) {
+      for (const path of navigationFallbackCandidates(url.pathname)) {
         const shell = await caches.match(path, { ignoreSearch: true });
         if (shell) return shell;
       }

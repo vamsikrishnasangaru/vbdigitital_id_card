@@ -2,24 +2,65 @@
  * Dev offline shell: caches navigations + Next.js static assets after you visit them online.
  * Production uses Serwist (/sw.js).
  */
-const PAGE_CACHE = "vb-offline-pages-v4";
-const ASSET_CACHE = "vb-offline-assets-v4";
+const PAGE_CACHE = "vb-offline-pages-v7";
+const ASSET_CACHE = "vb-offline-assets-v7";
+const RSC_CACHE = "vb-offline-rsc-v4";
 const OFFLINE_PAGE = "/~offline";
 
+/** Public shells only — auth pages are warmed after a signed-in visit (SerwistRegistration). */
 const WARM_URLS = [
   "/",
   OFFLINE_PAGE,
   "/info",
-  "/dashboard",
-  "/students",
-  "/classes",
-  "/teachers",
-  "/id-cards",
-  "/schools",
   "/icon.svg",
   "/apple-icon.svg",
   "/manifest.json",
 ];
+
+/** Pull script/link URLs out of HTML so offline reload has the JS/CSS shells need. */
+function extractAssetUrls(html, pageUrl) {
+  const urls = [];
+  const re = /(?:src|href)=["']([^"']+)["']/gi;
+  let match;
+  while ((match = re.exec(html))) {
+    const raw = match[1];
+    if (!raw || raw.startsWith("data:") || raw.startsWith("blob:")) continue;
+    try {
+      const abs = new URL(raw, pageUrl);
+      if (abs.origin !== self.location.origin) continue;
+      const p = abs.pathname;
+      if (
+        p.startsWith("/_next/") ||
+        p === "/manifest.json" ||
+        /\.(?:js|css|woff2?|ttf|otf|eot|svg|png|webp)$/i.test(p)
+      ) {
+        urls.push(abs.href);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...new Set(urls)];
+}
+
+async function warmAssetsFromHtml(html, pageUrl) {
+  const urls = extractAssetUrls(html, pageUrl);
+  if (urls.length === 0) return;
+  const cache = await caches.open(ASSET_CACHE);
+  await Promise.allSettled(
+    urls.map(async (url) => {
+      try {
+        const existing =
+          (await cache.match(url)) || (await cache.match(url, { ignoreSearch: true }));
+        if (existing) return;
+        const res = await fetchWithTimeout(url, 4000);
+        if (res.ok) await putCacheable(cache, url, res);
+      } catch {
+        /* ignore */
+      }
+    }),
+  );
+}
 
 function sameOrigin(url) {
   try {
@@ -36,18 +77,16 @@ function isNavigateRequest(request) {
   );
 }
 
-/** Next.js dev/prod bundles, styles, manifest, fonts. */
+/** Next.js dev/prod bundles, styles, manifest, fonts, turbopack chunks. */
 function isStaticAsset(url) {
   const { pathname } = new URL(url);
   return (
-    pathname.startsWith("/_next/static/") ||
-    pathname.startsWith("/_next/data/") ||
-    pathname.startsWith("/_next/image") ||
+    pathname.startsWith("/_next/") ||
     pathname === "/manifest.json" ||
     pathname === "/favicon.ico" ||
     pathname === "/icon.svg" ||
     pathname === "/apple-icon.svg" ||
-    /\.(?:woff2?|ttf|otf|eot|svg|png|webmanifest)$/i.test(pathname)
+    /\.(?:woff2?|ttf|otf|eot|svg|png|webmanifest|js|css|map)$/i.test(pathname)
   );
 }
 
@@ -69,17 +108,46 @@ function fetchWithTimeout(request, ms) {
 }
 
 async function matchPage(cache, request) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+  /** Never map one route to another route's HTML shell. */
+  const candidates = [path, OFFLINE_PAGE];
+
+  for (const candidate of candidates) {
+    const hit =
+      (await cache.match(candidate)) ||
+      (await cache.match(candidate, { ignoreSearch: true }));
+    if (hit) return hit;
+  }
+
   return (
     (await cache.match(request.url)) ||
     (await cache.match(request, { ignoreSearch: true })) ||
-    (await cache.match("/dashboard")) ||
-    (await cache.match("/")) ||
-    (await cache.match(OFFLINE_PAGE)) ||
+    (await cache.match(path)) ||
     null
   );
 }
 
-async function handleNavigate(request) {
+async function warmRoute(routeUrl) {
+  const pageCache = await caches.open(PAGE_CACHE);
+  try {
+    const req = new Request(routeUrl, {
+      credentials: "same-origin",
+      headers: { Accept: "text/html,application/xhtml+xml" },
+    });
+    const response = await fetchWithTimeout(req, 6000);
+    if (!response.ok) return;
+    await putCacheable(pageCache, routeUrl, response);
+    const path = new URL(routeUrl, self.location.origin).pathname;
+    if (path && path !== "/") await putCacheable(pageCache, path, response);
+    const html = await response.clone().text();
+    await warmAssetsFromHtml(html, routeUrl);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function handleNavigate(request, event) {
   const cache = await caches.open(PAGE_CACHE);
   if (self.navigator && self.navigator.onLine === false) {
     const cached = await matchPage(cache, request);
@@ -94,6 +162,13 @@ async function handleNavigate(request) {
     if (response.ok) {
       try {
         await putCacheable(cache, request.url, response);
+        const path = new URL(request.url).pathname;
+        if (path && path !== "/") {
+          await putCacheable(cache, path, response);
+        }
+        const html = await response.clone().text();
+        // Keep warm-up tied to this fetch event lifecycle.
+        event.waitUntil(warmAssetsFromHtml(html, request.url));
       } catch {
         /* ignore */
       }
@@ -109,35 +184,96 @@ async function handleNavigate(request) {
   }
 }
 
-/** Cache JS/CSS/chunks on success; serve cache when offline. Never return fake 503 JS. */
+/** Cache-first when we have a hit; stale-while-revalidate when online. */
 async function handleStaticAsset(request) {
   const cache = await caches.open(ASSET_CACHE);
-  if (self.navigator && self.navigator.onLine === false) {
-    return (
-      (await cache.match(request)) ||
-      (await cache.match(request, { ignoreSearch: true })) ||
-      fetch(request)
-    );
+  const url = new URL(request.url);
+  const cached =
+    (await cache.match(request)) ||
+    (await cache.match(request, { ignoreSearch: true })) ||
+    (await cache.match(url.pathname)) ||
+    (await cache.match(url.href.split("?")[0]));
+
+  if (cached) {
+    if (self.navigator && self.navigator.onLine !== false) {
+      fetchWithTimeout(request, 2500)
+        .then(function (response) {
+          if (response.ok) return putCacheable(cache, request, response);
+        })
+        .catch(function () {});
+    }
+    return cached;
   }
+
+  var isImageReq =
+    request.destination === "image" ||
+    /\.(?:png|jpe?g|gif|webp|svg|ico)(?:$|\?)/i.test(url.pathname) ||
+    /\/api\/v\d+\/uploads\//i.test(url.pathname);
+
+  if (self.navigator && self.navigator.onLine === false) {
+    if (isImageReq) {
+      // 1x1 transparent PNG — wrong JS content-type was breaking <img> offline.
+      var bytes = Uint8Array.from(
+        atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+        function (c) {
+          return c.charCodeAt(0);
+        },
+      );
+      return new Response(bytes, {
+        status: 404,
+        statusText: "Offline",
+        headers: { "Content-Type": "image/png" },
+      });
+    }
+    return new Response("/* offline */", {
+      status: 503,
+      statusText: "Offline",
+      headers: { "Content-Type": "application/javascript; charset=utf-8" },
+    });
+  }
+
   try {
-    const response = await fetchWithTimeout(request, 5000);
+    const response = await fetchWithTimeout(request, 2500);
     if (response.ok) {
       try {
         await putCacheable(cache, request, response);
+        // Also store pathname-only so ?v= query changes still hit offline.
+        if (url.search) {
+          await putCacheable(cache, url.pathname, response);
+        }
       } catch {
         /* ignore */
       }
     }
     return response;
   } catch {
-    const cached = (await cache.match(request)) || (await cache.match(request, { ignoreSearch: true }));
-    if (cached) return cached;
-    throw new Error("offline-miss");
+    const fallback =
+      (await cache.match(request, { ignoreSearch: true })) ||
+      (await cache.match(url.pathname));
+    if (fallback) return fallback;
+    if (isImageReq) {
+      var miss = Uint8Array.from(
+        atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+        function (c) {
+          return c.charCodeAt(0);
+        },
+      );
+      return new Response(miss, {
+        status: 404,
+        statusText: "Offline",
+        headers: { "Content-Type": "image/png" },
+      });
+    }
+    return new Response("/* offline */", {
+      status: 503,
+      statusText: "Offline",
+      headers: { "Content-Type": "application/javascript; charset=utf-8" },
+    });
   }
 }
 
 async function handleRsc(request) {
-  const cache = await caches.open("vb-offline-rsc-v1");
+  const cache = await caches.open(RSC_CACHE);
   if (self.navigator && self.navigator.onLine === false) {
     return (
       (await cache.match(request)) ||
@@ -204,7 +340,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k !== PAGE_CACHE && k !== ASSET_CACHE && k.startsWith("vb-offline"))
+            .filter((k) => k !== PAGE_CACHE && k !== ASSET_CACHE && k !== RSC_CACHE && k.startsWith("vb-offline"))
             .map((k) => caches.delete(k)),
         ),
       )
@@ -214,14 +350,47 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+  if (event.data?.type === "WARM_ASSETS" && Array.isArray(event.data.urls)) {
+    const urls = event.data.urls.filter((u) => typeof u === "string" && sameOrigin(u));
+    event.waitUntil(
+      (async () => {
+        const cache = await caches.open(ASSET_CACHE);
+        await Promise.allSettled(
+          urls.map(async (url) => {
+            try {
+              const existing =
+                (await cache.match(url)) ||
+                (await cache.match(url, { ignoreSearch: true }));
+              if (existing) return;
+              const res = await fetchWithTimeout(url, 4000);
+              if (res.ok) await putCacheable(cache, url, res);
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
+      })(),
+    );
+  }
+  if (event.data?.type === "WARM_ROUTES" && Array.isArray(event.data.routes)) {
+    const routes = event.data.routes.filter((u) => typeof u === "string" && sameOrigin(u));
+    event.waitUntil(Promise.allSettled(routes.map((route) => warmRoute(route))));
+  }
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   if (!sameOrigin(event.request.url)) return;
 
+  try {
+    if (new URL(event.request.url).pathname.startsWith("/vb-hmr-probe")) return;
+    if (new URL(event.request.url).pathname.startsWith("/__vb-hmr-probe")) return;
+  } catch {
+    /* ignore */
+  }
+
   if (isNavigateRequest(event.request)) {
-    event.respondWith(handleNavigate(event.request));
+    event.respondWith(handleNavigate(event.request, event));
     return;
   }
 
@@ -232,5 +401,8 @@ self.addEventListener("fetch", (event) => {
 
   if (isStaticAsset(event.request.url)) {
     event.respondWith(handleStaticAsset(event.request));
+    return;
   }
+
+  event.respondWith(handleStaticAsset(event.request));
 });

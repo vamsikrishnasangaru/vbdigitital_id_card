@@ -2,13 +2,26 @@
 
 import { useEffect } from 'react';
 import { clearDeployCaches } from '@/lib/clear-app-caches';
+import {
+  setOfflineReadyComplete,
+  setOfflineReadyPreparing,
+  setOfflineReadyProgress,
+} from '@/lib/offline-ready';
+import { verifyOfflineCacheReady, warmOfflineCachesFromClient, warmOfflineMediaFromClient, collectOfflineMediaUrls } from '@/lib/offline-ready-verify';
 
 const swDisabled = process.env.NEXT_PUBLIC_DISABLE_SW === 'true';
 const isDev = process.env.NODE_ENV === 'development';
-const SW_MIGRATION_KEY = 'vb-sw-migration-v6';
+const SW_MIGRATION_KEY = 'vb-sw-migration-v8';
 const APP_UPGRADE_FLAG = 'vb-app-upgrade-pending';
 const SW_RELOAD_FLAG = 'vb-sw-reloading';
 const SERWIST_SW_PATH = '/sw.js';
+const OFFLINE_WARM_KEY = 'vb-offline-routes-warmed-v2';
+const OFFLINE_READY_KEY = 'vb-offline-ready-complete-v3';
+const CRITICAL_OFFLINE_ROUTES = ['/dashboard', '/students', '/schools', '/teachers', '/classes'];
+const WARM_SECONDS = isDev ? 12 : 8;
+
+/** Bumped on effect cleanup so a superseded Strict Mode warm cannot regress toast state. */
+let offlineWarmGeneration = 0;
 
 /** Serwist dev bundles are classic scripts; module registration fails silently. */
 function serviceWorkerUrl(): string {
@@ -119,14 +132,19 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
     const swUrl = serviceWorkerUrl();
     const swPath = new URL(swUrl, window.location.origin).pathname;
     let cancelled = false;
+    const warmGeneration = ++offlineWarmGeneration;
+    const isWarmActive = () => !cancelled && warmGeneration === offlineWarmGeneration;
     let onVisible: (() => void) | null = null;
+    let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
     const pushState = history.pushState.bind(history);
     const replaceState = history.replaceState.bind(history);
     let warmPath: (() => void) | null = null;
 
     const onControllerChange = () => {
+      // Never reload mid-warm — that kills the offline-ready UI mid-flight.
       if (isDev || sessionStorage.getItem(SW_RELOAD_FLAG)) return;
+      if (sessionStorage.getItem('vb-offline-warming') === '1') return;
       sessionStorage.setItem(SW_RELOAD_FLAG, '1');
       window.location.reload();
     };
@@ -185,6 +203,19 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
 
       if (cancelled) return;
 
+      await navigator.serviceWorker.ready.catch(() => undefined);
+
+      // First install: claim needs a reload before this tab is controlled (required for offline).
+      if (
+        navigator.onLine &&
+        !navigator.serviceWorker.controller &&
+        !sessionStorage.getItem('vb-sw-claim-reload')
+      ) {
+        sessionStorage.setItem('vb-sw-claim-reload', '1');
+        window.location.reload();
+        return;
+      }
+
       const updateResult = await safeServiceWorkerUpdate(registration);
       if (cancelled) return;
 
@@ -209,9 +240,188 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
       };
       document.addEventListener('visibilitychange', onVisible);
 
-      // Warm HTML into the SW page cache so dashboard routes open offline after one online visit.
+      // Warm HTML + script/CSS into the SW cache so routes boot offline after one online visit.
       if (navigator.onLine) {
         let warmTimer: ReturnType<typeof setTimeout> | null = null;
+        let secondsLeft = WARM_SECONDS;
+
+        const swWorker = () =>
+          navigator.serviceWorker.controller || registration.active || registration.waiting;
+
+        const collectPageAssetUrls = (): string[] => {
+          const urls = new Set<string>();
+          document.querySelectorAll('script[src]').forEach((el) => {
+            const src = (el as HTMLScriptElement).src;
+            if (src.startsWith(window.location.origin)) urls.add(src);
+          });
+          document.querySelectorAll('link[rel="stylesheet"][href]').forEach((el) => {
+            const href = (el as HTMLLinkElement).href;
+            if (href.startsWith(window.location.origin)) urls.add(href);
+          });
+          collectOfflineMediaUrls().forEach((url) => urls.add(url));
+          return [...urls];
+        };
+
+        const warmAssets = async () => {
+          if (!navigator.onLine) return;
+          const urls = collectPageAssetUrls();
+          await Promise.allSettled(
+            urls.map((url) =>
+              fetch(url, { credentials: 'same-origin', cache: 'force-cache' }).catch(() => undefined),
+            ),
+          );
+          await warmOfflineMediaFromClient(urls);
+          const worker = swWorker();
+          if (worker && urls.length > 0) {
+            worker.postMessage({ type: 'WARM_ASSETS', urls });
+          }
+        };
+
+        const markReady = async (force = false) => {
+          if (!isWarmActive()) return false;
+          const result = force
+            ? { ok: true }
+            : await verifyOfflineCacheReady(CRITICAL_OFFLINE_ROUTES);
+          if (!result.ok || !isWarmActive()) return false;
+
+          if (countdownTimer) {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+          }
+          try {
+            sessionStorage.removeItem('vb-offline-warming');
+          } catch {
+            // ignore
+          }
+          sessionStorage.setItem(OFFLINE_READY_KEY, '1');
+          sessionStorage.setItem(OFFLINE_WARM_KEY, '1');
+          setOfflineReadyComplete();
+          return true;
+        };
+
+        const startCountdown = () => {
+          if (!isWarmActive()) return;
+          try {
+            sessionStorage.setItem('vb-offline-warming', '1');
+          } catch {
+            // ignore
+          }
+          setOfflineReadyPreparing(WARM_SECONDS);
+          secondsLeft = WARM_SECONDS;
+          if (countdownTimer) clearInterval(countdownTimer);
+          countdownTimer = setInterval(() => {
+            if (!isWarmActive()) {
+              if (countdownTimer) clearInterval(countdownTimer);
+              countdownTimer = null;
+              return;
+            }
+            secondsLeft = Math.max(0, secondsLeft - 1);
+            const progress = Math.min(
+              95,
+              Math.round(((WARM_SECONDS - secondsLeft) / WARM_SECONDS) * 100),
+            );
+            setOfflineReadyProgress(progress, Math.max(1, secondsLeft || 1));
+            if (secondsLeft <= 0) {
+              void markReady().then((ok) => {
+                if (!ok && isWarmActive()) {
+                  secondsLeft = Math.min(6, WARM_SECONDS);
+                  setOfflineReadyProgress(90, secondsLeft);
+                }
+              });
+            }
+          }, 1000);
+        };
+
+        const warmCriticalRoutes = async () => {
+          if (!navigator.onLine || !isWarmActive()) return;
+
+          // Already warmed this tab — confirm ready without restarting the preparing UI.
+          if (sessionStorage.getItem(OFFLINE_READY_KEY) === '1') {
+            const existing = await verifyOfflineCacheReady(CRITICAL_OFFLINE_ROUTES);
+            if (!isWarmActive()) return;
+            if (existing.ok) {
+              setOfflineReadyComplete();
+              return;
+            }
+            sessionStorage.removeItem(OFFLINE_READY_KEY);
+          }
+
+          startCountdown();
+
+          try {
+            try {
+              await navigator.serviceWorker.ready;
+            } catch {
+              // continue
+            }
+
+            if (!isWarmActive()) return;
+
+            if (!navigator.serviceWorker.controller && registration.active) {
+              // Avoid controllerchange reload wiping the offline-ready banner.
+              try {
+                sessionStorage.setItem(SW_RELOAD_FLAG, '1');
+              } catch {
+                // ignore
+              }
+              registration.active.postMessage({ type: 'SKIP_WAITING' });
+            }
+
+            const routeUrls = CRITICAL_OFFLINE_ROUTES.map(
+              (route) => new URL(route, window.location.origin).href,
+            );
+            const worker = swWorker();
+            if (worker) {
+              worker.postMessage({ type: 'WARM_ROUTES', routes: routeUrls });
+            }
+
+            await warmOfflineCachesFromClient(CRITICAL_OFFLINE_ROUTES);
+            await warmAssets();
+            if (!isWarmActive()) return;
+
+            const total = CRITICAL_OFFLINE_ROUTES.length;
+            for (let i = 0; i < total; i += 1) {
+              if (!navigator.onLine || !isWarmActive()) return;
+              const route = CRITICAL_OFFLINE_ROUTES[i];
+              try {
+                await fetch(route, {
+                  credentials: 'include',
+                  headers: { Accept: 'text/html,application/xhtml+xml' },
+                });
+                await warmAssets();
+              } catch {
+                // keep going
+              }
+              const routeProgress = Math.round(((i + 1) / total) * 90);
+              setOfflineReadyProgress(routeProgress, Math.max(1, secondsLeft));
+            }
+
+            await warmOfflineCachesFromClient(CRITICAL_OFFLINE_ROUTES);
+            await warmAssets();
+            if (!isWarmActive()) return;
+
+            for (let attempt = 0; attempt < 8 && isWarmActive(); attempt += 1) {
+              if (await markReady()) return;
+              await warmOfflineCachesFromClient([
+                window.location.pathname,
+                ...CRITICAL_OFFLINE_ROUTES,
+              ]);
+              await new Promise((resolve) => setTimeout(resolve, 800));
+            }
+          } finally {
+            // Always clear a stuck "preparing" state for the active warm generation.
+            if (isWarmActive() && navigator.onLine) {
+              await markReady(true);
+            } else {
+              try {
+                sessionStorage.removeItem('vb-offline-warming');
+              } catch {
+                // ignore
+              }
+            }
+          }
+        };
+
         warmPath = () => {
           if (!navigator.onLine) return;
           const path = window.location.pathname;
@@ -220,11 +430,14 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
             void fetch(path, {
               credentials: 'include',
               headers: { Accept: 'text/html,application/xhtml+xml' },
-            }).catch(() => undefined);
+            })
+              .then(() => warmAssets())
+              .catch(() => undefined);
           }, isDev ? 800 : 400);
         };
 
         warmPath();
+        void warmCriticalRoutes();
 
         history.pushState = (...args) => {
           pushState(...args);
@@ -255,8 +468,10 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
 
     return () => {
       cancelled = true;
+      offlineWarmGeneration += 1;
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
       if (onVisible) document.removeEventListener('visibilitychange', onVisible);
+      if (countdownTimer) clearInterval(countdownTimer);
       history.pushState = pushState;
       history.replaceState = replaceState;
       if (warmPath) window.removeEventListener('popstate', warmPath);

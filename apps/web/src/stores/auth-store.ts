@@ -31,7 +31,7 @@ function clearSession() {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
-  isLoading: true,
+  isLoading: false,
 
   login: (user, accessToken, refreshToken) => {
     localStorage.setItem('accessToken', accessToken);
@@ -99,3 +99,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 }));
+
+
+if (typeof window !== 'undefined') {
+  useAuthStore.getState().initialize();
+}

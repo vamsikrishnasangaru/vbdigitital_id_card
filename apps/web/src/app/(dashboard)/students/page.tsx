@@ -40,6 +40,7 @@ import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
 import { isStudentIncomplete, type StudentCompletionFields } from '@/lib/student-completion';
 import { fetchSchoolsPicker, getCachedSchoolsPicker } from '@/lib/schools-query';
+import { getCachedStudentsList } from '@/lib/students-query';
 import {
   classesQueryKey,
   classesQueryStaleTime,
@@ -326,7 +327,31 @@ export default function StudentsPage({ params }: NextClientPageProps) {
   };
 
   // Queries
-  const { data: studentsResponse, isLoading: loading } = useQuery({
+  const studentsQueryParams = useMemo(
+    () => {
+      const params: Record<string, string | number> = { limit: viewAllSchools ? 500 : 100 };
+      if (!viewAllSchools && effectiveSchoolId) params.schoolId = effectiveSchoolId;
+      if (deferredSearch) params.search = deferredSearch;
+      if (!viewAllSchools && statusFilter === 'COMPLETE') params.completion = 'COMPLETE';
+      if (!viewAllSchools && statusFilter === 'INCOMPLETE') params.completion = 'INCOMPLETE';
+      if (!viewAllSchools && statusFilter === 'SUBMITTED') params.status = 'SUBMITTED';
+      if (classFilter) params.classId = classFilter;
+      if (sectionFilter) params.sectionId = sectionFilter;
+      if (deferredTemplateCode) params.templateCode = deferredTemplateCode;
+      return params;
+    },
+    [
+      viewAllSchools,
+      effectiveSchoolId,
+      deferredSearch,
+      statusFilter,
+      classFilter,
+      sectionFilter,
+      deferredTemplateCode,
+    ],
+  );
+
+  const { data: studentsResponse, isLoading, isPending } = useQuery({
     queryKey: [
       'students',
       {
@@ -340,20 +365,13 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       },
     ],
     queryFn: async () => {
-      const params: Record<string, string | number> = { limit: viewAllSchools ? 500 : 100 };
-      if (!viewAllSchools && effectiveSchoolId) params.schoolId = effectiveSchoolId;
-      if (deferredSearch) params.search = deferredSearch;
-      if (!viewAllSchools && statusFilter === 'COMPLETE') params.completion = 'COMPLETE';
-      if (!viewAllSchools && statusFilter === 'INCOMPLETE') params.completion = 'INCOMPLETE';
-      if (!viewAllSchools && statusFilter === 'SUBMITTED') params.status = 'SUBMITTED';
-      if (classFilter) params.classId = classFilter;
-      if (sectionFilter) params.sectionId = sectionFilter;
-      if (deferredTemplateCode) params.templateCode = deferredTemplateCode;
-      const { data } = await api.get('/students', { params });
+      const { data } = await api.get('/students', { params: studentsQueryParams });
       return data;
     },
     enabled: isSuperAdmin ? viewAllSchools || !!effectiveSchoolId : !!effectiveSchoolId,
+    placeholderData: () => getCachedStudentsList(studentsQueryParams),
   });
+  const showStudentsSpinner = (isLoading || isPending) && !studentsResponse;
 
   const { data: classes = [], isPending: classesPending } = useQuery({
     queryKey: classesQueryKey(effectiveSchoolId),
@@ -1417,8 +1435,8 @@ export default function StudentsPage({ params }: NextClientPageProps) {
             ))}
           </div>
           <div className="flex items-center gap-2 px-1 sm:px-4 py-2 text-xs font-bold text-muted-foreground shrink-0">
-            {(loading || isFilterPending) && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-            {!loading && (
+            {(showStudentsSpinner || isFilterPending) && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+            {!showStudentsSpinner && (
               <span className="whitespace-nowrap">
                 {studentsTotal} student{studentsTotal === 1 ? '' : 's'}
                 {viewAllSchools
@@ -1436,7 +1454,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         className="panel-xl"
         tableOnMobile
         mobile={
-          loading ? (
+          showStudentsSpinner ? (
             <ListLoading message="Loading students..." />
           ) : !visibleStudents?.length ? (
             <ListEmpty
@@ -1555,7 +1573,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/30">
-              {loading ? (
+              {showStudentsSpinner ? (
                 <tr>
                   <td colSpan={6} className="p-24 text-center">
                     <div className="flex flex-col items-center gap-4">

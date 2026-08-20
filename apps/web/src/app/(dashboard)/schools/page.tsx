@@ -1,7 +1,7 @@
 'use client';
 
 import { useNextPageParams, type NextClientPageProps } from '@/lib/next-page-params';
-import { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import { useState, useDeferredValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -11,7 +11,7 @@ import { MODAL_BACKDROP, modalPanelClass } from '@/lib/modal-motion';
 import { ResponsiveDataView, rowActionsClass } from '@/components/ui/responsive-data-view';
 import { ListLoading, ListEmpty } from '@/components/ui/list-state';
 import { queryKeys } from '@/lib/query-keys';
-import { offlineStore } from '@/lib/offline-store';
+import { offlineStore, isEffectivelyOffline } from '@/lib/offline-store';
 
 interface School {
   id: string;
@@ -23,6 +23,21 @@ interface School {
   state: string;
   isActive: boolean;
   _count: { students: number; classes: number; users: number };
+}
+
+function getCachedSchoolsList(search?: string): School[] | undefined {
+  const cached = offlineStore.getSchools();
+  if (!Array.isArray(cached) || cached.length === 0) return undefined;
+  const list = cached as School[];
+  const q = (search || '').trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((s) =>
+    [s.name, s.code, s.city, s.email, s.phone, s.state]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q),
+  );
 }
 
 export default function SchoolsPage({ params }: NextClientPageProps) {
@@ -58,21 +73,33 @@ export default function SchoolsPage({ params }: NextClientPageProps) {
     confirmAdminPassword: '',
   };
 
-  // Queries
-  const { data: schoolsData, isLoading, isPending } = useQuery({
+  const { data: schoolsData, isFetching, isPending } = useQuery({
     queryKey: queryKeys.schools.adminList(deferredSearch),
     queryFn: async () => {
-      const { data } = await api.get('/schools', { params: { search: deferredSearch || undefined, limit: 50 } });
-      const list = data.data as School[];
-      offlineStore.cacheSchools(list);
-      return list;
+      // Offline: never wait on the network — return local cache immediately.
+      if (isEffectivelyOffline()) {
+        return getCachedSchoolsList(deferredSearch) ?? [];
+      }
+      try {
+        const { data } = await api.get('/schools', {
+          params: { search: deferredSearch || undefined, limit: 50 },
+        });
+        const list = (data?.data as School[]) || [];
+        offlineStore.cacheSchools(list);
+        return list;
+      } catch {
+        const fallback = getCachedSchoolsList(deferredSearch);
+        if (fallback) return fallback;
+        return [];
+      }
     },
-    placeholderData: () => {
-      const cached = offlineStore.getSchools();
-      return Array.isArray(cached) && cached.length > 0 ? (cached as School[]) : undefined;
-    },
+    // No localStorage initial/placeholder data — that mismatches SSR HTML.
+    staleTime: 30_000,
+    retry: (failureCount) => !isEffectivelyOffline() && failureCount < 1,
   });
-  const showSchoolsSpinner = (isLoading || isPending) && !schoolsData;
+
+  // Never spin forever offline — show cache or empty state.
+  const showSchoolsSpinner = isPending && !schoolsData && isFetching;
 
   // Mutations
   type SchoolFormPayload = {

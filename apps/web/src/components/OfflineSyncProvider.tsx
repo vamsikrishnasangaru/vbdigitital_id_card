@@ -11,11 +11,13 @@ import {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { syncEngine } from '@/lib/sync-engine';
-import { offlineStore, isBrowserOnline } from '@/lib/offline-store';
+import { offlineStore, isBrowserOnline, isEffectivelyOffline } from '@/lib/offline-store';
+import { getSyncStatus, setSyncStatus, syncStatusEventName, type SyncStatus } from '@/lib/sync-state';
 
 export type OfflineSyncState = {
   isOffline: boolean;
   serverUnavailable: boolean;
+  syncStatus: SyncStatus;
   pendingCount: number;
   offlineStudentCount: number;
   offlineClassCount: number;
@@ -32,6 +34,7 @@ function useOfflineSyncInternal(): OfflineSyncState {
   const [isOffline, setIsOffline] = useState(false);
   const [serverUnavailable, setServerUnavailable] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [syncStatus, setSyncStatusState] = useState<SyncStatus>(() => getSyncStatus());
   const [offlineStudentCount, setOfflineStudentCount] = useState(0);
   const [offlineClassCount, setOfflineClassCount] = useState(0);
   const [offlineTeacherCount, setOfflineTeacherCount] = useState(0);
@@ -65,17 +68,25 @@ function useOfflineSyncInternal(): OfflineSyncState {
     if (typeof window === 'undefined') return;
 
     const syncOnline = () => {
-      setIsOffline(!isBrowserOnline());
-      if (isBrowserOnline()) void syncEngine.flushQueue();
+      const offline = isEffectivelyOffline();
+      setIsOffline(offline);
+      if (offline) setSyncStatus('OFFLINE');
+      if (isBrowserOnline() && !offline) void syncEngine.flushQueue();
       void refreshCounts();
     };
 
-    setIsOffline(!isBrowserOnline());
+    setIsOffline(isEffectivelyOffline());
     void refreshCounts();
 
     window.addEventListener('online', syncOnline);
     window.addEventListener('offline', syncOnline);
+    window.addEventListener('vb-connectivity-changed', syncOnline);
     window.addEventListener('vb-sync-queue-changed', refreshCounts);
+    const onSyncStatus = (e: Event) => {
+      const detail = (e as CustomEvent<{ status?: SyncStatus }>).detail;
+      if (detail?.status) setSyncStatusState(detail.status);
+    };
+    window.addEventListener(syncStatusEventName(), onSyncStatus);
     const onDataChanged = () => {
       void refreshCounts();
       scheduleInvalidate();
@@ -87,7 +98,7 @@ function useOfflineSyncInternal(): OfflineSyncState {
       const unavailable = (e as CustomEvent<boolean>).detail;
       setServerUnavailable(unavailable);
       if (unavailable) setIsOffline(true);
-      else if (isBrowserOnline()) setIsOffline(false);
+      else if (!isEffectivelyOffline()) setIsOffline(false);
     };
     window.addEventListener('vb-server-unavailable', onServerStatus);
 
@@ -96,7 +107,9 @@ function useOfflineSyncInternal(): OfflineSyncState {
     return () => {
       window.removeEventListener('online', syncOnline);
       window.removeEventListener('offline', syncOnline);
+      window.removeEventListener('vb-connectivity-changed', syncOnline);
       window.removeEventListener('vb-sync-queue-changed', refreshCounts);
+      window.removeEventListener(syncStatusEventName(), onSyncStatus);
       window.removeEventListener('vb-offline-data-changed', onDataChanged);
       window.removeEventListener('vb-offline-sync-complete', scheduleInvalidate);
       window.removeEventListener('vb-server-unavailable', onServerStatus);
@@ -108,6 +121,7 @@ function useOfflineSyncInternal(): OfflineSyncState {
   return {
     isOffline,
     serverUnavailable,
+    syncStatus,
     pendingCount,
     offlineStudentCount,
     offlineClassCount,

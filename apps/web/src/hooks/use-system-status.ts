@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { isEffectivelyOffline } from '@/lib/offline-store';
+import { getSyncStatus, syncStatusEventName, type SyncStatus } from '@/lib/sync-state';
 
 export function useSystemStatus() {
   const [browserOnline, setBrowserOnline] = useState(true);
   const [apiOnline, setApiOnline] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => getSyncStatus());
 
   const checkApi = useCallback(async () => {
-    if (typeof window === 'undefined' || !navigator.onLine) {
+    if (typeof window === 'undefined' || isEffectivelyOffline()) {
       setApiOnline(false);
       return;
     }
@@ -30,30 +33,36 @@ export function useSystemStatus() {
     if (typeof window === 'undefined') return;
 
     const syncBrowser = () => {
-      const online = navigator.onLine;
+      const online = !isEffectivelyOffline();
       setBrowserOnline(online);
       if (online) checkApi();
       else setApiOnline(false);
     };
 
-    setBrowserOnline(navigator.onLine);
-    if (navigator.onLine) checkApi();
+    setBrowserOnline(!isEffectivelyOffline());
+    if (!isEffectivelyOffline()) checkApi();
 
     window.addEventListener('online', syncBrowser);
     window.addEventListener('offline', syncBrowser);
 
     const interval = window.setInterval(() => {
-      if (navigator.onLine) checkApi();
+      if (!isEffectivelyOffline()) checkApi();
     }, 30000);
+    const onSyncStatus = (e: Event) => {
+      const detail = (e as CustomEvent<{ status?: SyncStatus }>).detail;
+      if (detail?.status) setSyncStatus(detail.status);
+    };
+    window.addEventListener(syncStatusEventName(), onSyncStatus);
 
     return () => {
       window.removeEventListener('online', syncBrowser);
       window.removeEventListener('offline', syncBrowser);
+      window.removeEventListener(syncStatusEventName(), onSyncStatus);
       window.clearInterval(interval);
     };
   }, [checkApi]);
 
   const systemOnline = browserOnline && apiOnline;
 
-  return { browserOnline, apiOnline, systemOnline };
+  return { browserOnline, apiOnline, systemOnline, syncStatus };
 }
