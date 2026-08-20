@@ -17,6 +17,7 @@ import {
   formatStudentFullName,
   formatStudentLastName,
   isPlaceholderSectionName,
+  asApiArray,
   cn,
   resolveMediaUrl,
   sanitizeIndianMobileInput,
@@ -452,12 +453,12 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       const { data } = await api.get('/templates', {
         params: { schoolId: enrollSchoolId },
       });
-      return data as {
+      return asApiArray<{
         id: string;
         name: string;
         code?: string | null;
         isDefault?: boolean;
-      }[];
+      }>(data);
     },
     enabled: showCreate && !!enrollSchoolId,
   });
@@ -503,14 +504,14 @@ export default function StudentsPage({ params }: NextClientPageProps) {
       const { data } = await api.get('/templates', {
         params: { schoolId: effectiveSchoolId },
       });
-      const list = data as {
+      const list = asApiArray<{
         id: string;
         name: string;
         code?: string | null;
         orientation: string;
         frontBgUrl?: string;
         frontConfig?: unknown;
-      }[];
+      }>(data);
       offlineStore.cacheTemplates(effectiveSchoolId, list);
       return list;
     },

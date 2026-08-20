@@ -1,5 +1,6 @@
 import api from '@/lib/api';
 import { offlineStore } from '@/lib/offline-store';
+import { asApiArray } from '@/lib/utils';
 
 export type SchoolPickerOption = { id: string; name: string; code: string };
 
@@ -13,7 +14,7 @@ export function getCachedSchoolsPicker(): SchoolPickerOption[] | undefined {
 /** Shared fetch for school dropdowns (single React Query cache key). */
 export async function fetchSchoolsPicker(): Promise<SchoolPickerOption[]> {
   const { data } = await api.get('/schools', { params: { limit: 100 } });
-  const list = data.data as SchoolPickerOption[];
+  const list = asApiArray<SchoolPickerOption>(data);
   offlineStore.cacheSchools(list);
   return list;
 }

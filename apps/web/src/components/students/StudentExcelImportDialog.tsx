@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileSpreadsheet, Loader2, Upload, X, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { asApiArray, cn } from '@/lib/utils';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import {
   buildExcelImportTemplateFromConfigs,
@@ -72,7 +72,7 @@ export function StudentExcelImportDialog({
       queryKey: ['import-template', schoolId],
       queryFn: async () => {
         const { data: templates } = await api.get('/templates', { params: { schoolId } });
-        const list = templates as { id: string; isDefault?: boolean; name: string }[];
+        const list = asApiArray<{ id: string; isDefault?: boolean; name: string }>(templates);
         const tpl = list.find((t) => t.isDefault) ?? list[0];
         if (!tpl) return DEFAULT_EXCEL_IMPORT_TEMPLATE;
         const detail = await fetchTemplateWithConfig<{

@@ -23,7 +23,7 @@ const IdCardDesigner = dynamic(
   { ssr: false, loading: () => <DesignerLoadingOverlay /> },
 );
 import { TemplateBackgroundPicker, createEmptyBackground } from '@/components/designer/TemplateBackgroundPicker';
-import { cn, resolveMediaUrl } from '@/lib/utils';
+import { asApiArray, cn, resolveMediaUrl } from '@/lib/utils';
 import { normalizeFrontConfig, uploadTemplateBackground } from '@/lib/template-utils';
 import { CR80_SIZE_OPTIONS, formatCr80Label } from '@/lib/card-sizes';
 import {
@@ -153,7 +153,7 @@ export default function TemplatesPage({ params }: NextClientPageProps) {
         params.allSchools = 'true';
       }
       const { data } = await api.get('/templates', { params });
-      const list = data as Template[];
+      const list = asApiArray<Template>(data);
       if (viewMode === 'school' && effectiveSchoolId) {
         offlineStore.cacheTemplates(effectiveSchoolId, list);
       }

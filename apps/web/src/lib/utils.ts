@@ -5,6 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Axios body may be a bare array or `{ data: T[] }` depending on route / offline path. */
+export function asApiArray<T = unknown>(body: unknown): T[] {
+  if (Array.isArray(body)) return body as T[];
+  if (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)) {
+    return (body as { data: T[] }).data;
+  }
+  return [];
+}
+
 /** Same-origin URL for files under apps/api/uploads (nginx or Next → Nest). */
 export function uploadPublicUrl(relativePath: string): string {
   const clean = relativePath.replace(/^\/+/, '').replace(/^uploads\//, '').replace(/\/+$/, '');

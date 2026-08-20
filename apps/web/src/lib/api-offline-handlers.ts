@@ -120,9 +120,16 @@ export async function resolveOfflineGet(
     const fromGeneric = offlineGetCache.getTemplatesList(schoolId ?? undefined);
     const hit = fromEntity ?? fromGeneric;
     if (hit) {
-      // Entity cache stores raw arrays; API shape is often { data: [] }.
-      if (Array.isArray(hit)) return { data: { data: hit, _offline: true }, status: 200, config };
-      return { data: hit, status: 200, config };
+      // Online API returns a bare array — keep that shape so UI `.find` / `.map` work.
+      const list = Array.isArray(hit)
+        ? hit
+        : Array.isArray((hit as { data?: unknown }).data)
+          ? (hit as { data: unknown[] }).data
+          : [];
+      return { data: list, status: 200, config };
+    }
+    if (schoolId) {
+      return { data: [], status: 200, config };
     }
   }
 

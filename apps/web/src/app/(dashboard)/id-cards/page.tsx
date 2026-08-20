@@ -13,7 +13,7 @@ import {
 import { useAuthStore } from '@/stores/auth-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { StudentIdCardPreview } from '@/components/students/StudentIdCardPreview';
-import { cn, resolveMediaUrl, formatSectionName, formatStudentFullName, formatStudentLastName } from '@/lib/utils';
+import { asApiArray, cn, resolveMediaUrl, formatSectionName, formatStudentFullName, formatStudentLastName } from '@/lib/utils';
 import { fetchTemplateWithConfig } from '@/lib/fetch-template-detail';
 import { queryKeys } from '@/lib/query-keys';
 import {
@@ -139,8 +139,9 @@ export default function IdCardsPage({ params }: NextClientPageProps) {
       const { data } = await api.get('/templates', {
         params: { schoolId: effectiveSchoolId },
       });
-      offlineStore.cacheTemplates(effectiveSchoolId, data);
-      return data;
+      const list = asApiArray<{ id: string; name?: string }>(data);
+      offlineStore.cacheTemplates(effectiveSchoolId, list);
+      return list;
     },
     enabled: !!effectiveSchoolId,
   });

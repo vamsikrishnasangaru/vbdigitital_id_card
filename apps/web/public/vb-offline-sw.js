@@ -128,6 +128,15 @@ async function matchPage(cache, request) {
   );
 }
 
+async function matchCachedPage(request) {
+  for (const name of [PAGE_CACHE, "vb-html-pages-v2"]) {
+    const cache = await caches.open(name);
+    const hit = await matchPage(cache, request);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 async function warmRoute(routeUrl) {
   const pageCache = await caches.open(PAGE_CACHE);
   try {
@@ -148,15 +157,15 @@ async function warmRoute(routeUrl) {
 }
 
 async function handleNavigate(request, event) {
-  const cache = await caches.open(PAGE_CACHE);
   if (self.navigator && self.navigator.onLine === false) {
-    const cached = await matchPage(cache, request);
+    const cached = await matchCachedPage(request);
     if (cached) return cached;
     return new Response(
       "<!DOCTYPE html><html><body><h1>Offline</h1><p>Open this page once while online, then try again.</p></body></html>",
       { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
     );
   }
+  const cache = await caches.open(PAGE_CACHE);
   try {
     const response = await fetchWithTimeout(request, 5000);
     if (response.ok) {
@@ -175,7 +184,7 @@ async function handleNavigate(request, event) {
     }
     return response;
   } catch {
-    const cached = await matchPage(cache, request);
+    const cached = await matchCachedPage(request);
     if (cached) return cached;
     return new Response(
       "<!DOCTYPE html><html><body><h1>Offline</h1><p>Visit this app while online first, then try again.</p></body></html>",

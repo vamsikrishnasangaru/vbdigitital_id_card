@@ -3,8 +3,8 @@ import { OFFLINE_STORAGE_KEYS } from '@/lib/offline-store-keys';
 import { collectPhotoUrlsFromStudentCaches } from '@/lib/offline-students-cache';
 
 const CRITICAL_ROUTES = ['/dashboard', '/students', '/schools', '/teachers', '/classes'];
-/** Must match apps/web/public/vb-offline-sw.js cache names so SW can serve them offline. */
-const CLIENT_PAGE_CACHE = 'vb-offline-pages-v7';
+/** Prod Serwist (sw-bypass) + legacy/dev offline SW page cache names. */
+const CLIENT_PAGE_CACHES = ['vb-html-pages-v2', 'vb-offline-pages-v7'] as const;
 const CLIENT_ASSET_CACHE = 'vb-offline-assets-v7';
 /** Must match apps/web/src/app/sw-runtime-cache.ts (production Serwist). */
 const UPLOAD_CACHE = 'api-upload-assets';
@@ -215,7 +215,7 @@ export async function warmOfflineCachesFromClient(routes: string[] = CRITICAL_RO
     return { pages: 0, assets: 0 };
   }
 
-  const pageCache = await caches.open(CLIENT_PAGE_CACHE);
+  const pageCaches = await Promise.all(CLIENT_PAGE_CACHES.map((name) => caches.open(name)));
   const assetCache = await caches.open(CLIENT_ASSET_CACHE);
   let pages = 0;
   let assets = 0;
@@ -228,7 +228,7 @@ export async function warmOfflineCachesFromClient(routes: string[] = CRITICAL_RO
         cache: 'no-store',
       });
       if (!res.ok) continue;
-      await putCacheable(pageCache, route, res);
+      await Promise.all(pageCaches.map((pageCache) => putCacheable(pageCache, route, res)));
       pages += 1;
       const html = await res.clone().text();
       const urls = extractAssetUrls(html, window.location.origin + route);

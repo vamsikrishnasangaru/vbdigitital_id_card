@@ -131,11 +131,26 @@ function navigationFallbackCandidates(pathname: string): string[] {
 
 async function matchInCache(cacheName: string, request: Request): Promise<Response | undefined> {
   const cache = await caches.open(cacheName);
+  let pathname = '';
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    /* ignore */
+  }
   return (
     (await cache.match(request)) ||
     (await cache.match(request, { ignoreSearch: true })) ||
+    (pathname ? await cache.match(pathname) : undefined) ||
+    (pathname ? await cache.match(pathname, { ignoreSearch: true }) : undefined) ||
     undefined
   );
+}
+
+async function matchCachedDocument(request: Request): Promise<Response | undefined> {
+  const primary = await matchInCache(PAGE_CACHE, request);
+  if (primary) return primary;
+  // Legacy client warm cache name from older builds.
+  return matchInCache('vb-offline-pages-v7', request);
 }
 
 /**
@@ -264,10 +279,13 @@ export async function passthroughFetch(
       return new Response(null, { status: 503, statusText: 'Network Unavailable' });
     }
     if (documentRequest) {
-      const cached = await matchInCache(PAGE_CACHE, request);
+      const cached = await matchCachedDocument(request);
       if (cached) return cached;
       for (const path of navigationFallbackCandidates(url.pathname)) {
-        const shell = await caches.match(path, { ignoreSearch: true });
+        const shell =
+          (await caches.match(path, { ignoreSearch: true })) ||
+          (await matchInCache(PAGE_CACHE, new Request(path))) ||
+          (await matchInCache('vb-offline-pages-v7', new Request(path)));
         if (shell) return shell;
       }
       return matchOfflineDocument(fallbackDocument);
@@ -298,7 +316,7 @@ export async function passthroughFetch(
       }
     }
     if (documentRequest && !response.ok && response.status >= 500) {
-      const cached = await matchInCache(PAGE_CACHE, request);
+      const cached = await matchCachedDocument(request);
       if (cached) return cached;
       return matchOfflineDocument(fallbackDocument);
     }
@@ -312,11 +330,14 @@ export async function passthroughFetch(
       return new Response(null, { status: 503, statusText: 'Network Unavailable' });
     }
     if (documentRequest) {
-      const cached = await matchInCache(PAGE_CACHE, request);
+      const cached = await matchCachedDocument(request);
       if (cached) return cached;
       /** Prefer a previously visited app shell over the bare offline tip page. */
       for (const path of navigationFallbackCandidates(url.pathname)) {
-        const shell = await caches.match(path, { ignoreSearch: true });
+        const shell =
+          (await caches.match(path, { ignoreSearch: true })) ||
+          (await matchInCache(PAGE_CACHE, new Request(path))) ||
+          (await matchInCache('vb-offline-pages-v7', new Request(path)));
         if (shell) return shell;
       }
       return matchOfflineDocument(fallbackDocument);
