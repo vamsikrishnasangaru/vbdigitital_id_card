@@ -21,14 +21,21 @@ function isUploadAsset(url: URL): boolean {
 
 async function matchUploadAsset(request: Request, url: URL): Promise<Response | undefined> {
   const names = [UPLOAD_CACHE, DEV_ASSET_CACHE, STATIC_IMAGE_CACHE];
+  let decodedPath = url.pathname;
+  try {
+    decodedPath = decodeURI(url.pathname);
+  } catch {
+    /* ignore */
+  }
+  const keys = [request, url.href, url.pathname, decodedPath, `${url.pathname}${url.search}`];
   for (const name of names) {
     const cache = await caches.open(name);
-    const hit =
-      (await cache.match(request)) ||
-      (await cache.match(request, { ignoreSearch: true })) ||
-      (await cache.match(url.href)) ||
-      (await cache.match(url.pathname));
-    if (hit) return hit;
+    for (const key of keys) {
+      const hit =
+        (await cache.match(key)) ||
+        (await cache.match(key, { ignoreSearch: true }));
+      if (hit && hit.ok) return hit;
+    }
   }
   return undefined;
 }

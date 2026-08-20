@@ -195,29 +195,37 @@ async function handleNavigate(request, event) {
 
 /** Cache-first when we have a hit; stale-while-revalidate when online. */
 async function handleStaticAsset(request) {
-  const cache = await caches.open(ASSET_CACHE);
   const url = new URL(request.url);
-  const cached =
-    (await cache.match(request)) ||
-    (await cache.match(request, { ignoreSearch: true })) ||
-    (await cache.match(url.pathname)) ||
-    (await cache.match(url.href.split("?")[0]));
+  const isUpload = /\/api\/v\d+\/uploads\//i.test(url.pathname);
+  const cacheNames = isUpload
+    ? ["api-upload-assets", ASSET_CACHE, "static-image-assets"]
+    : [ASSET_CACHE, "static-image-assets", "api-upload-assets"];
 
-  if (cached) {
-    if (self.navigator && self.navigator.onLine !== false) {
-      fetchWithTimeout(request, 2500)
-        .then(function (response) {
-          if (response.ok) return putCacheable(cache, request, response);
-        })
-        .catch(function () {});
+  for (const name of cacheNames) {
+    const cache = await caches.open(name);
+    const cached =
+      (await cache.match(request)) ||
+      (await cache.match(request, { ignoreSearch: true })) ||
+      (await cache.match(url.pathname)) ||
+      (await cache.match(url.href.split("?")[0]));
+    if (cached) {
+      if (name === ASSET_CACHE && self.navigator && self.navigator.onLine !== false) {
+        fetchWithTimeout(request, 2500)
+          .then(function (response) {
+            if (response.ok) return putCacheable(cache, request, response);
+          })
+          .catch(function () {});
+      }
+      return cached;
     }
-    return cached;
   }
+
+  const cache = await caches.open(isUpload ? "api-upload-assets" : ASSET_CACHE);
 
   var isImageReq =
     request.destination === "image" ||
     /\.(?:png|jpe?g|gif|webp|svg|ico)(?:$|\?)/i.test(url.pathname) ||
-    /\/api\/v\d+\/uploads\//i.test(url.pathname);
+    isUpload;
 
   if (self.navigator && self.navigator.onLine === false) {
     if (isImageReq) {

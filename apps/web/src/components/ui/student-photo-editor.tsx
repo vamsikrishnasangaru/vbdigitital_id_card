@@ -203,11 +203,19 @@ export function StudentPhotoEditor({ open, source, backupSource = null, onClose,
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const loadBackup = backupSource
-      ? loadImageFromSource(backupSource).catch(() => null)
-      : Promise.resolve<HTMLImageElement | null>(null);
-    void Promise.all([loadImageFromSource(source), loadBackup])
-      .then(([img, backup]) => {
+    void (async () => {
+      try {
+        let img: HTMLImageElement | null = null;
+        try {
+          img = await loadImageFromSource(source);
+        } catch {
+          if (backupSource) img = await loadImageFromSource(backupSource);
+          else throw new Error('primary failed');
+        }
+        const backup =
+          backupSource && backupSource !== source
+            ? await loadImageFromSource(backupSource).catch(() => null)
+            : null;
         if (cancelled) return;
         originalImageRef.current = img;
         backupImageRef.current = backup;
@@ -219,13 +227,12 @@ export function StudentPhotoEditor({ open, source, backupSource = null, onClose,
         resetAdjustments();
         setBgRemoved(false);
         setSelectedSolidColor('#FFFFFF');
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setError('Could not load photo for editing');
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;

@@ -43,30 +43,145 @@ export function getCropDisplaySize(viewportSize = VIEWPORT_SIZE, cropInset = CRO
   return viewportSize - cropInset * 2;
 }
 
+const MEDIA_CACHE_NAMES = ['api-upload-assets', 'vb-offline-assets-v7', 'static-image-assets'] as const;
+/** SW returns a 1×1 PNG stub when an upload miss happens offline — skip those. */
+const MIN_USABLE_BLOB_BYTES = 256;
+
+function mediaUrlCandidates(src: string): string[] {
+  const out: string[] = [];
+  const add = (value: string | null | undefined) => {
+    const v = (value || '').trim();
+    if (!v || out.includes(v)) return;
+    out.push(v);
+  };
+
+  add(src);
+  try {
+    const abs = new URL(src, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+    add(abs.href);
+    add(abs.pathname);
+    add(`${abs.pathname}${abs.search}`);
+    try {
+      add(decodeURI(abs.pathname));
+    } catch {
+      /* ignore */
+    }
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
+
+async function blobFromResponse(response: Response | undefined): Promise<Blob | null> {
+  if (!response || !response.ok) return null;
+  try {
+    const blob = await response.blob();
+    if (!blob || blob.size < MIN_USABLE_BLOB_BYTES) return null;
+    return blob;
+  } catch {
+    return null;
+  }
+}
+
+async function matchCachedMediaBlob(src: string): Promise<Blob | null> {
+  if (typeof caches === 'undefined') return null;
+  const candidates = mediaUrlCandidates(src);
+
+  for (const name of MEDIA_CACHE_NAMES) {
+    try {
+      const cache = await caches.open(name);
+      for (const key of candidates) {
+        const hit =
+          (await cache.match(key)) ||
+          (await cache.match(key, { ignoreSearch: true })) ||
+          (await cache.match(new Request(key))) ||
+          (await cache.match(new Request(key), { ignoreSearch: true }));
+        const blob = await blobFromResponse(hit);
+        if (blob) return blob;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  for (const key of candidates) {
+    try {
+      const hit =
+        (await caches.match(key)) ||
+        (await caches.match(key, { ignoreSearch: true }));
+      const blob = await blobFromResponse(hit);
+      if (blob) return blob;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+async function imageFromBlob(blob: Blob): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(blob);
+  try {
+    return await loadImageElement(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Reuse a photo already painted on screen (browser memory cache) when Cache Storage misses. */
+async function cloneFromDisplayedImage(src: string): Promise<HTMLImageElement | null> {
+  if (typeof document === 'undefined') return null;
+  const candidates = new Set(mediaUrlCandidates(src));
+  for (const img of Array.from(document.images)) {
+    const attrs = [img.currentSrc, img.src, img.getAttribute('src')];
+    if (!attrs.some((a) => a && candidates.has(a))) continue;
+    if (!img.complete || img.naturalWidth < 2 || img.naturalHeight < 2) continue;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+      ctx.drawImage(img, 0, 0);
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/png');
+      });
+      if (!blob || blob.size < MIN_USABLE_BLOB_BYTES) continue;
+      return imageFromBlob(blob);
+    } catch {
+      /* tainted canvas or decode failure */
+    }
+  }
+  return null;
+}
+
 export async function loadImageFromSource(src: string | File): Promise<HTMLImageElement> {
   if (src instanceof File) {
-    const url = URL.createObjectURL(src);
-    try {
-      return await loadImageElement(url);
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    return imageFromBlob(src);
   }
 
   if (src.startsWith('data:') || src.startsWith('blob:')) {
     return loadImageElement(src);
   }
 
+  const cached = await matchCachedMediaBlob(src);
+  if (cached) return imageFromBlob(cached);
+
   try {
-    const response = await fetch(src, { credentials: 'include' });
-    if (!response.ok) throw new Error('fetch failed');
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    try {
-      return await loadImageElement(url);
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    const response = await fetch(src, {
+      credentials: 'include',
+      cache: 'force-cache',
+    });
+    const blob = await blobFromResponse(response);
+    if (blob) return imageFromBlob(blob);
+  } catch {
+    /* network / SW miss */
+  }
+
+  const fromDom = await cloneFromDisplayedImage(src);
+  if (fromDom) return fromDom;
+
+  try {
+    return await loadImageElement(src, false);
   } catch {
     return loadImageElement(src, true);
   }
@@ -76,7 +191,13 @@ function loadImageElement(src: string, crossOrigin = false): Promise<HTMLImageEl
   return new Promise((resolve, reject) => {
     const img = new Image();
     if (crossOrigin) img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
+    img.onload = () => {
+      if (img.naturalWidth < 2 || img.naturalHeight < 2) {
+        reject(new Error('Could not load image'));
+        return;
+      }
+      resolve(img);
+    };
     img.onerror = () => reject(new Error('Could not load image'));
     img.src = src;
   });

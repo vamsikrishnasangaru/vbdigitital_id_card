@@ -288,12 +288,45 @@ export function StudentPhotoPicker({
                   <button
                     type="button"
                     onClick={() => {
-                      const editorStart =
-                        preview ||
-                        originalFileRef.current ||
-                        originalPreviewRef.current ||
-                        originalPreview;
-                      if (editorStart) openEditor(editorStart);
+                      void (async () => {
+                        // Prefer an in-memory File, then snapshot the on-screen preview
+                        // (works offline even when Cache Storage missed the upload URL).
+                        let editorStart: string | File | null =
+                          originalFileRef.current ||
+                          preview ||
+                          originalPreviewRef.current ||
+                          originalPreview;
+                        try {
+                          const shown = document.querySelector(
+                            'img[alt="Student preview"]',
+                          ) as HTMLImageElement | null;
+                          if (
+                            shown?.complete &&
+                            shown.naturalWidth > 1 &&
+                            shown.naturalHeight > 1
+                          ) {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = shown.naturalWidth;
+                            canvas.height = shown.naturalHeight;
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                              ctx.drawImage(shown, 0, 0);
+                              const blob = await new Promise<Blob | null>((resolve) => {
+                                canvas.toBlob(resolve, 'image/jpeg', 0.95);
+                              });
+                              if (blob && blob.size > 256) {
+                                editorStart = new File([blob], 'student-photo.jpg', {
+                                  type: 'image/jpeg',
+                                  lastModified: Date.now(),
+                                });
+                              }
+                            }
+                          }
+                        } catch {
+                          /* keep URL / file fallback */
+                        }
+                        if (editorStart) openEditor(editorStart);
+                      })();
                     }}
                     className="flex items-center gap-4 w-full p-4 rounded-2xl border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-all text-left"
                   >
