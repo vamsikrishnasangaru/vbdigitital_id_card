@@ -72,8 +72,23 @@ if (typeof window !== 'undefined') {
 
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('accessToken');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    const headers = config.headers ?? {};
+    const existing =
+      (typeof (headers as { get?: (k: string) => string }).get === 'function'
+        ? (headers as { get: (k: string) => string }).get('Authorization')
+        : null) ??
+      (headers as Record<string, string | undefined>).Authorization ??
+      (headers as Record<string, string | undefined>).authorization;
+    if (!existing) {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        if (typeof (headers as { set?: (k: string, v: string) => void }).set === 'function') {
+          (headers as { set: (k: string, v: string) => void }).set('Authorization', `Bearer ${token}`);
+        } else {
+          (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+        }
+      }
+    }
   }
   if (config.data instanceof FormData) {
     if (config.headers) {
@@ -276,6 +291,13 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status === 401 && original && !original._retry) {
+      const url = original.url || '';
+      const pollHeader = original.headers?.['X-Generate-Job-Token'];
+      const isGenerateJobRequest =
+        Boolean(pollHeader) || /\/id-cards\/generate\/jobs\//.test(url);
+      if (isGenerateJobRequest) {
+        return Promise.reject(error);
+      }
       original._retry = true;
       try {
         const data = await refreshAccessToken();
@@ -285,7 +307,8 @@ api.interceptors.response.use(
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
-        if (window.location.pathname !== '/') {
+        const { isIdCardGenerateInFlight } = await import('./generate-id-cards');
+        if (!isIdCardGenerateInFlight() && window.location.pathname !== '/') {
           window.location.href = '/';
         }
         return Promise.reject(error);

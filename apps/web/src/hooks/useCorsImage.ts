@@ -46,7 +46,15 @@ export function useCorsImage(url: string): [HTMLImageElement | undefined, ImageS
     img.addEventListener('error', onError);
     img.src = url;
 
+    const timeoutMs = 45_000;
+    const timer = window.setTimeout(() => {
+      img.removeEventListener('load', onLoad);
+      img.removeEventListener('error', onError);
+      onError();
+    }, timeoutMs);
+
     return () => {
+      window.clearTimeout(timer);
       img.removeEventListener('load', onLoad);
       img.removeEventListener('error', onError);
     };

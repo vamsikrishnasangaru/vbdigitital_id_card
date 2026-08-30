@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { IdCardDesigner } from '@/components/designer/IdCardDesigner';
 import api from '@/lib/api';
+import { renderAuthConfig } from '@/lib/render-api';
 import { normalizeFrontConfig } from '@/lib/template-utils';
 
 export function RenderStudentCard({
@@ -30,11 +31,11 @@ export function RenderStudentCard({
           setError('Missing render token');
           return;
         }
-        const headers = { Authorization: `Bearer ${token}` };
+        const cfg = renderAuthConfig(token);
 
         const [tRes, sRes] = await Promise.all([
-          api.get(`/templates/${templateId}`, { headers }),
-          api.get(`/students/${studentId}`, { headers }),
+          api.get(`/templates/${templateId}`, cfg),
+          api.get(`/students/${studentId}`, cfg),
         ]);
 
         setTemplate(tRes.data);

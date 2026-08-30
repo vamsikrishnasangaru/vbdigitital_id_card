@@ -205,6 +205,13 @@ async function withTransientRetry<T>(
 
 export type GenerateCardFailure = { studentId: string; error: string };
 
+let generateJobsInFlight = 0;
+
+/** True while async ID card ZIP/PNG generation is polling — avoid login redirect on background 401. */
+export function isIdCardGenerateInFlight(): boolean {
+  return generateJobsInFlight > 0;
+}
+
 export function uniqueFailedStudentIds(failures?: GenerateCardFailure[]): string[] {
   if (!failures?.length) return [];
   return [...new Set(failures.map((f) => f.studentId))];
@@ -276,9 +283,11 @@ async function generateIdCardsAsync(
 ): Promise<GenerateIdCardsResult> {
   const total = params.studentIds.length;
   const destination = params.destination;
+  generateJobsInFlight += 1;
   onProgress?.(0, total, { destination, phase: 'rendering' });
 
-  const { data: start } = await api.post<{
+  try {
+    const { data: start } = await api.post<{
     jobId: string;
     pollToken: string;
     total: number;
@@ -379,6 +388,9 @@ async function generateIdCardsAsync(
   throw new Error(
     'Generation is taking longer than expected. Wait a minute and try again with the same selection, or ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server and redeploy the API.',
   );
+  } finally {
+    generateJobsInFlight = Math.max(0, generateJobsInFlight - 1);
+  }
 }
 
 async function generateIdCardsInChunks(params: {
@@ -482,7 +494,9 @@ export async function generateIdCards(params: {
   } catch (err: unknown) {
     const axiosErr = err as { response?: { data?: unknown; status?: number }; message?: string };
     if (axiosErr.response?.status === 401) {
-      throw new Error('Session expired during generation. Please sign in and try again.');
+      throw new Error(
+        'Session expired during generation. Sign out, sign in again, then retry the download.',
+      );
     }
     if (axiosErr.response?.status === 400 || axiosErr.response?.status === 404) {
       const message = axiosErr.response?.data

@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useSearchParams } from 'next/navigation';
 import { IdCardDesigner } from '@/components/designer/IdCardDesigner';
 import api from '@/lib/api';
+import { renderAuthConfig } from '@/lib/render-api';
 import { BATCH_DOWNLOAD_PIXEL_RATIO, collectRenderImageUrls } from '@/lib/designer-utils';
 import { normalizeFrontConfig } from '@/lib/template-utils';
 
@@ -62,9 +63,9 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
     let cancelled = false;
     void (async () => {
       try {
-        const headers = { Authorization: `Bearer ${token}` };
+        const cfg = renderAuthConfig(token);
         const requests: Promise<unknown>[] = [
-          api.get<RenderTemplate>(`/templates/${templateId}`, { headers }).then(({ data }) => {
+          api.get<RenderTemplate>(`/templates/${templateId}`, cfg).then(({ data }) => {
             if (!cancelled) setTemplate(data);
           }),
         ];
@@ -72,7 +73,7 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
         if (studentIds.length) {
           requests.push(
             api
-              .post<Record<string, unknown>[]>('/students/by-ids', { ids: studentIds }, { headers })
+              .post<Record<string, unknown>[]>('/students/by-ids', { ids: studentIds }, cfg)
               .then(({ data }) => {
                 const map = new Map<string, Record<string, unknown>>();
                 for (const row of data) {
@@ -122,9 +123,7 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
       setLoadingStudent(true);
       setStudent(null);
       try {
-        const { data } = await api.get<Record<string, unknown>>(`/students/${studentId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const { data } = await api.get<Record<string, unknown>>(`/students/${studentId}`, renderAuthConfig(token));
         studentCacheRef.current.set(studentId, data);
         setStudent(data);
       } catch (err: unknown) {
