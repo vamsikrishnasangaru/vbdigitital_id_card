@@ -72,6 +72,9 @@ async function warmTemplateDetails(
 export async function warmAllSchoolsDirectoryData(): Promise<number> {
   if (typeof window === 'undefined' || !navigator.onLine) return 0;
 
+  const { isIdCardGenerateInFlight } = await import('@/lib/generate-id-cards');
+  if (isIdCardGenerateInFlight()) return 0;
+
   let schools = (offlineStore.getSchools() || []) as SchoolRow[];
   if (schools.length === 0) {
     try {
@@ -91,6 +94,7 @@ export async function warmAllSchoolsDirectoryData(): Promise<number> {
   const queue = [...schools];
   const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
     while (queue.length > 0) {
+      if (isIdCardGenerateInFlight()) return;
       const school = queue.shift();
       if (!school?.id) continue;
       try {

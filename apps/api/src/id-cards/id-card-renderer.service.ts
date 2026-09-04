@@ -38,6 +38,11 @@ const BATCH_WORKER_STAGGER_MS = Math.max(
   0,
   Math.min(2000, Number(process.env.ID_CARD_BATCH_WORKER_STAGGER_MS) || 400),
 );
+/** One stuck student must not hang the whole ZIP forever. */
+const CARD_RENDER_TIMEOUT_MS = Math.max(
+  15_000,
+  Math.min(120_000, Number(process.env.ID_CARD_CARD_TIMEOUT_MS) || 45_000),
+);
 const BROWSER_LAUNCH_TIMEOUT_MS = Math.max(
   15_000,
   Math.min(120_000, Number(process.env.ID_CARD_BROWSER_LAUNCH_TIMEOUT_MS) || 60_000),
@@ -378,6 +383,23 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private async withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+            ms,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   private async renderStudentOnBatchPage(page: Page, studentId: string): Promise<void> {
     const error = await page.evaluate(async (id) => {
       try {
@@ -479,18 +501,21 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
       const waitForImages = async (container: ParentNode) => {
         const imgs = Array.from(container.querySelectorAll('img'));
-        await Promise.all(
-          imgs.map(
-            (img) =>
-              new Promise<void>((resolve) => {
-                if (img.complete) resolve();
-                else {
-                  img.onload = () => resolve();
-                  img.onerror = () => resolve();
-                }
-              }),
+        await Promise.race([
+          Promise.all(
+            imgs.map(
+              (img) =>
+                new Promise<void>((resolve) => {
+                  if (img.complete) resolve();
+                  else {
+                    img.onload = () => resolve();
+                    img.onerror = () => resolve();
+                  }
+                }),
+            ),
           ),
-        );
+          new Promise<void>((resolve) => setTimeout(resolve, 8000)),
+        ]);
       };
 
       const exportFromStage = async (
@@ -524,20 +549,23 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           found && typeof (found as { toArray?: () => unknown[] }).toArray === 'function'
             ? (found as { toArray: () => Array<{ image: () => unknown }> }).toArray()
             : Array.from(found as Array<{ image: () => unknown }>);
-        await Promise.all(
-          imageNodes.map(
-            (node) =>
-              new Promise<void>((resolve) => {
-                const img = node.image();
-                if (!(img instanceof HTMLImageElement) || img.complete) {
-                  resolve();
-                  return;
-                }
-                img.onload = () => resolve();
-                img.onerror = () => resolve();
-              }),
+        await Promise.race([
+          Promise.all(
+            imageNodes.map(
+              (node) =>
+                new Promise<void>((resolve) => {
+                  const img = node.image();
+                  if (!(img instanceof HTMLImageElement) || img.complete) {
+                    resolve();
+                    return;
+                  }
+                  img.onload = () => resolve();
+                  img.onerror = () => resolve();
+                }),
+            ),
           ),
-        );
+          new Promise<void>((resolve) => setTimeout(resolve, 8000)),
+        ]);
 
         await new Promise<void>((resolve) => {
           if (skipWarmup) {
@@ -737,7 +765,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
             onPreparing?.(`Loading template (${ids.length} students in parallel batch ${chunkIndex + 1}/${chunks.length})…`);
 
-            const page = await this.newPage();
+            let page = await this.newPage();
             try {
               await this.prepareRenderPage(page, true);
               await this.prepareBatchExportPage(page, templateId, token, ids, orientation);
@@ -745,17 +773,37 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
                 const index = startIndex + j;
                 const studentId = ids[j];
                 try {
-                  await this.renderStudentOnBatchPage(page, studentId);
-                  const buffer = await this.captureCanvasPng(
-                    page,
-                    orientation,
-                    BATCH_RENDER_PIXEL_RATIO,
-                    true,
+                  await this.withTimeout(
+                    (async () => {
+                      await this.renderStudentOnBatchPage(page, studentId);
+                      const buffer = await this.captureCanvasPng(
+                        page,
+                        orientation,
+                        BATCH_RENDER_PIXEL_RATIO,
+                        true,
+                      );
+                      results[index] = { studentId, buffer };
+                    })(),
+                    CARD_RENDER_TIMEOUT_MS,
+                    `Card ${studentId.slice(0, 8)}`,
                   );
-                  results[index] = { studentId, buffer };
                 } catch (err: unknown) {
                   const message = err instanceof Error ? err.message : String(err);
                   results[index] = { studentId, error: message };
+                  this.logger.warn(`Batch card failed ${studentId}: ${message}`);
+                  // Recycle the tab so one hung student does not block the rest of the chunk.
+                  if (j < ids.length - 1) {
+                    await this.safeClosePage(page);
+                    page = await this.newPage();
+                    await this.prepareRenderPage(page, true);
+                    await this.prepareBatchExportPage(
+                      page,
+                      templateId,
+                      token,
+                      ids.slice(j + 1),
+                      orientation,
+                    );
+                  }
                 } finally {
                   await emitCard(results[index]);
                   reportProgress();
@@ -799,14 +847,20 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
                 try {
                   await this.prepareRenderPage(page, true);
                   await this.prepareBatchExportPage(page, templateId, token, [studentId], orientation);
-                  await this.renderStudentOnBatchPage(page, studentId);
-                  const buffer = await this.captureCanvasPng(
-                    page,
-                    orientation,
-                    BATCH_RENDER_PIXEL_RATIO,
-                    true,
+                  await this.withTimeout(
+                    (async () => {
+                      await this.renderStudentOnBatchPage(page, studentId);
+                      const buffer = await this.captureCanvasPng(
+                        page,
+                        orientation,
+                        BATCH_RENDER_PIXEL_RATIO,
+                        true,
+                      );
+                      results[index] = { studentId, buffer };
+                    })(),
+                    CARD_RENDER_TIMEOUT_MS,
+                    `Retry ${studentId.slice(0, 8)}`,
                   );
-                  results[index] = { studentId, buffer };
                 } finally {
                   await emitCard(results[index]);
                   await this.safeClosePage(page);

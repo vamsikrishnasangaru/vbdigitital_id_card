@@ -308,7 +308,15 @@ api.interceptors.response.use(
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
         const { isIdCardGenerateInFlight } = await import('./generate-id-cards');
-        if (!isIdCardGenerateInFlight() && window.location.pathname !== '/') {
+        // Keep the page alive while a ZIP job is still polling with its job token.
+        if (isIdCardGenerateInFlight()) {
+          return Promise.reject(
+            new Error(
+              'Session expired during generation. The download may still finish — wait for it, then sign in again.',
+            ),
+          );
+        }
+        if (window.location.pathname !== '/') {
           window.location.href = '/';
         }
         return Promise.reject(error);
