@@ -19,10 +19,13 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
-/** Parallel Chromium tabs — 2 is a good speed/stability balance on VPS. */
+/**
+ * Parallel Chromium tabs. Default 1 — concurrent tabs + SW/controllerchange reloads
+ * caused "Execution context was destroyed" and 45s batch-page timeouts.
+ */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(3, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 2),
+  Math.min(3, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 1),
 );
 /** Students per loaded template page (load once, render many = speed). */
 const BATCH_PAGE_SIZE = Math.max(
@@ -43,7 +46,7 @@ const CARD_RENDER_TIMEOUT_MS = Math.max(
 );
 const BATCH_PAGE_PREPARE_TIMEOUT_MS = Math.max(
   15_000,
-  Math.min(90_000, Number(process.env.ID_CARD_BATCH_PAGE_PREPARE_TIMEOUT_MS) || 45_000),
+  Math.min(120_000, Number(process.env.ID_CARD_BATCH_PAGE_PREPARE_TIMEOUT_MS) || 90_000),
 );
 const BROWSER_LAUNCH_TIMEOUT_MS = Math.max(
   15_000,
@@ -315,12 +318,48 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
   private async prepareRenderPage(page: Page, batch = false): Promise<void> {
     await page.setCacheEnabled(true);
-    page.setDefaultNavigationTimeout(batch ? 60000 : 120000);
-    page.setDefaultTimeout(batch ? 60000 : 120000);
+    page.setDefaultNavigationTimeout(batch ? 90_000 : 120_000);
+    page.setDefaultTimeout(batch ? 90_000 : 120_000);
+
+    if (batch) {
+      // Bypass any SW already controlling this Chromium profile from a prior page.
+      try {
+        const cdp = await page.createCDPSession();
+        await cdp.send('Network.enable');
+        await cdp.send('Network.setBypassServiceWorker', { bypass: true });
+      } catch (err: unknown) {
+        this.logger.warn(
+          `Could not bypass service worker for batch page: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      // Block SW registration before first navigation — Serwist otherwise registers and may reload the tab.
+      await page.evaluateOnNewDocument(() => {
+        try {
+          const blocked = {
+            controller: null,
+            ready: Promise.reject(new Error('SW disabled for ID card render')),
+            register: () => Promise.reject(new Error('SW disabled for ID card render')),
+            getRegistration: () => Promise.resolve(undefined),
+            getRegistrations: () => Promise.resolve([]),
+            addEventListener() {},
+            removeEventListener() {},
+            startMessages() {},
+          };
+          Object.defineProperty(navigator, 'serviceWorker', {
+            configurable: true,
+            get: () => blocked,
+          });
+        } catch {
+          /* ignore */
+        }
+      });
+      // No request interception on batch — interception + SW races caused hung navigations.
+      return;
+    }
+
     await page.setRequestInterception(true);
     page.on('request', (req) => {
       const type = req.resourceType();
-      const url = req.url();
       if (
         type === 'websocket' ||
         type === 'media' ||
@@ -330,20 +369,6 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       ) {
         req.abort();
         return;
-      }
-      if (batch) {
-        if (
-          /google-analytics|googletagmanager|hotjar|facebook\.net|doubleclick|service-worker|workbox/i.test(
-            url,
-          )
-        ) {
-          req.abort();
-          return;
-        }
-        if (type === 'font' && !/localhost|127\.0\.0\.1/.test(url)) {
-          req.abort();
-          return;
-        }
       }
       req.continue();
     });
@@ -386,29 +411,65 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async waitForBatchExportHost(page: Page): Promise<void> {
-    const state = await page.waitForFunction(
-      () => {
+  private async diagnoseBatchExportPage(page: Page): Promise<string> {
+    try {
+      const info = await page.evaluate(() => {
         const host = document.querySelector('[data-batch-export-host]');
-        const hostState = host?.getAttribute('data-batch-export-host');
-        if (hostState === 'error') return 'error';
-        if (
-          (window as unknown as { __vbBatchRender?: { ready?: boolean } }).__vbBatchRender
-            ?.ready === true
-        ) {
-          return 'ready';
-        }
-        return false;
-      },
-      { timeout: BATCH_PAGE_PREPARE_TIMEOUT_MS },
-    );
-    const value = await state.jsonValue();
-    if (value === 'error') {
-      const message = await page.evaluate(() => {
-        const root = document.querySelector('[data-batch-export-host="error"]');
-        return root?.textContent?.trim() || 'Batch export page failed to load';
+        return {
+          href: location.href,
+          title: document.title,
+          host: host?.getAttribute('data-batch-export-host') ?? null,
+          ready: !!(window as unknown as { __vbBatchRender?: { ready?: boolean } }).__vbBatchRender
+            ?.ready,
+          errText: document.querySelector('[data-batch-export-host="error"]')?.textContent?.trim() || null,
+          bodySnippet: (document.body?.innerText || '').slice(0, 160),
+        };
       });
-      throw new Error(message);
+      return JSON.stringify(info);
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  private async waitForBatchExportHost(page: Page): Promise<void> {
+    try {
+      const state = await page.waitForFunction(
+        () => {
+          const host = document.querySelector('[data-batch-export-host]');
+          const hostState = host?.getAttribute('data-batch-export-host');
+          if (hostState === 'error') return 'error';
+          // Host "ready" means React painted the template shell; API may lag slightly behind.
+          if (hostState === 'ready') return 'ready';
+          if (
+            (window as unknown as { __vbBatchRender?: { ready?: boolean } }).__vbBatchRender
+              ?.ready === true
+          ) {
+            return 'ready';
+          }
+          return false;
+        },
+        { timeout: BATCH_PAGE_PREPARE_TIMEOUT_MS },
+      );
+      const value = await state.jsonValue();
+      if (value === 'error') {
+        const message = await page.evaluate(() => {
+          const root = document.querySelector('[data-batch-export-host="error"]');
+          return root?.textContent?.trim() || 'Batch export page failed to load';
+        });
+        throw new Error(message);
+      }
+      // Ensure __vbBatchRender exists before calling renderStudent (host ready can precede effect).
+      await page.waitForFunction(
+        () =>
+          !!(window as unknown as { __vbBatchRender?: { ready?: boolean } }).__vbBatchRender
+            ?.ready,
+        { timeout: 10_000 },
+      );
+    } catch (err: unknown) {
+      const detail = await this.diagnoseBatchExportPage(page);
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Batch export host wait failed: ${message} | ${detail}`);
+      throw err instanceof Error ? err : new Error(message);
     }
   }
 

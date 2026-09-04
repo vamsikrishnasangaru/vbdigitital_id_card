@@ -130,6 +130,13 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (swDisabled || !('serviceWorker' in navigator)) return;
 
+    // Puppeteer ID-card render routes must never register or reload via SW —
+    // controllerchange reloads destroy the page mid-batch ("Execution context was destroyed").
+    if (window.location.pathname.startsWith('/render')) {
+      void clearAllServiceWorkers().catch(() => undefined);
+      return;
+    }
+
     const swUrl = serviceWorkerUrl();
     const swPath = new URL(swUrl, window.location.origin).pathname;
     let cancelled = false;
@@ -146,6 +153,7 @@ export function SerwistRegistration({ children }: { children: React.ReactNode })
       // Never reload mid-warm — that kills the offline-ready UI mid-flight.
       if (isDev || sessionStorage.getItem(SW_RELOAD_FLAG)) return;
       if (sessionStorage.getItem('vb-offline-warming') === '1') return;
+      if (window.location.pathname.startsWith('/render')) return;
       sessionStorage.setItem(SW_RELOAD_FLAG, '1');
       window.location.reload();
     };

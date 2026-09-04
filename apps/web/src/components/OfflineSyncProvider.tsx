@@ -105,7 +105,12 @@ function useOfflineSyncInternal(): OfflineSyncState {
     const interval = window.setInterval(refreshCounts, REFRESH_INTERVAL_MS);
 
     // Prefetch every school's directory data once per tab while online.
-    if (navigator.onLine && !sessionStorage.getItem('vb-schools-dir-warmed')) {
+    // Skip on Puppeteer /render routes — warm traffic steals API capacity mid-export.
+    if (
+      navigator.onLine &&
+      !window.location.pathname.startsWith('/render') &&
+      !sessionStorage.getItem('vb-schools-dir-warmed')
+    ) {
       sessionStorage.setItem('vb-schools-dir-warmed', '1');
       void import('@/lib/warm-schools-offline')
         .then(({ warmAllSchoolsDirectoryData }) => warmAllSchoolsDirectoryData())

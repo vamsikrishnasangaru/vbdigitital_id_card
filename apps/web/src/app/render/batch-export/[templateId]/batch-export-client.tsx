@@ -60,6 +60,14 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
       return;
     }
 
+    // Belt-and-suspenders: never let a PWA SW control Puppeteer export pages.
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      void navigator.serviceWorker
+        .getRegistrations()
+        .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+        .catch(() => undefined);
+    }
+
     let cancelled = false;
     void (async () => {
       try {
