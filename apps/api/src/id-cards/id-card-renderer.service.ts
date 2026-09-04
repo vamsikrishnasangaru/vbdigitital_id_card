@@ -19,29 +19,34 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
-/** Parallel Puppeteer tabs — default 5 (stable on 8GB VPS). Env: ID_CARD_BATCH_CONCURRENCY (max 6). */
+/** Parallel Puppeteer tabs — default 2 (stable on VPS). Env: ID_CARD_BATCH_CONCURRENCY (max 4). */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(6, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 5),
+  Math.min(4, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 2),
 );
 /** Students per batch-export page — smaller pages load faster (env: ID_CARD_BATCH_PAGE_SIZE). */
 const BATCH_PAGE_SIZE = Math.max(
-  5,
-  Math.min(40, Number(process.env.ID_CARD_BATCH_PAGE_SIZE) || 15),
+  3,
+  Math.min(20, Number(process.env.ID_CARD_BATCH_PAGE_SIZE) || 6),
 );
 const BATCH_RETRY_CONCURRENCY = Math.max(
   1,
-  Math.min(4, Number(process.env.ID_CARD_BATCH_RETRY_CONCURRENCY) || 3),
+  Math.min(3, Number(process.env.ID_CARD_BATCH_RETRY_CONCURRENCY) || 2),
 );
-/** Stagger parallel tabs so five batch-export pages do not hammer vb-web at once. */
+/** Stagger parallel tabs so batch-export pages do not hammer vb-web at once. */
 const BATCH_WORKER_STAGGER_MS = Math.max(
   0,
-  Math.min(2000, Number(process.env.ID_CARD_BATCH_WORKER_STAGGER_MS) || 400),
+  Math.min(2000, Number(process.env.ID_CARD_BATCH_WORKER_STAGGER_MS) || 600),
 );
 /** One stuck student must not hang the whole ZIP forever. */
 const CARD_RENDER_TIMEOUT_MS = Math.max(
   15_000,
   Math.min(120_000, Number(process.env.ID_CARD_CARD_TIMEOUT_MS) || 45_000),
+);
+/** Batch-export page load + host ready — fail fast and fall back to single-card pages. */
+const BATCH_PAGE_PREPARE_TIMEOUT_MS = Math.max(
+  20_000,
+  Math.min(90_000, Number(process.env.ID_CARD_BATCH_PAGE_PREPARE_TIMEOUT_MS) || 40_000),
 );
 const BROWSER_LAUNCH_TIMEOUT_MS = Math.max(
   15_000,
@@ -141,14 +146,12 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
   /** Large school batches — fewer tabs and smaller pages load faster and use less RAM. */
   private batchWorkerCount(totalStudents: number): number {
-    if (totalStudents > 80) return Math.min(3, BATCH_RENDER_CONCURRENCY);
-    if (totalStudents > 40) return Math.min(4, BATCH_RENDER_CONCURRENCY);
+    if (totalStudents > 40) return Math.min(2, BATCH_RENDER_CONCURRENCY);
     return BATCH_RENDER_CONCURRENCY;
   }
 
   private batchPageSizeCap(totalStudents: number): number {
-    if (totalStudents > 80) return Math.min(8, BATCH_PAGE_SIZE);
-    if (totalStudents > 40) return Math.min(10, BATCH_PAGE_SIZE);
+    if (totalStudents > 40) return Math.min(5, BATCH_PAGE_SIZE);
     return BATCH_PAGE_SIZE;
   }
 
@@ -377,10 +380,29 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async waitForBatchExportHost(page: Page): Promise<void> {
-    await page.waitForFunction(
-      () => (window as unknown as { __vbBatchRender?: { ready?: boolean } }).__vbBatchRender?.ready === true,
-      { timeout: 120000 },
+    const state = await page.waitForFunction(
+      () => {
+        const host = document.querySelector('[data-batch-export-host]');
+        const hostState = host?.getAttribute('data-batch-export-host');
+        if (hostState === 'error') return 'error';
+        if (
+          (window as unknown as { __vbBatchRender?: { ready?: boolean } }).__vbBatchRender
+            ?.ready === true
+        ) {
+          return 'ready';
+        }
+        return false;
+      },
+      { timeout: BATCH_PAGE_PREPARE_TIMEOUT_MS },
     );
+    const value = await state.jsonValue();
+    if (value === 'error') {
+      const message = await page.evaluate(() => {
+        const root = document.querySelector('[data-batch-export-host="error"]');
+        return root?.textContent?.trim() || 'Batch export page failed to load';
+      });
+      throw new Error(message);
+    }
   }
 
   private async withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -475,11 +497,49 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       height: size.height + 80,
       deviceScaleFactor: 1,
     });
-    await page.goto(this.buildBatchExportUrl(templateId, token, studentIds, BATCH_RENDER_PIXEL_RATIO), {
-      waitUntil: BATCH_GOTO_WAIT_UNTIL,
-      timeout: 120000,
-    });
-    await this.waitForBatchExportHost(page);
+    await this.withTimeout(
+      (async () => {
+        await page.goto(this.buildBatchExportUrl(templateId, token, studentIds, BATCH_RENDER_PIXEL_RATIO), {
+          waitUntil: BATCH_GOTO_WAIT_UNTIL,
+          timeout: BATCH_PAGE_PREPARE_TIMEOUT_MS,
+        });
+        await this.waitForBatchExportHost(page);
+      })(),
+      BATCH_PAGE_PREPARE_TIMEOUT_MS + 5_000,
+      `Batch page (${studentIds.length} students)`,
+    );
+  }
+
+  /** Render one student on a fresh page — used when multi-student batch pages fail to load. */
+  private async renderSingleStudentCard(
+    templateId: string,
+    studentId: string,
+    token: string,
+    orientation: 'HORIZONTAL' | 'VERTICAL',
+  ): Promise<BatchCardRenderResult> {
+    const page = await this.newPage();
+    try {
+      await this.prepareRenderPage(page, true);
+      await this.prepareBatchExportPage(page, templateId, token, [studentId], orientation);
+      await this.withTimeout(
+        (async () => {
+          await this.renderStudentOnBatchPage(page, studentId);
+        })(),
+        CARD_RENDER_TIMEOUT_MS,
+        `Card ${studentId.slice(0, 8)}`,
+      );
+      const buffer = await this.withTimeout(
+        this.captureCanvasPng(page, orientation, BATCH_RENDER_PIXEL_RATIO, true),
+        CARD_RENDER_TIMEOUT_MS,
+        `Capture ${studentId.slice(0, 8)}`,
+      );
+      return { studentId, buffer };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { studentId, error: message };
+    } finally {
+      await this.safeClosePage(page);
+    }
   }
 
   private async captureCanvasPng(
@@ -763,21 +823,59 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
             const { ids, startIndex } = chunks[chunkIndex];
             if (!ids.length) continue;
 
-            onPreparing?.(`Loading template (${ids.length} students in parallel batch ${chunkIndex + 1}/${chunks.length})…`);
+            onPreparing?.(
+              `Loading template (${ids.length} students in parallel batch ${chunkIndex + 1}/${chunks.length})…`,
+            );
 
-            let page = await this.newPage();
+            let page: Page | null = await this.newPage();
+            let useSingles = false;
             try {
-              await this.prepareRenderPage(page, true);
-              await this.prepareBatchExportPage(page, templateId, token, ids, orientation);
+              try {
+                await this.prepareRenderPage(page, true);
+                await this.prepareBatchExportPage(page, templateId, token, ids, orientation);
+              } catch (prepareErr: unknown) {
+                const message =
+                  prepareErr instanceof Error ? prepareErr.message : String(prepareErr);
+                this.logger.warn(
+                  `Batch page failed for chunk ${chunkIndex + 1} (${ids.length} students): ${message}. Falling back to one card per page.`,
+                );
+                onPreparing?.(
+                  `Batch page slow — rendering ${ids.length} cards one-by-one (batch ${chunkIndex + 1}/${chunks.length})…`,
+                );
+                await this.safeClosePage(page);
+                page = null;
+                useSingles = true;
+              }
+
+              if (useSingles) {
+                for (let j = 0; j < ids.length; j += 1) {
+                  const index = startIndex + j;
+                  const studentId = ids[j];
+                  onPreparing?.(
+                    `Rendering card ${startIndex + j + 1} of ${studentIds.length}…`,
+                  );
+                  const result = await this.renderSingleStudentCard(
+                    templateId,
+                    studentId,
+                    token,
+                    orientation,
+                  );
+                  results[index] = result;
+                  await emitCard(result);
+                  reportProgress();
+                }
+                continue;
+              }
+
               for (let j = 0; j < ids.length; j += 1) {
                 const index = startIndex + j;
                 const studentId = ids[j];
                 try {
                   await this.withTimeout(
                     (async () => {
-                      await this.renderStudentOnBatchPage(page, studentId);
+                      await this.renderStudentOnBatchPage(page!, studentId);
                       const buffer = await this.captureCanvasPng(
-                        page,
+                        page!,
                         orientation,
                         BATCH_RENDER_PIXEL_RATIO,
                         true,
@@ -793,24 +891,53 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
                   this.logger.warn(`Batch card failed ${studentId}: ${message}`);
                   // Recycle the tab so one hung student does not block the rest of the chunk.
                   if (j < ids.length - 1) {
-                    await this.safeClosePage(page);
+                    await this.safeClosePage(page!);
                     page = await this.newPage();
-                    await this.prepareRenderPage(page, true);
-                    await this.prepareBatchExportPage(
-                      page,
-                      templateId,
-                      token,
-                      ids.slice(j + 1),
-                      orientation,
-                    );
+                    try {
+                      await this.prepareRenderPage(page, true);
+                      await this.prepareBatchExportPage(
+                        page,
+                        templateId,
+                        token,
+                        ids.slice(j + 1),
+                        orientation,
+                      );
+                    } catch (recycleErr: unknown) {
+                      const recycleMsg =
+                        recycleErr instanceof Error ? recycleErr.message : String(recycleErr);
+                      this.logger.warn(
+                        `Recycled batch page failed; finishing chunk one-by-one: ${recycleMsg}`,
+                      );
+                      await this.safeClosePage(page);
+                      page = null;
+                      for (let k = j + 1; k < ids.length; k += 1) {
+                        const idx = startIndex + k;
+                        const sid = ids[k];
+                        onPreparing?.(
+                          `Rendering card ${startIndex + k + 1} of ${studentIds.length}…`,
+                        );
+                        const result = await this.renderSingleStudentCard(
+                          templateId,
+                          sid,
+                          token,
+                          orientation,
+                        );
+                        results[idx] = result;
+                        await emitCard(result);
+                        reportProgress();
+                      }
+                      break;
+                    }
                   }
                 } finally {
-                  await emitCard(results[index]);
-                  reportProgress();
+                  if (results[index]) {
+                    await emitCard(results[index]);
+                    reportProgress();
+                  }
                 }
               }
             } finally {
-              await this.safeClosePage(page);
+              if (page) await this.safeClosePage(page);
             }
           }
         };

@@ -158,16 +158,31 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
           new Promise<void>((resolve) => {
             const img = new window.Image();
             if (url.startsWith('http')) img.crossOrigin = 'anonymous';
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
+            const done = () => resolve();
+            img.onload = done;
+            img.onerror = done;
             img.src = url;
+            window.setTimeout(done, 8000);
           }),
       ),
     );
   }, [template, prefetchDone]);
 
   useEffect(() => {
-    if (loadingTemplate || !template || !token || !prefetchDone) return;
+    if (loadingTemplate || !prefetchDone || !token) return;
+
+    const fail = (message: string) =>
+      Promise.reject(new Error(message || 'Batch render unavailable'));
+
+    if (!template) {
+      window.__vbBatchRender = {
+        ready: true,
+        renderStudent: () => fail(error || 'Template not found'),
+      };
+      return () => {
+        delete window.__vbBatchRender;
+      };
+    }
 
     window.__vbBatchRender = {
       ready: true,
@@ -184,7 +199,7 @@ export function BatchExportClient({ templateId }: { templateId: string }) {
     return () => {
       delete window.__vbBatchRender;
     };
-  }, [loadingTemplate, template, token, prefetchDone, loadStudent]);
+  }, [loadingTemplate, template, token, prefetchDone, loadStudent, error]);
 
   useEffect(() => {
     if (!canvasReady || !pendingRef.current) return;
