@@ -18,17 +18,17 @@ module.exports = {
       cwd: '/var/www/id-app/apps/api',
       script: 'dist/main.js',
       interpreter: 'node',
-      max_memory_restart: '1200M',
-      // Do not use PM2 env_file — it can mis-parse .env and override DATABASE_URL.
-      // apps/api/src/main.ts loads /var/www/id-app/apps/api/.env via dotenv on boot.
+      max_memory_restart: '1536M',
       env: {
         NODE_ENV: 'production',
         PORT: '4000',
-        ID_CARD_BATCH_CONCURRENCY: '1',
+        ID_CARD_BATCH_CONCURRENCY: '2',
+        ID_CARD_BATCH_PAGE_SIZE: '10',
         ID_CARD_BATCH_PIXEL_RATIO: '5',
         ID_CARD_BATCH_RETRY_CONCURRENCY: '1',
-        ID_CARD_BATCH_PAGE_PREPARE_TIMEOUT_MS: '50000',
-        ID_CARD_CARD_TIMEOUT_MS: '60000',
+        ID_CARD_BATCH_PAGE_PREPARE_TIMEOUT_MS: '45000',
+        ID_CARD_CARD_TIMEOUT_MS: '40000',
+        ID_CARD_JOB_STALE_AFTER_PROGRESS_MS: '900000',
         GOOGLE_DRIVE_UPLOAD_CONCURRENCY: '8',
       },
     },

@@ -53,10 +53,11 @@ const JOB_DIR = join(tmpdir(), 'id-card-generate-jobs');
 /** Avoid syncing job JSON to disk on every 300ms poll — that blocked the API. */
 const JOB_PERSIST_INTERVAL_MS = 10_000;
 /** Fail jobs that never advance (e.g. API OOM restart left them orphaned on disk). */
-const STALE_JOB_MS_BEFORE_FIRST_CARD = 8 * 60 * 1000;
+const STALE_JOB_MS_BEFORE_FIRST_CARD = 6 * 60 * 1000;
+/** Must stay above worst-case single-card render (prepare + capture). Large batches need headroom. */
 const STALE_JOB_MS_AFTER_PROGRESS = Math.max(
-  2 * 60 * 1000,
-  Math.min(10 * 60 * 1000, Number(process.env.ID_CARD_JOB_STALE_AFTER_PROGRESS_MS) || 3 * 60 * 1000),
+  8 * 60 * 1000,
+  Math.min(30 * 60 * 1000, Number(process.env.ID_CARD_JOB_STALE_AFTER_PROGRESS_MS) || 15 * 60 * 1000),
 );
 
 @Injectable()

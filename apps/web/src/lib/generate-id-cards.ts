@@ -233,7 +233,7 @@ export function formatFailedStudentLabels(
 }
 
 /** Auto-split large selections so VPS batch render stays stable (~40 per ZIP). */
-export const ID_CARD_GENERATE_BATCH_SIZE = 40;
+export const ID_CARD_GENERATE_BATCH_SIZE = 15;
 
 export function generateBatchCount(
   studentCount: number,

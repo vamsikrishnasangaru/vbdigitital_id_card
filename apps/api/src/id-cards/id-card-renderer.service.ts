@@ -19,29 +19,31 @@ const MAX_RENDER_ATTEMPTS = 4;
 /** Faster navigation for batch PNG — assets continue loading while Konva renders. */
 const BATCH_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'domcontentloaded';
 const PDF_GOTO_WAIT_UNTIL: puppeteer.PuppeteerLifeCycleEvent = 'load';
-/** Parallel single-card tabs — default 1 (most reliable on VPS). Env: ID_CARD_BATCH_CONCURRENCY (max 3). */
+/** Parallel Chromium tabs — 2 is a good speed/stability balance on VPS. */
 const BATCH_RENDER_CONCURRENCY = Math.max(
   1,
-  Math.min(3, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 1),
+  Math.min(3, Number(process.env.ID_CARD_BATCH_CONCURRENCY) || 2),
+);
+/** Students per loaded template page (load once, render many = speed). */
+const BATCH_PAGE_SIZE = Math.max(
+  5,
+  Math.min(20, Number(process.env.ID_CARD_BATCH_PAGE_SIZE) || 10),
 );
 const BATCH_RETRY_CONCURRENCY = Math.max(
   1,
   Math.min(2, Number(process.env.ID_CARD_BATCH_RETRY_CONCURRENCY) || 1),
 );
-/** Stagger parallel tabs so Chromium does not thrash Next.js. */
 const BATCH_WORKER_STAGGER_MS = Math.max(
   0,
-  Math.min(2000, Number(process.env.ID_CARD_BATCH_WORKER_STAGGER_MS) || 400),
+  Math.min(2000, Number(process.env.ID_CARD_BATCH_WORKER_STAGGER_MS) || 300),
 );
-/** One stuck student must not hang the whole ZIP forever. */
 const CARD_RENDER_TIMEOUT_MS = Math.max(
-  20_000,
-  Math.min(120_000, Number(process.env.ID_CARD_CARD_TIMEOUT_MS) || 60_000),
+  15_000,
+  Math.min(90_000, Number(process.env.ID_CARD_CARD_TIMEOUT_MS) || 40_000),
 );
-/** Single-card batch-export page load + host ready. */
 const BATCH_PAGE_PREPARE_TIMEOUT_MS = Math.max(
   15_000,
-  Math.min(90_000, Number(process.env.ID_CARD_BATCH_PAGE_PREPARE_TIMEOUT_MS) || 50_000),
+  Math.min(90_000, Number(process.env.ID_CARD_BATCH_PAGE_PREPARE_TIMEOUT_MS) || 45_000),
 );
 const BROWSER_LAUNCH_TIMEOUT_MS = Math.max(
   15_000,
@@ -150,10 +152,15 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Keep concurrency low — each card gets its own Chromium tab. */
+  /** Keep a small number of tabs — each tab reuses one loaded template for many students. */
   private batchWorkerCount(totalStudents: number): number {
-    if (totalStudents <= 1) return 1;
-    return Math.min(BATCH_RENDER_CONCURRENCY, totalStudents);
+    if (totalStudents <= 8) return 1;
+    return Math.min(BATCH_RENDER_CONCURRENCY, Math.ceil(totalStudents / BATCH_PAGE_SIZE));
+  }
+
+  private batchPageSizeCap(totalStudents: number): number {
+    if (totalStudents <= 8) return totalStudents;
+    return BATCH_PAGE_SIZE;
   }
 
   private isTransientBrowserError(error: unknown): boolean {
@@ -543,7 +550,13 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
     const onProgress = options?.onProgress;
     const onCardRendered = options?.onCardRendered;
     const onPreparing = options?.onPreparing;
-    const workerCount = this.batchWorkerCount(studentIds.length);
+
+    const workerCount = Math.min(this.batchWorkerCount(studentIds.length), studentIds.length);
+    const pageSize = this.batchPageSizeCap(studentIds.length);
+    const chunks: Array<{ ids: string[]; startIndex: number }> = [];
+    for (let i = 0; i < studentIds.length; i += pageSize) {
+      chunks.push({ ids: studentIds.slice(i, i + pageSize), startIndex: i });
+    }
 
     let completed = 0;
     const reportProgress = () => {
@@ -567,9 +580,7 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
       onPreparing?.('Preparing Chrome renderer…');
       await this.ensureBrowserForBatch();
       onPreparing?.(
-        workerCount > 1
-          ? `Rendering ${studentIds.length} ID cards (${workerCount} at a time)…`
-          : `Rendering ${studentIds.length} ID cards one-by-one…`,
+        `Rendering ${studentIds.length} ID cards (${chunks.length} page${chunks.length === 1 ? '' : 's'}, ${workerCount} worker${workerCount === 1 ? '' : 's'})…`,
       );
 
       return await this.withRenderRetries(`PNG batch ${templateId}`, async () => {
@@ -580,34 +591,135 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
           if (onCardRendered) await onCardRendered(result);
         };
 
-        let nextIndex = 0;
+        let nextChunk = 0;
         let nextWorker = 0;
+
+        const renderChunk = async (ids: string[], startIndex: number, chunkIndex: number) => {
+          onPreparing?.(
+            `Loading template (${ids.length} cards) — batch ${chunkIndex + 1}/${chunks.length}…`,
+          );
+
+          let page: Page | null = await this.newPage();
+          try {
+            try {
+              await this.prepareRenderPage(page, true);
+              await this.prepareBatchExportPage(page, templateId, token, ids, orientation);
+            } catch (prepareErr: unknown) {
+              const message =
+                prepareErr instanceof Error ? prepareErr.message : String(prepareErr);
+              this.logger.warn(
+                `Batch page failed for chunk ${chunkIndex + 1}: ${message}. Using one-by-one.`,
+              );
+              await this.safeClosePage(page);
+              page = null;
+              for (let j = 0; j < ids.length; j += 1) {
+                const index = startIndex + j;
+                onPreparing?.(`Rendering card ${index + 1} of ${studentIds.length}…`);
+                const result = await this.renderSingleStudentCard(
+                  templateId,
+                  ids[j],
+                  token,
+                  orientation,
+                );
+                results[index] = result;
+                if (result.error) this.logger.warn(`Batch card failed ${ids[j]}: ${result.error}`);
+                await emitCard(result);
+                reportProgress();
+              }
+              return;
+            }
+
+            for (let j = 0; j < ids.length; j += 1) {
+              const index = startIndex + j;
+              const studentId = ids[j];
+              onPreparing?.(`Rendering card ${index + 1} of ${studentIds.length}…`);
+              try {
+                const buffer = await this.withTimeout(
+                  (async () => {
+                    await this.renderStudentOnBatchPage(page!, studentId);
+                    return this.captureCanvasPng(
+                      page!,
+                      orientation,
+                      BATCH_RENDER_PIXEL_RATIO,
+                      true,
+                    );
+                  })(),
+                  CARD_RENDER_TIMEOUT_MS,
+                  `Card ${studentId.slice(0, 8)}`,
+                );
+                results[index] = { studentId, buffer };
+              } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                this.logger.warn(`Batch card failed ${studentId}: ${message}`);
+                // Prefer a fresh single-card page over recycling a broken multi-card tab.
+                const single = await this.renderSingleStudentCard(
+                  templateId,
+                  studentId,
+                  token,
+                  orientation,
+                );
+                results[index] = single;
+                if (single.error) {
+                  // Rebuild multi-card page for remaining students if shared tab is dead.
+                  if (j < ids.length - 1 && /context was destroyed|Target closed|Session closed/i.test(message)) {
+                    await this.safeClosePage(page);
+                    page = await this.newPage();
+                    try {
+                      await this.prepareRenderPage(page, true);
+                      await this.prepareBatchExportPage(
+                        page,
+                        templateId,
+                        token,
+                        ids.slice(j + 1),
+                        orientation,
+                      );
+                    } catch {
+                      await this.safeClosePage(page);
+                      page = null;
+                      for (let k = j + 1; k < ids.length; k += 1) {
+                        const idx = startIndex + k;
+                        onPreparing?.(`Rendering card ${idx + 1} of ${studentIds.length}…`);
+                        const result = await this.renderSingleStudentCard(
+                          templateId,
+                          ids[k],
+                          token,
+                          orientation,
+                        );
+                        results[idx] = result;
+                        await emitCard(result);
+                        reportProgress();
+                      }
+                      await emitCard(results[index]);
+                      reportProgress();
+                      return;
+                    }
+                  }
+                }
+              }
+              await emitCard(results[index]);
+              reportProgress();
+            }
+          } finally {
+            if (page) await this.safeClosePage(page);
+          }
+        };
+
         const worker = async () => {
           const workerIndex = nextWorker++;
           if (workerIndex > 0 && BATCH_WORKER_STAGGER_MS > 0) {
             await new Promise((r) => setTimeout(r, workerIndex * BATCH_WORKER_STAGGER_MS));
           }
           while (true) {
-            const index = nextIndex++;
-            if (index >= studentIds.length) break;
-            const studentId = studentIds[index];
-            onPreparing?.(`Rendering card ${index + 1} of ${studentIds.length}…`);
-            const result = await this.renderSingleStudentCard(
-              templateId,
-              studentId,
-              token,
-              orientation,
-            );
-            results[index] = result;
-            if (result.error) {
-              this.logger.warn(`Batch card failed ${studentId}: ${result.error}`);
-            }
-            await emitCard(result);
-            reportProgress();
+            const chunkIndex = nextChunk++;
+            if (chunkIndex >= chunks.length) break;
+            const { ids, startIndex } = chunks[chunkIndex];
+            await renderChunk(ids, startIndex, chunkIndex);
           }
         };
 
-        await Promise.all(Array.from({ length: workerCount }, () => worker()));
+        await Promise.all(
+          Array.from({ length: Math.min(workerCount, chunks.length) }, () => worker()),
+        );
 
         const failedIndices = results
           .map((result, index) => (result.error ? index : -1))
