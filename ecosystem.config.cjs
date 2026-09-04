@@ -23,7 +23,7 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: '4000',
         ID_CARD_BATCH_CONCURRENCY: '1',
-        ID_CARD_BATCH_PAGE_SIZE: '10',
+        ID_CARD_BATCH_PAGE_SIZE: '20',
         ID_CARD_BATCH_PIXEL_RATIO: '5',
         ID_CARD_BATCH_RETRY_CONCURRENCY: '1',
         ID_CARD_BATCH_PAGE_PREPARE_TIMEOUT_MS: '90000',

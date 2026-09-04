@@ -30,7 +30,7 @@ const BATCH_RENDER_CONCURRENCY = Math.max(
 /** Students per loaded template page (load once, render many = speed). */
 const BATCH_PAGE_SIZE = Math.max(
   5,
-  Math.min(20, Number(process.env.ID_CARD_BATCH_PAGE_SIZE) || 10),
+  Math.min(20, Number(process.env.ID_CARD_BATCH_PAGE_SIZE) || 20),
 );
 const BATCH_RETRY_CONCURRENCY = Math.max(
   1,

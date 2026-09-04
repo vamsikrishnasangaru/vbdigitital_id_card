@@ -232,8 +232,8 @@ export function formatFailedStudentLabels(
   return `${names.slice(0, maxNames).join(', ')} +${names.length - maxNames} more`;
 }
 
-/** Auto-split large selections so VPS batch render stays stable (~40 per ZIP). */
-export const ID_CARD_GENERATE_BATCH_SIZE = 15;
+/** Client splits large selections into ZIP parts (100 cards/ZIP keeps downloads manageable). */
+export const ID_CARD_GENERATE_BATCH_SIZE = 100;
 
 export function generateBatchCount(
   studentCount: number,

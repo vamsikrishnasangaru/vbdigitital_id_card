@@ -45,8 +45,7 @@ export function GenerateCardsDialog({
               {studentCount} student{studentCount === 1 ? '' : 's'} selected — choose where to send the cards.
               {multiBatch ? (
                 <span className="block mt-1 text-amber-700 dark:text-amber-400">
-                  Large batch: downloads {batchCount} ZIP files (~{ID_CARD_GENERATE_BATCH_SIZE} students each) for
-                  reliability.
+                  Large batch: downloads {batchCount} ZIP files (~{ID_CARD_GENERATE_BATCH_SIZE} students each).
                 </span>
               ) : null}
             </p>
