@@ -56,13 +56,21 @@ if [[ ! -f "$API_DIR/dist/main.js" ]]; then
   exit 1
 fi
 
-# Puppeteer loads render pages from the local Next server (not the public URL).
-if ! grep -q '^FRONTEND_URL=' "$API_DIR/.env" 2>/dev/null; then
-  echo "WARN: Add FRONTEND_URL=http://127.0.0.1:3000 to $API_DIR/.env for reliable ID card rendering."
+# Puppeteer must load render pages from local Next (never the public nginx URL).
+FRONTEND_LINE="$(grep -E '^FRONTEND_URL=' "$API_DIR/.env" | head -n1 || true)"
+FRONTEND_VAL="$(printf '%s' "${FRONTEND_LINE#FRONTEND_URL=}" | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+if [[ -z "$FRONTEND_VAL" ]]; then
+  echo "FRONTEND_URL=http://127.0.0.1:3000" >> "$API_DIR/.env"
+  echo "Added FRONTEND_URL=http://127.0.0.1:3000 to $API_DIR/.env"
+elif [[ "$FRONTEND_VAL" == *"vbdigital.tech"* ]] || [[ "$FRONTEND_VAL" == https://* ]]; then
+  sed -i 's|^FRONTEND_URL=.*|FRONTEND_URL=http://127.0.0.1:3000|' "$API_DIR/.env"
+  echo "Fixed FRONTEND_URL (was $FRONTEND_VAL) → http://127.0.0.1:3000"
+else
+  echo "FRONTEND_URL=$FRONTEND_VAL"
 fi
 
 if ! grep -q '^ID_CARD_BATCH_CONCURRENCY=' "$API_DIR/.env" 2>/dev/null; then
-  echo "TIP: ID_CARD_BATCH_CONCURRENCY defaults to 3. Set to 4 if batch downloads stay stable and you want more speed."
+  echo "TIP: ID_CARD_BATCH_CONCURRENCY is set via ecosystem.config.cjs (default 2)."
 fi
 
 pm2 startOrReload "$APP_ROOT/ecosystem.config.cjs" --only vb-api --update-env

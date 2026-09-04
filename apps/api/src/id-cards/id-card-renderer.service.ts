@@ -138,16 +138,23 @@ export class IdCardRendererService implements OnModuleInit, OnModuleDestroy {
 
   constructor(private configService: ConfigService) {
     const configured = this.configService.get<string>('FRONTEND_URL')?.trim();
-    this.frontendUrl = configured || 'http://127.0.0.1:3000';
-    if (!configured) {
-      this.logger.warn(
-        'FRONTEND_URL is not set — using http://127.0.0.1:3000. Set FRONTEND_URL=http://127.0.0.1:3000 in apps/api/.env for reliable ID card rendering.',
-      );
-    } else if (/vbdigital\.tech|https?:\/\/(?!127\.0\.0\.1|localhost)/i.test(configured)) {
-      this.logger.warn(
-        `FRONTEND_URL=${configured} goes through the public host. Prefer http://127.0.0.1:3000 so Puppeteer does not hit nginx/CDN during batch render.`,
-      );
+    const looksPublic =
+      !!configured &&
+      /vbdigital\.tech|https?:\/\/(?!127\.0\.0\.1|localhost)/i.test(configured);
+    // Puppeteer must hit local Next.js — public URL goes through nginx and breaks/slows batch render.
+    if (!configured || looksPublic) {
+      this.frontendUrl = 'http://127.0.0.1:3000';
+      if (looksPublic) {
+        this.logger.warn(
+          `FRONTEND_URL=${configured} is a public host — forcing http://127.0.0.1:3000 for ID card rendering. Update apps/api/.env to FRONTEND_URL=http://127.0.0.1:3000`,
+        );
+      } else {
+        this.logger.warn(
+          'FRONTEND_URL is not set — using http://127.0.0.1:3000. Set FRONTEND_URL=http://127.0.0.1:3000 in apps/api/.env.',
+        );
+      }
     } else {
+      this.frontendUrl = configured;
       this.logger.log(`ID card renderer FRONTEND_URL=${this.frontendUrl}`);
     }
   }
