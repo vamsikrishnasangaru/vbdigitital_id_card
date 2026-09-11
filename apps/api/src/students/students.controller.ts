@@ -2,11 +2,13 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Requ
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiQuery, ApiConsumes } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('Students')
 @Controller('students')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class StudentsController {
   constructor(private studentsService: StudentsService) {}
@@ -116,6 +118,13 @@ export class StudentsController {
   @ApiOperation({ summary: 'Bulk update student status' })
   bulkUpdateStatus(@Body() body: { ids: string[]; status: string }, @Request() req: any) {
     return this.studentsService.bulkUpdateStatus(body.ids, body.status, req.user.sub);
+  }
+
+  @Post('bulk-delete')
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Permanently delete multiple students (super admin)' })
+  bulkRemove(@Body() body: { ids: string[] }) {
+    return this.studentsService.bulkRemove(body.ids ?? []);
   }
 
   @Delete(':id')

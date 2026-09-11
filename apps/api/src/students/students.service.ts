@@ -40,17 +40,58 @@ export class StudentsService {
   }
 
   private parseOptionalDate(value: unknown): Date | null {
-    if (!value) return null;
+    if (!value && value !== 0) return null;
+    // Excel serial date (days since 1899-12-30)
+    if (typeof value === 'number' && Number.isFinite(value) && value > 20_000 && value < 80_000) {
+      const utc = Date.UTC(1899, 11, 30) + Math.floor(value) * 86_400_000;
+      const parsed = new Date(utc);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new BadRequestException('Invalid dateOfBirth');
+      }
+      return parsed;
+    }
     const raw = String(value).trim();
-    const isoFromDdMm = raw.match(/^\d{2}\/\d{2}\/\d{4}$/)
+    if (!raw) return null;
+    if (/^\d+(\.\d+)?$/.test(raw)) {
+      const serial = Number(raw);
+      if (serial > 20_000 && serial < 80_000) {
+        return this.parseOptionalDate(serial);
+      }
+    }
+    // dd/mm/yyyy or dd-mm-yyyy (also allows d/m/yyyy)
+    const m = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    const isoFromDdMm = m
       ? (() => {
-          const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-          return m ? `${m[3]}-${m[2]}-${m[1]}` : raw;
+          const day = Number(m[1]);
+          const month = Number(m[2]);
+          const year = Number(m[3]);
+          if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) {
+            throw new BadRequestException(
+              'Invalid dateOfBirth — use dd/mm/yyyy or dd-mm-yyyy',
+            );
+          }
+          return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         })()
       : raw;
     const parsed = new Date(isoFromDdMm.includes('T') ? isoFromDdMm : `${isoFromDdMm}T12:00:00.000Z`);
     if (Number.isNaN(parsed.getTime())) {
-      throw new BadRequestException('Invalid dateOfBirth');
+      throw new BadRequestException(
+        'Invalid dateOfBirth — use dd/mm/yyyy or dd-mm-yyyy',
+      );
+    }
+    if (m) {
+      const day = Number(m[1]);
+      const month = Number(m[2]);
+      const year = Number(m[3]);
+      if (
+        parsed.getUTCFullYear() !== year ||
+        parsed.getUTCMonth() + 1 !== month ||
+        parsed.getUTCDate() !== day
+      ) {
+        throw new BadRequestException(
+          'Invalid dateOfBirth — use dd/mm/yyyy or dd-mm-yyyy',
+        );
+      }
     }
     return parsed;
   }
@@ -579,6 +620,20 @@ export class StudentsService {
     // Hard delete so class/section/roll and admission numbers can be reused immediately.
     await this.prisma.student.delete({ where: { id } });
     return { id, deleted: true };
+  }
+
+  async bulkRemove(ids: string[]) {
+    const uniqueIds = [...new Set((ids ?? []).filter((id) => typeof id === 'string' && id.trim()))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('No student ids provided');
+    }
+    if (uniqueIds.length > 500) {
+      throw new BadRequestException('Cannot delete more than 500 students at once');
+    }
+    const result = await this.prisma.student.deleteMany({
+      where: { id: { in: uniqueIds } },
+    });
+    return { deleted: result.count, requested: uniqueIds.length };
   }
 
   async bulkUpdateStatus(ids: string[], status: string, approvedBy?: string) {

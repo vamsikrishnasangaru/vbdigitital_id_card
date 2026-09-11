@@ -1,6 +1,7 @@
 import type { ClassPickerOption } from '@/lib/classes-query';
 import type { ExcelImportColumn, ExcelImportTemplateSpec } from '@/lib/student-excel-template';
 import { DEFAULT_EXCEL_IMPORT_TEMPLATE } from '@/lib/student-excel-template';
+import { dobDdMmYyyyToIso, normalizeImportDob } from '@/lib/utils';
 
 export type ImportRowStatus = 'ready' | 'error';
 
@@ -302,6 +303,10 @@ export function parseExcelRows(
     for (const [header, value] of Object.entries(raw)) {
       const field = headerLookup.get(normKey(header)) ?? mapHeader(header);
       if (!field) continue;
+      if (field === 'dateOfBirth') {
+        row.dateOfBirth = normalizeImportDob(value);
+        continue;
+      }
       const text = cellString(value);
       row[field] = text;
     }
@@ -311,6 +316,13 @@ export function parseExcelRows(
       if (!value.trim()) {
         return { ...row, message: `${col.header} is required` };
       }
+    }
+
+    if (row.dateOfBirth?.trim() && !dobDdMmYyyyToIso(row.dateOfBirth)) {
+      return {
+        ...row,
+        message: 'Date of Birth must be dd/mm/yyyy or dd-mm-yyyy',
+      };
     }
 
     const { firstName, lastName } = splitStudentName(row.studentName);

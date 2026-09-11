@@ -336,6 +336,9 @@ export function StudentExcelImportDialog({
               )}
               {' '}
               Existing classes are matched automatically (e.g. &quot;10&quot; matches &quot;Class 10&quot;).
+              {' '}
+              Date of Birth accepts <strong className="text-foreground">dd/mm/yyyy</strong> or{' '}
+              <strong className="text-foreground">dd-mm-yyyy</strong> (e.g. 15/05/2012 or 15-05-2012).
             </p>
           )}
 

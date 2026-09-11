@@ -52,6 +52,7 @@ import { offlineStore } from '@/lib/offline-store';
 import { useOfflineSync } from '@/hooks/use-offline-sync';
 import { useMergedStudents } from '@/hooks/use-merged-students';
 import { GenerateCardsDialog } from '@/components/id-cards/GenerateCardsDialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { consumeStudentsClassSectionFilter, consumeEditStudentIntent } from '@/lib/students-navigation';
 import { MODAL_BACKDROP, modalPanelClass } from '@/lib/modal-motion';
 import { StudentExcelImportDialog } from '@/components/students/StudentExcelImportDialog';
@@ -201,6 +202,8 @@ export default function StudentsPage({ params }: NextClientPageProps) {
   const [enrollTemplateId, setEnrollTemplateId] = useState('');
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const effectiveSchoolId = isSuperAdmin ? selectedSchoolId : (user?.schoolId || '');
   const viewAllSchools = useMemo(() => {
     if (!isSuperAdmin) return false;
@@ -419,6 +422,42 @@ export default function StudentsPage({ params }: NextClientPageProps) {
     }
     return studentsData;
   }, [studentsData, statusFilter]);
+
+  const visibleStudentIdSet = useMemo(
+    () => new Set(visibleStudents.map((s: { id: string }) => s.id)),
+    [visibleStudents],
+  );
+
+  useEffect(() => {
+    if (!isSuperAdmin) {
+      setSelectedStudentIds([]);
+      return;
+    }
+    setSelectedStudentIds((prev) => prev.filter((id) => visibleStudentIdSet.has(id)));
+  }, [isSuperAdmin, visibleStudentIdSet]);
+
+  const allVisibleSelected =
+    isSuperAdmin &&
+    visibleStudents.length > 0 &&
+    visibleStudents.every((s: { id: string }) => selectedStudentIds.includes(s.id));
+
+  const toggleSelectStudent = (id: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedStudentIds((prev) => prev.filter((id) => !visibleStudentIdSet.has(id)));
+      return;
+    }
+    setSelectedStudentIds((prev) => {
+      const next = new Set(prev);
+      for (const s of visibleStudents as Array<{ id: string }>) next.add(s.id);
+      return [...next];
+    });
+  };
 
   const studentsTotal = studentsResponse?._offline || viewAllSchools
     ? visibleStudents.length
@@ -926,17 +965,42 @@ export default function StudentsPage({ params }: NextClientPageProps) {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/students/${id}`),
-    onSuccess: async (response) => {
+    onSuccess: async (response, id) => {
       if (response.data?._offline) {
         toast.success('Student removal saved locally — will sync when online');
       } else {
         toast.success('Student removed');
       }
       setViewStudent(null);
+      setSelectedStudentIds((prev) => prev.filter((x) => x !== id));
       await queryClient.invalidateQueries({ queryKey: ['students'] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Failed to remove student');
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { data } = await api.post<{ deleted: number; requested: number }>(
+        '/students/bulk-delete',
+        { ids },
+      );
+      return data;
+    },
+    onSuccess: async (data) => {
+      toast.success(
+        data.deleted === 1
+          ? '1 student deleted'
+          : `${data.deleted} students deleted`,
+      );
+      setBulkDeleteConfirmOpen(false);
+      setSelectedStudentIds([]);
+      setViewStudent(null);
+      await queryClient.invalidateQueries({ queryKey: ['students'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to delete students');
     },
   });
 
@@ -1206,6 +1270,21 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                 <CreditCard className="h-4 w-4 shrink-0" />
               )}
               Generate ID Cards
+            </button>
+          )}
+          {isSuperAdmin && selectedStudentIds.length > 0 && (
+            <button
+              type="button"
+              disabled={bulkDeleteMutation.isPending}
+              onClick={() => setBulkDeleteConfirmOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {bulkDeleteMutation.isPending ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 shrink-0" />
+              )}
+              Delete selected ({selectedStudentIds.length})
             </button>
           )}
           <button
@@ -1479,6 +1558,17 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                     : ''}
               </span>
             )}
+            {isSuperAdmin && visibleStudents.length > 0 && (
+              <label className="inline-flex items-center gap-2 whitespace-nowrap cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleSelectAllVisible}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                Select all
+              </label>
+            )}
           </div>
         </div>
       </div>
@@ -1499,6 +1589,15 @@ export default function StudentsPage({ params }: NextClientPageProps) {
             visibleStudents.map((s: any) => (
               <div key={s.id} className="p-4 space-y-3">
                 <div className="flex items-start gap-3">
+                  {isSuperAdmin && (
+                    <input
+                      type="checkbox"
+                      checked={selectedStudentIds.includes(s.id)}
+                      onChange={() => toggleSelectStudent(s.id)}
+                      className="mt-4 h-4 w-4 shrink-0 rounded border-border accent-primary"
+                      aria-label={`Select ${formatStudentFullName(s.firstName, s.lastName)}`}
+                    />
+                  )}
                   <div className="relative h-12 w-12 shrink-0 rounded-2xl overflow-hidden border border-border bg-muted">
                     {s.photoUrl ? (
                       <img
@@ -1597,6 +1696,18 @@ export default function StudentsPage({ params }: NextClientPageProps) {
           <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="border-b border-border bg-muted/20">
+                {isSuperAdmin && (
+                  <th className="p-6 w-12">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                      disabled={!visibleStudents.length}
+                      className="h-4 w-4 rounded border-border accent-primary disabled:opacity-40"
+                      aria-label="Select all visible students"
+                    />
+                  </th>
+                )}
                 <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Student Name</th>
                 <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Roll No.</th>
                 <th className="p-6 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Class / Section</th>
@@ -1608,7 +1719,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
             <tbody className="divide-y divide-border/30">
               {showStudentsSpinner ? (
                 <tr>
-                  <td colSpan={6} className="p-24 text-center">
+                  <td colSpan={isSuperAdmin ? 7 : 6} className="p-24 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <div className="h-12 w-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
                       <p className="text-sm font-black text-muted-foreground uppercase tracking-widest">Loading Students...</p>
@@ -1617,7 +1728,7 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                 </tr>
               ) : !visibleStudents || visibleStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-24 text-center">
+                  <td colSpan={isSuperAdmin ? 7 : 6} className="p-24 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <div className="h-20 w-20 bg-muted/50 rounded-3xl flex items-center justify-center">
                         <Users className="h-10 w-10 text-muted-foreground/30" />
@@ -1631,6 +1742,17 @@ export default function StudentsPage({ params }: NextClientPageProps) {
                 </tr>
               ) : visibleStudents.map((s: any) => (
                 <tr key={s.id} className="group/row hover:bg-muted/30 transition-all duration-300">
+                  {isSuperAdmin && (
+                    <td className="p-6 align-middle">
+                      <input
+                        type="checkbox"
+                        checked={selectedStudentIds.includes(s.id)}
+                        onChange={() => toggleSelectStudent(s.id)}
+                        className="h-4 w-4 rounded border-border accent-primary"
+                        aria-label={`Select ${formatStudentFullName(s.firstName, s.lastName)}`}
+                      />
+                    </td>
+                  )}
                   <td className="p-6">
                     <div className="flex items-center gap-4">
                       <div className="relative h-12 w-12 rounded-2xl overflow-hidden shadow-lg border border-border group-hover/row:scale-110 transition-transform duration-500 bg-muted">
@@ -2077,6 +2199,20 @@ export default function StudentsPage({ params }: NextClientPageProps) {
         driveAuthHint={driveStatus?.authHint || driveStatus?.authError}
         onDownload={() => generateMutation.mutate({ destination: 'download' })}
         onGoogleDrive={() => generateMutation.mutate({ destination: 'drive' })}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        title="Delete selected students?"
+        description={`Permanently delete ${selectedStudentIds.length} student${selectedStudentIds.length === 1 ? '' : 's'}? This cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+        isLoading={bulkDeleteMutation.isPending}
+        onConfirm={() => bulkDeleteMutation.mutate(selectedStudentIds)}
+        onClose={() => {
+          if (!bulkDeleteMutation.isPending) setBulkDeleteConfirmOpen(false);
+        }}
       />
 
       <StudentExcelImportDialog

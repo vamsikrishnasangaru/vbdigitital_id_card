@@ -179,19 +179,21 @@ export function isoDateToDobDdMmYyyy(iso?: string | null): string {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+/** Accepts dd/mm/yyyy or dd-mm-yyyy (1–2 digit day/month OK). Returns yyyy-mm-dd or null. */
 export function dobDdMmYyyyToIso(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const m = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const m = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (!m) return null;
-  const [, dd, mm, yyyy] = m;
-  const day = Number(dd);
-  const month = Number(mm);
-  const year = Number(yyyy);
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  const year = Number(m[3]);
   if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) {
     return null;
   }
-  const iso = `${yyyy}-${mm}-${dd}`;
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  const iso = `${year}-${mm}-${dd}`;
   const parsed = new Date(`${iso}T12:00:00.000Z`);
   if (
     Number.isNaN(parsed.getTime()) ||
@@ -207,6 +209,31 @@ export function dobDdMmYyyyToIso(value: string): string | null {
 export function isValidDobDdMmYyyy(value: string): boolean {
   if (!value.trim()) return true;
   return dobDdMmYyyyToIso(value) !== null;
+}
+
+/** Normalize Excel DOB cells (slash/dash strings or Excel serial) to dd/mm/yyyy. */
+export function normalizeImportDob(value: unknown): string {
+  if (value == null || value === '') return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const dd = String(value.getUTCDate()).padStart(2, '0');
+    const mm = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = value.getUTCFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  if (typeof value === 'number' && Number.isFinite(value) && value > 20_000 && value < 80_000) {
+    const utc = Date.UTC(1899, 11, 30) + Math.floor(value) * 86_400_000;
+    return normalizeImportDob(new Date(utc));
+  }
+  const raw = String(value).trim();
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    const serial = Number(raw);
+    if (serial > 20_000 && serial < 80_000) {
+      return normalizeImportDob(serial);
+    }
+  }
+  const iso = dobDdMmYyyyToIso(raw);
+  if (iso) return isoDateToDobDdMmYyyy(iso);
+  return raw;
 }
 
 /** True when last name is empty or the legacy "-" placeholder. */
