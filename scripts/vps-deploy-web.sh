@@ -26,6 +26,11 @@ export API_REWRITE_TARGET="${API_REWRITE_TARGET:-http://127.0.0.1:4000/api/v1}"
   echo "NEXT_PUBLIC_APP_REVISION=$NEXT_PUBLIC_APP_REVISION"
   echo "RELEASE_REVISION=$RELEASE_REVISION"
   echo "NEXT_PUBLIC_WHATSAPP_NUMBER=${NEXT_PUBLIC_WHATSAPP_NUMBER:-919441115952}"
+  # Payment-pending lock screen. Turn off with:
+  #   NEXT_PUBLIC_PAYMENT_DUE_NOTICE=0 bash scripts/vps-deploy-web.sh
+  echo "NEXT_PUBLIC_PAYMENT_DUE_NOTICE=${NEXT_PUBLIC_PAYMENT_DUE_NOTICE:-1}"
+  echo "NEXT_PUBLIC_PAYMENT_DUE_AMOUNT=${NEXT_PUBLIC_PAYMENT_DUE_AMOUNT:-45000}"
+  echo "NEXT_PUBLIC_PAYMENT_DUE_CONTACT=${NEXT_PUBLIC_PAYMENT_DUE_CONTACT:-}"
 } > .env.production
 
 # Dev .env.local often contains localhost and breaks live auth if baked into the client bundle.
