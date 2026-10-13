@@ -9,7 +9,6 @@ import { Navbar } from '@/components/layout/Navbar';
 import { OfflineAppBanner } from '@/components/OfflineAppBanner';
 import { PwaInstallBanner } from '@/components/PwaInstallBanner';
 import { OfflineRouteGuard } from '@/components/OfflineRouteGuard';
-import { PaymentDueOverlay } from '@/components/PaymentDueOverlay';
 import { WifiOff } from 'lucide-react';
 
 /** Routes only Super Admin may open (school admin & teacher are redirected). */
@@ -69,7 +68,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="h-screen flex overflow-hidden bg-background">
-      <PaymentDueOverlay />
       <div className="hidden lg:flex lg:w-[260px] lg:flex-col lg:fixed lg:inset-y-0 z-50">
         <Sidebar />
       </div>
