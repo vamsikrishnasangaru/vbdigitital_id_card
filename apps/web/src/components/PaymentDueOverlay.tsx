@@ -3,13 +3,10 @@
 import { AlertTriangle } from 'lucide-react';
 
 /**
- * On for every production build — turn off with a web redeploy:
- *   NEXT_PUBLIC_PAYMENT_DUE_NOTICE=0 bash scripts/vps-deploy-web.sh
- * Opt-out (not opt-in) so a missing env var at build time cannot silently unlock the app.
+ * Off by default. Turn on with a web redeploy:
+ *   NEXT_PUBLIC_PAYMENT_DUE_NOTICE=1 bash scripts/vps-deploy-web.sh
  */
-const enabled =
-  process.env.NODE_ENV === 'production' &&
-  process.env.NEXT_PUBLIC_PAYMENT_DUE_NOTICE !== '0';
+const enabled = process.env.NEXT_PUBLIC_PAYMENT_DUE_NOTICE === '1';
 const rawAmount = process.env.NEXT_PUBLIC_PAYMENT_DUE_AMOUNT || '45000';
 const contact = process.env.NEXT_PUBLIC_PAYMENT_DUE_CONTACT || '';
 
