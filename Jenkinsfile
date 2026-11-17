@@ -74,6 +74,29 @@ pipeline {
         '''
       }
     }
+    
+    stage('VPS SSH Preflight') {
+      steps {
+        withCredentials([
+          sshUserPrivateKey(
+            credentialsId: 'vps-ssh',
+            keyFileVariable: 'SSH_KEY',
+            usernameVariable: 'SSH_USER'
+          )
+        ]) {
+          bat '''
+            @echo on
+            ssh -i "%SSH_KEY%" ^
+              -o BatchMode=yes ^
+              -o StrictHostKeyChecking=yes ^
+              -o UserKnownHostsFile="C:\\ProgramData\\Jenkins\\.ssh\\known_hosts" ^
+              %SSH_USER%@187.127.149.7 ^
+              "echo VPS_CONNECTION_SUCCESS; hostname; whoami; cd /var/www/id-app && git rev-parse --short HEAD && pm2 status"
+            if errorlevel 1 exit /b 1
+          '''
+        }
+      }
+    }
   }
 
   post {
