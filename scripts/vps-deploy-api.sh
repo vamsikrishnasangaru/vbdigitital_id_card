@@ -102,7 +102,25 @@ if [[ -f "$APP_ROOT/scripts/vps-nginx-generate-timeout.sh" ]]; then
   fi
 fi
 
-sleep 2
-echo "API health:"
-curl -sI "http://127.0.0.1:4000/api/docs" | head -n1 || true
+echo "Waiting for API to become ready..."
+
+API_READY=0
+
+for i in {1..30}; do
+  if curl -fsS "http://127.0.0.1:4000/api/docs" >/dev/null; then
+    API_READY=1
+    echo "API is healthy."
+    break
+  fi
+
+  echo "API not ready yet. Attempt $i/30..."
+  sleep 2
+done
+
+if [ "$API_READY" -ne 1 ]; then
+  echo "ERROR: API failed to become healthy."
+  pm2 logs vb-api --lines 80 --nostream
+  exit 1
+fi
+
 pm2 logs vb-api --lines 5 --nostream
