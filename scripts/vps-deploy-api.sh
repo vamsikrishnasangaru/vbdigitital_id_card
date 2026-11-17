@@ -6,7 +6,23 @@ APP_ROOT="${APP_ROOT:-/var/www/id-app}"
 API_DIR="$APP_ROOT/apps/api"
 
 cd "$APP_ROOT"
-git pull
+
+if [[ -z "${DEPLOY_COMMIT:-}" ]]; then
+  echo "ERROR: DEPLOY_COMMIT is required."
+  exit 1
+fi
+
+CURRENT_COMMIT="$(git rev-parse HEAD)"
+
+if [[ "$CURRENT_COMMIT" != "$DEPLOY_COMMIT" ]]; then
+  echo "ERROR: VPS is not on the requested deployment commit."
+  echo "Current: $CURRENT_COMMIT"
+  echo "Expected: $DEPLOY_COMMIT"
+  exit 1
+fi
+
+echo "Deploying API from commit: $DEPLOY_COMMIT"
+
 pnpm install
 
 if [[ ! -f "$API_DIR/.env" ]]; then
