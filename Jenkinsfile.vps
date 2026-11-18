@@ -1,1 +1,72 @@
 
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 10, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Repository Checkout') {
+            steps {
+                checkout scm
+                echo 'Repository checkout successful.'
+            }
+        }
+
+        stage('Repository Validation') {
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "Checking repository structure..."
+
+                    test -f package.json
+                    test -f pnpm-lock.yaml
+                    test -f pnpm-workspace.yaml
+
+                    test -f apps/api/package.json
+                    test -f apps/web/package.json
+                    test -f packages/db/package.json
+
+                    echo "Repository structure validation passed."
+                '''
+            }
+        }
+
+        stage('CI Environment Information') {
+            steps {
+                sh '''
+                    echo "Operating System:"
+                    uname -a
+
+                    echo "Workspace:"
+                    pwd
+
+                    echo "Git Commit:"
+                    git rev-parse HEAD
+
+                    echo "Git Branch:"
+                    git branch --show-current
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'SAFE CI VALIDATION SUCCESSFUL - NO DEPLOYMENT PERFORMED.'
+        }
+
+        failure {
+            echo 'CI validation failed. No production changes were performed.'
+        }
+
+        always {
+            echo 'CI pipeline finished.'
+        }
+    }
+}
