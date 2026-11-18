@@ -46,24 +46,17 @@ pipeline {
     // ==========================================
     // 3. INSTALL DEPENDENCIES
     // ==========================================
-    stage('Network Diagnostics') {
+  stage('VPS SSH Diagnostic') {
     steps {
-        bat '''
-            echo ===== NODE VERSION =====
-            node -v
+        sshagent(credentials: ['vps-ssh']) {
+            bat '''
+                echo ===== SSH AGENT =====
+                ssh-add -l
 
-            echo ===== NPM VERSION =====
-            npm -v
-
-            echo ===== NPM REGISTRY =====
-            npm config get registry
-
-            echo ===== REGISTRY CONNECTIVITY =====
-            npm ping --registry=https://registry.npmjs.org/
-
-            echo ===== PNPM PACKAGE CHECK =====
-            npm view pnpm@9 version --registry=https://registry.npmjs.org/
-        '''
+                echo ===== SSH CONNECTION =====
+                ssh -vv -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="C:\\ProgramData\\Jenkins\\.ssh\\known_hosts" root@187.127.149.7 "echo JENKINS_SSH_SUCCESS; hostname; whoami"
+            '''
+        }
     }
 }
     stage('Install') {
