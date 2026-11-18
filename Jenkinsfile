@@ -46,7 +46,26 @@ pipeline {
     // ==========================================
     // 3. INSTALL DEPENDENCIES
     // ==========================================
+    stage('Network Diagnostics') {
+    steps {
+        bat '''
+            echo ===== NODE VERSION =====
+            node -v
 
+            echo ===== NPM VERSION =====
+            npm -v
+
+            echo ===== NPM REGISTRY =====
+            npm config get registry
+
+            echo ===== REGISTRY CONNECTIVITY =====
+            npm ping --registry=https://registry.npmjs.org/
+
+            echo ===== PNPM PACKAGE CHECK =====
+            npm view pnpm@9 version --registry=https://registry.npmjs.org/
+        '''
+    }
+}
     stage('Install') {
       steps {
         bat '''
