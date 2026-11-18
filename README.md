@@ -24,13 +24,7 @@ npx ts-node prisma/seed.ts
 pnpm dev        # runs both API (port 3001) + Web (port 3000)
 ```
 
-## Login Credentials
 
-| Role | Email | Password |
-|------|-------|----------|
-| Super Admin | guru@vbdigital.com | Secret@1234 |
-| School Admin | school@demopublic.edu | School@0842 |
-| Teacher | teacher@demopublic.edu |School@0842 |
 
 ## Project Structure
 
@@ -61,7 +55,3 @@ Swagger docs available at: `http://localhost:3001/api/docs`
 | Deliveries | Physical delivery tracking |
 | Analytics | Business dashboards & insights |
 
-## Files Preserved
-
-- `VB_Digital_ID_Cards_Proposal.pdf` — Business proposal
-- `VB_Digital_ID_Cards_Proposal.docx` — Business proposal (editable)
