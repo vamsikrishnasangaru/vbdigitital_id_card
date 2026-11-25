@@ -41,6 +41,11 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
         message?: string;
         response?: { status?: number; data?: { message?: string } };
       };
+      const message = ax.response?.data?.message;
+      const genericServerError =
+        typeof message === 'string' &&
+        /internal server error/i.test(message);
+      // Next.js rewrite returns 500 when Nest on :4000 is down; treat that like offline.
       const offlineLike =
         typeof navigator !== 'undefined' && !navigator.onLine
           ? true
@@ -49,8 +54,8 @@ export function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
             ax.code === 'ECONNABORTED' ||
             ax.response.status === 502 ||
             ax.response.status === 503 ||
-            ax.response.status === 504;
-      const message = ax.response?.data?.message;
+            ax.response.status === 504 ||
+            (ax.response.status === 500 && genericServerError);
       toast.error('Login failed', {
         description: offlineLike
           ? 'Cannot reach the API. Make sure it is running on port 4000.'
