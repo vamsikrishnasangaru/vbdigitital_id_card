@@ -172,6 +172,8 @@ function sleep(ms: number) {
 /** Slightly under server job TTL (2h) so polling does not quit while the job is still running. */
 const GENERATE_JOB_POLL_DEADLINE_MS = 115 * 60 * 1000;
 const GENERATE_JOB_POLL_TIMEOUT_MS = 120_000;
+/** Start must return quickly; allow headroom when the API event loop is busy rendering another batch. */
+const GENERATE_JOB_START_TIMEOUT_MS = 180_000;
 
 const TRANSIENT_HTTP_STATUSES = new Set([502, 503, 504]);
 
@@ -203,6 +205,58 @@ async function withTransientRetry<T>(
   throw lastError instanceof Error ? lastError : new Error(`${label} failed`);
 }
 
+function isAxiosTimeoutError(err: unknown): boolean {
+  const code = (err as { code?: string }).code;
+  if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') return true;
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return /timeout of \d+ms exceeded/i.test(message);
+}
+
+async function startGenerateJob(
+  params: {
+    templateId: string;
+    studentIds: string[];
+    destination: GenerateDestination;
+  },
+) {
+  const requestStart = () =>
+    api.post<{
+      jobId: string;
+      pollToken: string;
+      total: number;
+      destination?: GenerateDestination;
+    }>(
+      '/id-cards/generate/async',
+      {
+        templateId: params.templateId,
+        studentIds: params.studentIds,
+        destination: params.destination,
+      },
+      {
+        timeout: GENERATE_JOB_START_TIMEOUT_MS,
+        _skipOfflineQueue: true,
+      } as VbAxiosConfig,
+    );
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await requestStart();
+    } catch (err: unknown) {
+      lastError = err;
+      if (!isAxiosTimeoutError(err) && !isTransientPollError(err)) break;
+      if (attempt >= 2) break;
+      await sleep(2000 * (attempt + 1));
+    }
+  }
+  if (isAxiosTimeoutError(lastError)) {
+    throw new Error(
+      'Server took too long to start generation (busy or proxy timeout). Wait a minute and try again, or ask your admin to run scripts/vps-nginx-generate-timeout.sh and restart vb-api.',
+    );
+  }
+  throw lastError instanceof Error ? lastError : new Error('Failed to start ID card generation');
+}
+
 async function downloadGenerateJobFile(
   jobId: string,
   jobHeaders: Record<string, string>,
@@ -218,22 +272,36 @@ async function downloadGenerateJobFile(
   try {
     return await withTransientRetry(requestDownload, 'Download');
   } catch (err: unknown) {
+    if (isAxiosTimeoutError(err)) {
+      throw new Error(
+        'Download timed out. Ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server, then try again with fewer students.',
+      );
+    }
     const status = (err as { response?: { status?: number; data?: unknown } }).response?.status;
-    // Job may still be finishing packaging when the first "done" poll races; wait and retry once.
+    // Job may still be finishing packaging when the first "done" poll races; wait and retry a few times.
     if (status === 404) {
-      await sleep(1500);
-      try {
-        return await requestDownload();
-      } catch (retryErr: unknown) {
-        const message = await readApiErrorMessage(
-          (retryErr as { response?: { data?: unknown } }).response?.data,
-          'Generate job not ready for download',
-        );
-        throw new Error(
-          /not ready|not found or expired|missing/i.test(message)
-            ? 'Download failed — the generated file was not available. Please try generating again.'
-            : message,
-        );
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        await sleep(2000 * (attempt + 1));
+        try {
+          return await requestDownload();
+        } catch (retryErr: unknown) {
+          if (isAxiosTimeoutError(retryErr)) {
+            throw new Error(
+              'Download timed out. Ask your admin to run scripts/vps-nginx-generate-timeout.sh on the server, then try again with fewer students.',
+            );
+          }
+          const retryStatus = (retryErr as { response?: { status?: number } }).response?.status;
+          if (retryStatus === 404 && attempt < 3) continue;
+          const message = await readApiErrorMessage(
+            (retryErr as { response?: { data?: unknown } }).response?.data,
+            'Generate job not ready for download',
+          );
+          throw new Error(
+            /not ready|not found or expired|missing/i.test(message)
+              ? 'Download failed — the generated file was not available. Please try generating again.'
+              : message,
+          );
+        }
       }
     }
     throw err;
@@ -324,23 +392,11 @@ async function generateIdCardsAsync(
   onProgress?.(0, total, { destination, phase: 'rendering' });
 
   try {
-    const { data: start } = await api.post<{
-    jobId: string;
-    pollToken: string;
-    total: number;
-    destination?: GenerateDestination;
-  }>(
-    '/id-cards/generate/async',
-    {
+    const { data: start } = await startGenerateJob({
       templateId: params.templateId,
       studentIds: params.studentIds,
       destination,
-    },
-    {
-      timeout: 60_000,
-      _skipOfflineQueue: true,
-    } as VbAxiosConfig,
-  );
+    });
 
   const jobHeaders = { 'X-Generate-Job-Token': start.pollToken };
   const deadline = Date.now() + GENERATE_JOB_POLL_DEADLINE_MS;
@@ -521,6 +577,11 @@ export async function generateIdCards(params: {
     return await generateIdCardsInChunks(params);
   } catch (err: unknown) {
     const axiosErr = err as { response?: { data?: unknown; status?: number }; message?: string };
+    if (isAxiosTimeoutError(err)) {
+      throw new Error(
+        'Request timed out during generation. Wait a minute and try again, or ask your admin to run scripts/vps-nginx-generate-timeout.sh and restart vb-api.',
+      );
+    }
     if (axiosErr.response?.status === 401) {
       throw new Error(
         'Session expired during generation. Sign out, sign in again, then retry the download.',

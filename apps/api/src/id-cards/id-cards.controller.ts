@@ -99,24 +99,18 @@ export class IdCardsController {
       'X-Cards-Failed': String(pack.failCount),
     });
 
-    const releaseOnSuccess = () => {
-      this.idCardsService.releaseDownloadGenerateJob(jobId);
-    };
-
+    // Keep job + temp file until TTL so proxy/client retries can re-download.
     if (pack.filePath) {
       if (!existsSync(pack.filePath)) {
         res.status(500).end('Generated file is missing');
         return;
       }
-      const filePath = pack.filePath;
-      const stream = createReadStream(filePath);
+      const stream = createReadStream(pack.filePath);
       stream.on('error', () => {
         if (!res.headersSent) {
           res.status(500).end('Failed to read generated file');
         }
       });
-      // Only drop the job after a full successful response — keep file for proxy/client retries.
-      res.on('finish', releaseOnSuccess);
       stream.pipe(res);
       return;
     }
@@ -125,7 +119,6 @@ export class IdCardsController {
       res.status(500).end('Generated file is missing');
       return;
     }
-    res.on('finish', releaseOnSuccess);
     return res.send(pack.buffer);
   }
 

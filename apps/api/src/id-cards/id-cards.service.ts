@@ -101,12 +101,17 @@ export class IdCardsService {
         );
       }
       const { jobId, pollToken } = this.generateJobs.createJob(studentIds.length, 'drive');
-      void this.runDriveGenerateJob(jobId, templateId, studentIds);
+      // Defer heavy work so the HTTP response (jobId) flushes before rendering starts.
+      setImmediate(() => {
+        void this.runDriveGenerateJob(jobId, templateId, studentIds);
+      });
       return { jobId, pollToken, total: studentIds.length, destination: 'drive' as const };
     }
 
     const { jobId, pollToken } = this.generateJobs.createJob(studentIds.length, 'download');
-    void this.runDownloadGenerateJob(jobId, templateId, studentIds);
+    setImmediate(() => {
+      void this.runDownloadGenerateJob(jobId, templateId, studentIds);
+    });
     return { jobId, pollToken, total: studentIds.length, destination: 'download' as const };
   }
 
