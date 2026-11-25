@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { PrismaService } from '../prisma/prisma.service';
@@ -120,8 +121,17 @@ export class IdCardsService {
     return job;
   }
 
+  prepareDownloadGenerateJob(jobId: string) {
+    return this.generateJobs.prepareDownload(jobId);
+  }
+
+  releaseDownloadGenerateJob(jobId: string) {
+    this.generateJobs.releaseDownload(jobId);
+  }
+
+  /** @deprecated Prefer prepareDownloadGenerateJob + releaseDownloadGenerateJob */
   consumeDownloadGenerateJob(jobId: string) {
-    return this.generateJobs.consumeDownload(jobId);
+    return this.generateJobs.prepareDownload(jobId);
   }
 
   private async runDownloadGenerateJob(jobId: string, templateId: string, studentIds: string[]) {
@@ -301,11 +311,14 @@ export class IdCardsService {
       const singleName =
         (files[0]?.name ?? zipEntries[0]?.name)?.split('/').pop() ||
         `${idCardFileBaseName(studentMap.get(successStudentIds[0])!)}.png`;
+      // Persist to disk so reloads / proxy retries can still download (buffers are not written to job JSON).
+      const filePath = join(tmpdir(), `id-card-${randomUUID()}.png`);
+      writeFileSync(filePath, onlyBuffer);
       this.persistGeneratedIdCards(successStudentIds, templateId);
       return {
         kind: 'single' as const,
         filename: singleName,
-        buffer: onlyBuffer,
+        filePath,
         successCount: 1,
         failCount: errors.length,
         errors,

@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, UseGuards, Query, Res, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { createReadStream, existsSync, unlink } from 'fs';
+import { createReadStream, existsSync } from 'fs';
 import { IdCardsService } from './id-cards.service';
 import { contentDispositionAttachment } from '../common/http-filename.util';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -91,7 +91,7 @@ export class IdCardsController {
   @UseGuards(GenerateJobAccessGuard)
   @ApiOperation({ summary: 'Download completed async ID card generate job' })
   downloadGenerateJob(@Param('jobId') jobId: string, @Res() res: Response) {
-    const pack = this.idCardsService.consumeDownloadGenerateJob(jobId);
+    const pack = this.idCardsService.prepareDownloadGenerateJob(jobId);
     res.set({
       'Content-Type': pack.kind === 'single' ? 'image/png' : 'application/zip',
       'Content-Disposition': contentDispositionAttachment(pack.filename),
@@ -99,22 +99,24 @@ export class IdCardsController {
       'X-Cards-Failed': String(pack.failCount),
     });
 
+    const releaseOnSuccess = () => {
+      this.idCardsService.releaseDownloadGenerateJob(jobId);
+    };
+
     if (pack.filePath) {
       if (!existsSync(pack.filePath)) {
-        res.status(500).end('Generated ZIP file is missing');
+        res.status(500).end('Generated file is missing');
         return;
       }
       const filePath = pack.filePath;
       const stream = createReadStream(filePath);
-      stream.on('error', (err) => {
-        unlink(filePath, () => {});
+      stream.on('error', () => {
         if (!res.headersSent) {
-          res.status(500).end('Failed to read generated ZIP');
+          res.status(500).end('Failed to read generated file');
         }
       });
-      res.on('close', () => {
-        unlink(filePath, () => {});
-      });
+      // Only drop the job after a full successful response — keep file for proxy/client retries.
+      res.on('finish', releaseOnSuccess);
       stream.pipe(res);
       return;
     }
@@ -123,6 +125,7 @@ export class IdCardsController {
       res.status(500).end('Generated file is missing');
       return;
     }
+    res.on('finish', releaseOnSuccess);
     return res.send(pack.buffer);
   }
 

@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -232,16 +238,46 @@ export class IdCardsGenerateJobsService implements OnModuleInit {
     return response;
   }
 
-  consumeDownload(jobId: string): GenerateJobDownloadResult {
+  /**
+   * Return the downloadable result without deleting the job.
+   * Callers must invoke {@link releaseDownload} after the HTTP response finishes
+   * so aborted/retried downloads can still fetch the same file.
+   */
+  prepareDownload(jobId: string): GenerateJobDownloadResult {
     this.pruneExpired();
     const job = this.getOrLoadJob(jobId);
-    if (!job || job.status !== 'done' || !job.result || job.result.kind === 'drive') {
+    if (!job) {
+      throw new NotFoundException('Generate job not found or expired');
+    }
+    if (job.status === 'failed') {
+      throw new BadRequestException(job.error || 'Generate job failed');
+    }
+    if (job.status === 'running') {
       throw new NotFoundException('Generate job not ready for download');
     }
-    const result = job.result;
-    // Keep temp ZIP on disk until the HTTP response finishes streaming.
-    this.removeJob(jobId, job, { keepResultFile: true });
-    return result;
+    if (!job.result || job.result.kind === 'drive') {
+      throw new NotFoundException('Generate job has no downloadable file');
+    }
+    if (!job.result.filePath && !job.result.buffer) {
+      throw new NotFoundException(
+        'Generate job file is missing — the server may have restarted. Please generate again.',
+      );
+    }
+    // Keep the job alive across slow downloads and transient proxy retries.
+    this.touchJobExpiry(jobId, job);
+    return job.result;
+  }
+
+  /** Remove job metadata + temp file after a successful download response. */
+  releaseDownload(jobId: string) {
+    const job = this.getOrLoadJob(jobId);
+    if (!job) return;
+    this.removeJob(jobId, job);
+  }
+
+  /** @deprecated Prefer prepareDownload + releaseDownload */
+  consumeDownload(jobId: string): GenerateJobDownloadResult {
+    return this.prepareDownload(jobId);
   }
 
   private getOrLoadJob(jobId: string): GenerateJobRecord | null {

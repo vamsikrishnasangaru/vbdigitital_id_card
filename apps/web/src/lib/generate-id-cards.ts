@@ -203,6 +203,43 @@ async function withTransientRetry<T>(
   throw lastError instanceof Error ? lastError : new Error(`${label} failed`);
 }
 
+async function downloadGenerateJobFile(
+  jobId: string,
+  jobHeaders: Record<string, string>,
+) {
+  const requestDownload = () =>
+    api.get(`/id-cards/generate/jobs/${jobId}/download`, {
+      responseType: 'blob',
+      timeout: 600_000,
+      headers: jobHeaders,
+      _skipOfflineQueue: true,
+    } as unknown as VbAxiosConfig);
+
+  try {
+    return await withTransientRetry(requestDownload, 'Download');
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number; data?: unknown } }).response?.status;
+    // Job may still be finishing packaging when the first "done" poll races; wait and retry once.
+    if (status === 404) {
+      await sleep(1500);
+      try {
+        return await requestDownload();
+      } catch (retryErr: unknown) {
+        const message = await readApiErrorMessage(
+          (retryErr as { response?: { data?: unknown } }).response?.data,
+          'Generate job not ready for download',
+        );
+        throw new Error(
+          /not ready|not found or expired|missing/i.test(message)
+            ? 'Download failed — the generated file was not available. Please try generating again.'
+            : message,
+        );
+      }
+    }
+    throw err;
+  }
+}
+
 export type GenerateCardFailure = { studentId: string; error: string };
 
 let generateJobsInFlight = 0;
@@ -356,16 +393,7 @@ async function generateIdCardsAsync(
         destination: 'download',
         packagingCompleted: job.total,
       });
-      const response = await withTransientRetry(
-        () =>
-          api.get(`/id-cards/generate/jobs/${start.jobId}/download`, {
-            responseType: 'blob',
-            timeout: 600_000,
-            headers: jobHeaders,
-            _skipOfflineQueue: true,
-          } as unknown as VbAxiosConfig),
-        'Download',
-      );
+      const response = await downloadGenerateJobFile(start.jobId, jobHeaders);
 
       let blob = coerceDownloadBlob(response.data);
       blob = await ensureBinaryDownloadBlob(blob);
@@ -502,9 +530,9 @@ export async function generateIdCards(params: {
       const message = axiosErr.response?.data
         ? await readApiErrorMessage(axiosErr.response.data, '')
         : '';
-      if (/not found or expired/i.test(message)) {
+      if (/not found or expired|file is missing|not ready for download|no downloadable file/i.test(message)) {
         throw new Error(
-          'Generation job was lost — the server may have restarted during your batch. Please try again (avoid redeploying while a batch is running).',
+          'Generation job was lost or the download file was unavailable — the server may have restarted. Please try generating again.',
         );
       }
     }
